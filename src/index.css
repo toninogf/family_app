@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import "@fontsource-variable/plus-jakarta-sans";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans Variable", system-ui, sans-serif;
+  --color-bg: var(--app-bg);
+  --color-card: var(--app-card);
+  --color-ink: var(--app-ink);
+  --color-muted: var(--app-muted);
+  --color-line: var(--app-line);
+  --color-accent: var(--app-accent);
+  --color-accent-soft: var(--app-accent-soft);
+  --color-danger: var(--app-danger);
+}
+
+:root {
+  --app-bg: #F4F5F1;
+  --app-card: #FFFFFF;
+  --app-ink: #18211F;
+  --app-muted: #5B6662;
+  --app-line: #E3E6E0;
+  --app-accent: #2D4BB3;
+  --app-accent-soft: #E6EBFA;
+  --app-danger: #A3261C;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: #121614;
+    --app-card: #1C2220;
+    --app-ink: #ECEFEC;
+    --app-muted: #A3ADA9;
+    --app-line: #2C3431;
+    --app-accent: #8FA6F2;
+    --app-accent-soft: #232C47;
+    --app-danger: #F08A80;
+    color-scheme: dark;
+  }
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
