@@ -61,13 +61,16 @@ export default function IconCategoriesSheet({ title, cats, onClose }: { title: s
             {hidden.map((c, i) => (
               <li key={c.id} className={`flex items-center justify-between min-h-12 ${i < hidden.length - 1 ? 'border-b border-line' : ''}`}>
                 <span className="text-[15px] text-muted">{c.icon} {c.name}</span>
-                <button onClick={() => cats.update(c.id, { archived: false })} className="min-h-10 px-2 text-sm text-accent font-semibold">Recuperar</button>
+                <span className="flex">
+                  <button onClick={() => cats.update(c.id, { archived: false })} className="min-h-10 px-2 text-sm text-accent font-semibold">Recuperar</button>
+                  {!c.key && <button onClick={() => { cats.update(c.id, { archived: false }); setEditing(c.id) }} className="min-h-10 px-2 text-sm text-muted">Editar</button>}
+                </span>
               </li>
             ))}
           </ul>
         </section>
       )}
-      <p className="text-xs text-muted">Toca una categoría para cambiar su nombre, icono o color. Ocultarla no borra nada: lo que ya la usa la conserva.</p>
+      <p className="text-xs text-muted">Toca una categoría para cambiar su nombre, icono o color, ocultarla o eliminarla. Ocultar no borra nada; eliminar mueve lo que la usaba a «Otros» (actividades) o «Sin categoría» (tareas).</p>
     </Sheet>
   )
 }
@@ -76,6 +79,9 @@ function CategoryEditor({ c, cats, onDone }: { c: IconCategory; cats: IconCatego
   const [name, setName] = useState(c.name)
   const [icon, setIcon] = useState(c.icon)
   const [color, setColor] = useState(c.color)
+  const [deleting, setDeleting] = useState<number | null>(null)
+  const isEvents = 'key' in c
+  const what = (n: number) => (isEvents ? `${n} actividad${n === 1 ? '' : 'es'}` : `${n} tarea${n === 1 ? '' : 's'}`)
 
   async function save() {
     if (!name.trim()) return
@@ -95,13 +101,30 @@ function CategoryEditor({ c, cats, onDone }: { c: IconCategory; cats: IconCatego
             className={`w-8 h-8 rounded-full ${color === col ? 'ring-2 ring-offset-2 ring-ink ring-offset-card' : ''}`} style={{ background: col }} />
         ))}
       </div>
+      {deleting != null ? (
+        <div className="flex flex-col gap-2 bg-bg rounded-lg p-3">
+          <p className="text-sm">
+            ¿Eliminar «{c.name}»? {deleting === 0 ? 'Nada la usa.' : `La usa${deleting === 1 ? '' : 'n'} ${what(deleting)}, que ${isEvents ? 'pasarán a «Otros»' : 'quedarán sin categoría'}.`}
+          </p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setDeleting(null)} className="min-h-10 px-3 text-sm text-muted">Cancelar</button>
+            <button onClick={async () => { await cats.remove(c.id); onDone() }} className="min-h-10 px-4 rounded-lg bg-danger text-white dark:text-bg text-sm font-semibold">Eliminar</button>
+          </div>
+        </div>
+      ) : (
       <div className="flex justify-between">
-        <button onClick={async () => { await cats.update(c.id, { archived: true }); onDone() }} className="min-h-10 px-1 text-sm text-muted">Ocultar</button>
+        <span className="flex gap-1">
+          <button onClick={async () => { await cats.update(c.id, { archived: true }); onDone() }} className="min-h-10 px-1 text-sm text-muted">Ocultar</button>
+          {c.key
+            ? <span className="min-h-10 px-2 text-xs text-muted flex items-center">(la usa la app: solo se puede ocultar)</span>
+            : <button onClick={async () => setDeleting(await cats.usage(c.id))} className="min-h-10 px-2 text-sm text-danger font-semibold">Eliminar</button>}
+        </span>
         <span className="flex gap-2">
           <button onClick={onDone} className="min-h-10 px-3 text-sm text-muted">Cancelar</button>
           <button onClick={save} className="min-h-10 px-4 rounded-lg bg-accent text-white dark:text-bg text-sm font-semibold">Guardar</button>
         </span>
       </div>
+      )}
     </div>
   )
 }

@@ -37,7 +37,29 @@ export function useIconCategories(table: CategoryTable) {
     await load()
   }
 
-  return { categories, active: categories.filter(c => !c.archived), error, clearError: () => setError(''), create, update, byId: (id: string | null | undefined) => categories.find(c => c.id === id) }
+  const usedBy = table === 'event_categories' ? 'events' : 'tasks'
+
+  /** Cuántas actividades o tareas usan la categoría */
+  async function usage(id: string) {
+    const { count } = await supabase.from(usedBy).select('id', { count: 'exact', head: true }).eq('category_id', id)
+    return count ?? 0
+  }
+
+  /** Elimina la categoría: las actividades pasan a «Otros» y las tareas quedan sin categoría */
+  async function remove(id: string) {
+    if (table === 'event_categories') {
+      const otros = categories.find(c => c.key === 'otros')
+      if (otros) {
+        const { error } = await supabase.from('events').update({ category_id: otros.id }).eq('category_id', id)
+        if (error) { setError(error.message); return }
+      }
+    }
+    const { error } = await supabase.from(table).delete().eq('id', id)
+    if (error) setError(error.message)
+    await load()
+  }
+
+  return { categories, usage, remove, active: categories.filter(c => !c.archived), error, clearError: () => setError(''), create, update, byId: (id: string | null | undefined) => categories.find(c => c.id === id) }
 }
 export type IconCategories = ReturnType<typeof useIconCategories>
 
