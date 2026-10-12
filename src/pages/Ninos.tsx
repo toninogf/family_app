@@ -1,0 +1,299 @@
+import { useMemo, useState, type FormEvent } from 'react'
+import { useHousehold } from '../lib/household'
+import type { Member } from '../lib/supabase'
+import { addDays, hhmm, isoWeekday, longDate, parseISO, shortDate, startOfWeek, today, weekdaysLabel, WEEKDAY_SHORT } from '../lib/dates'
+import { agendaFor, useEvents, type Agenda, type EventInput, type FamilyEvent } from '../lib/kids'
+import { Card } from '../components/ui'
+import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
+
+export default function Ninos() {
+  const { me, members } = useHousehold()
+  const [weekStart, setWeekStart] = useState(startOfWeek(today()))
+  const [selected, setSelected] = useState(today())
+  const [child, setChild] = useState<string>('all')
+  const [eventSheet, setEventSheet] = useState<{ open: boolean; event?: FamilyEvent }>({ open: false })
+  const [occSheet, setOccSheet] = useState<Agenda | null>(null)
+  const weekEnd = addDays(weekStart, 6)
+  const ev = useEvents(weekStart, weekEnd)
+  const kids = members.filter(m => m.kind === 'child')
+  const adults = members.filter(m => m.kind === 'adult')
+
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
+  const filterChild = (a: Agenda) => child === 'all' || a.event.child_id === child || a.event.child_id === null
+  const dayAgenda = agendaFor(ev.events, ev.exceptions, selected).filter(filterChild)
+
+  function moveWeek(n: number) {
+    const ws = addDays(weekStart, 7 * n)
+    setWeekStart(ws)
+    setSelected(n === 0 ? today() : addDays(ws, isoWeekday(selected) - 1))
+  }
+
+  return (
+    <div className="flex flex-col gap-4 pb-16">
+      <h1 className="text-[26px] font-bold tracking-tight">Niños</h1>
+
+      <div className="flex gap-1.5">
+        {[{ id: 'all', name: 'Todos', color: '' }, ...kids.map(k => ({ id: k.id, name: k.display_name, color: k.color }))].map(o => (
+          <button key={o.id} onClick={() => setChild(o.id)} aria-pressed={child === o.id}
+            className={`min-h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 ${child === o.id ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>
+            {o.color && <span className="w-2.5 h-2.5 rounded-full" style={{ background: o.color }} aria-hidden="true" />}{o.name}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <button onClick={() => moveWeek(-1)} aria-label="Semana anterior" className="w-11 h-11 rounded-full bg-card border border-line">‹</button>
+        <button onClick={() => { setWeekStart(startOfWeek(today())); setSelected(today()) }} className="font-semibold min-h-11 px-2">
+          {shortDate(weekStart)} – {shortDate(weekEnd)}
+        </button>
+        <button onClick={() => moveWeek(1)} aria-label="Semana siguiente" className="w-11 h-11 rounded-full bg-card border border-line">›</button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((d, i) => {
+          const items = agendaFor(ev.events, ev.exceptions, d).filter(filterChild).filter(a => !a.cancelled)
+          const isSel = d === selected
+          const isToday = d === today()
+          return (
+            <button key={d} onClick={() => setSelected(d)} aria-pressed={isSel} aria-label={`${longDate(d)}, ${items.length} actividades`}
+              className={`h-16 rounded-xl flex flex-col items-center justify-center gap-1 ${isSel ? 'bg-accent text-white dark:text-bg' : 'bg-card'} ${isToday && !isSel ? 'ring-2 ring-accent' : ''}`}>
+              <span className="text-[11px] opacity-80">{WEEKDAY_SHORT[i]}</span>
+              <span className="text-base font-bold">{parseISO(d).getDate()}</span>
+              <span className="flex gap-0.5 h-1.5">
+                {items.slice(0, 4).map(a => (
+                  <span key={a.event.id} className="w-1.5 h-1.5 rounded-full" style={{ background: isSel ? 'currentColor' : colorOf(a.event, members) }} />
+                ))}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <h2 className="text-base font-bold">{longDate(selected)}</h2>
+
+      {ev.error && (
+        <Card className="flex justify-between items-center gap-3">
+          <p role="alert" className="text-danger text-sm">No se pudo guardar: {ev.error}</p>
+          <button onClick={ev.clearError} className="text-sm text-muted min-h-10 px-2">Cerrar</button>
+        </Card>
+      )}
+
+      {ev.loading ? <p className="text-muted text-sm">Cargando…</p> : dayAgenda.length === 0 ? (
+        <Card><p className="text-sm text-muted">{ev.events.length ? 'Nada este día.' : 'Añade las actividades de la semana (natación, música, inglés…) con quién lleva y quién recoge.'}</p></Card>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {dayAgenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => setOccSheet(a)} />)}
+        </div>
+      )}
+
+      <Fab label="Actividad" onClick={() => setEventSheet({ open: true })} />
+
+      {occSheet && (
+        <OccurrenceSheet
+          a={occSheet}
+          adults={adults}
+          members={members}
+          onClose={() => setOccSheet(null)}
+          onSaveException={async input => { await ev.saveException(occSheet.event.id, occSheet.date, input); setOccSheet(null) }}
+          onClearException={occSheet.exception ? async () => { await ev.clearException(occSheet.exception!.id); setOccSheet(null) } : undefined}
+          onEdit={() => { setEventSheet({ open: true, event: occSheet.event }); setOccSheet(null) }}
+          onEndFrom={async () => { await ev.endEventFrom(occSheet.event, occSheet.date); setOccSheet(null) }}
+          onDelete={async () => { await ev.removeEvent(occSheet.event.id); setOccSheet(null) }}
+        />
+      )}
+
+      {eventSheet.open && me && (
+        <EventSheet
+          event={eventSheet.event}
+          kids={kids}
+          adults={adults}
+          defaultDate={selected}
+          defaultChild={child !== 'all' ? child : kids[0]?.id ?? null}
+          onClose={() => setEventSheet({ open: false })}
+          onSave={async input => { const err = await ev.saveEvent(me.household_id, input, eventSheet.event?.id); if (!err) setEventSheet({ open: false }); return err?.message }}
+        />
+      )}
+    </div>
+  )
+}
+
+function colorOf(e: FamilyEvent, members: Member[]) {
+  return members.find(m => m.id === e.child_id)?.color ?? 'var(--app-accent)'
+}
+
+function nameOf(id: string | null, members: Member[]) {
+  return id ? members.find(m => m.id === id)?.display_name ?? '¿?' : null
+}
+
+export function AgendaCard({ a, members, onOpen, compact }: { a: Agenda; members: Member[]; onOpen?: () => void; compact?: boolean }) {
+  const childName = nameOf(a.event.child_id, members) ?? 'Familia'
+  const drop = nameOf(a.dropOff, members)
+  const pick = nameOf(a.pickUp, members)
+  const content = (
+    <span className="flex gap-3 items-start w-full">
+      <span className="w-1 self-stretch rounded-full" style={{ background: colorOf(a.event, members) }} aria-hidden="true" />
+      <span className="flex-1 flex flex-col gap-1.5 min-w-0">
+        <span className="flex justify-between items-baseline gap-2">
+          <span className={`text-[16px] font-bold ${a.cancelled ? 'line-through text-muted' : ''}`}>{a.event.title}</span>
+          <span className="text-sm font-semibold shrink-0">{hhmm(a.start)}{a.end ? `–${hhmm(a.end)}` : ''}</span>
+        </span>
+        <span className="text-[13px] text-muted">
+          {childName}{a.event.location ? ` · ${a.event.location}` : ''}
+          {a.cancelled ? ' · Cancelada este día' : a.changed ? ' · Cambiada este día' : ''}
+        </span>
+        {!a.cancelled && !compact && (drop || pick) && (
+          <span className="flex gap-1.5 flex-wrap">
+            {drop && pick && drop === pick
+              ? <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-accent-soft text-accent">Lleva y recoge: {drop}</span>
+              : <>
+                  {drop && <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-accent-soft text-accent">Lleva: {drop}</span>}
+                  {pick && <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-bg">Recoge: {pick}</span>}
+                </>}
+          </span>
+        )}
+        {compact && !a.cancelled && (drop || pick) && (
+          <span className="text-xs text-muted">{drop && pick && drop === pick ? `Lleva y recoge ${drop}` : [drop && `Lleva ${drop}`, pick && `recoge ${pick}`].filter(Boolean).join(' · ')}</span>
+        )}
+        {a.note && !compact && <span className="text-xs text-muted">{a.note}</span>}
+      </span>
+    </span>
+  )
+  return onOpen
+    ? <button onClick={onOpen} className="bg-card rounded-2xl p-4 text-left">{content}</button>
+    : <div className="bg-card rounded-2xl p-4">{content}</div>
+}
+
+function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClearException, onEdit, onEndFrom, onDelete }: {
+  a: Agenda; adults: Member[]; members: Member[]; onClose: () => void
+  onSaveException: (input: { cancelled: boolean; start_time: string | null; end_time: string | null; override_drivers: boolean; drop_off_id: string | null; pick_up_id: string | null; note: string | null }) => Promise<void>
+  onClearException?: () => Promise<void>
+  onEdit: () => void; onEndFrom: () => Promise<void>; onDelete: () => Promise<void>
+}) {
+  const [start, setStart] = useState(hhmm(a.start))
+  const [end, setEnd] = useState(hhmm(a.end))
+  const [drop, setDrop] = useState<string | null>(a.dropOff)
+  const [pick, setPick] = useState<string | null>(a.pickUp)
+  const [note, setNote] = useState(a.exception?.note ?? '')
+  const [confirming, setConfirming] = useState(false)
+  const weekly = a.event.repeat === 'weekly'
+
+  const driverOptions = [{ value: null as string | null, label: 'Nadie' }, ...adults.map(x => ({ value: x.id as string | null, label: x.display_name, color: x.color }))]
+
+  async function saveChanges(e: FormEvent) {
+    e.preventDefault()
+    const timeChanged = start !== hhmm(a.event.start_time) || end !== hhmm(a.event.end_time)
+    await onSaveException({
+      cancelled: false,
+      start_time: timeChanged ? start : null,
+      end_time: timeChanged ? (end || null) : null,
+      override_drivers: drop !== a.event.drop_off_id || pick !== a.event.pick_up_id,
+      drop_off_id: drop,
+      pick_up_id: pick,
+      note: note.trim() || null
+    })
+  }
+
+  return (
+    <Sheet title={`${a.event.title} · ${nameOf(a.event.child_id, members) ?? 'Familia'}`} onClose={onClose}>
+      <p className="text-sm text-muted -mt-3">{longDate(a.date)}{weekly ? ` · se repite ${weekdaysLabel(a.event.weekdays)}` : ''}</p>
+
+      {weekly && (
+        a.cancelled ? (
+          <button onClick={onClearException} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold">Recuperar este día</button>
+        ) : (
+          <form onSubmit={saveChanges} className="flex flex-col gap-4 bg-card rounded-2xl p-4">
+            <h3 className="font-bold text-[15px]">Solo este día</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <TextField label="Empieza" type="time" value={start} onChange={e => setStart(e.target.value)} required />
+              <TextField label="Termina" type="time" value={end} onChange={e => setEnd(e.target.value)} />
+            </div>
+            <Choice label="Lleva" value={drop} onChange={setDrop} options={driverOptions} />
+            <Choice label="Recoge" value={pick} onChange={setPick} options={driverOptions} />
+            <TextField label="Nota para este día" value={note} onChange={e => setNote(e.target.value)} maxLength={200} placeholder="Ej. llevar el chándal" />
+            <button type="submit" className="py-3 rounded-xl bg-accent text-white dark:text-bg font-bold">Guardar cambios de este día</button>
+            <div className="flex justify-between">
+              <button type="button" onClick={() => onSaveException({ cancelled: true, start_time: null, end_time: null, override_drivers: false, drop_off_id: null, pick_up_id: null, note: null })}
+                className="min-h-11 text-danger text-sm font-semibold">Cancelar este día</button>
+              {onClearException && <button type="button" onClick={onClearException} className="min-h-11 text-sm text-muted">Deshacer cambios</button>}
+            </div>
+          </form>
+        )
+      )}
+
+      <div className="flex flex-col gap-2">
+        <h3 className="font-bold text-[15px]">{weekly ? 'Toda la actividad' : 'Actividad'}</h3>
+        <button onClick={onEdit} className="py-3 rounded-xl border border-line bg-card font-semibold">Editar {weekly ? 'todas las semanas' : ''}</button>
+        {weekly && a.date > a.event.start_date && (
+          <button onClick={onEndFrom} className="py-3 rounded-xl border border-line bg-card font-semibold">Terminar a partir de este día</button>
+        )}
+        <ConfirmDelete label="Eliminar actividad por completo" onConfirm={onDelete} confirming={confirming} setConfirming={setConfirming} />
+      </div>
+    </Sheet>
+  )
+}
+
+function EventSheet({ event, kids, adults, defaultDate, defaultChild, onClose, onSave }: {
+  event?: FamilyEvent; kids: Member[]; adults: Member[]; defaultDate: string; defaultChild: string | null
+  onClose: () => void; onSave: (input: EventInput) => Promise<string | undefined>
+}) {
+  const [childId, setChildId] = useState<string | null>(event ? event.child_id : defaultChild)
+  const [title, setTitle] = useState(event?.title ?? '')
+  const [location, setLocation] = useState(event?.location ?? '')
+  const [repeat, setRepeat] = useState<'weekly' | 'none'>(event?.repeat ?? 'weekly')
+  const [weekdays, setWeekdays] = useState<number[]>(event?.weekdays?.length ? event.weekdays : [isoWeekday(defaultDate)])
+  const [startDate, setStartDate] = useState(event?.start_date ?? defaultDate)
+  const [until, setUntil] = useState(event?.until ?? '')
+  const [start, setStart] = useState(hhmm(event?.start_time) || '17:00')
+  const [end, setEnd] = useState(hhmm(event?.end_time) || '18:00')
+  const [drop, setDrop] = useState<string | null>(event?.drop_off_id ?? null)
+  const [pick, setPick] = useState<string | null>(event?.pick_up_id ?? null)
+  const [note, setNote] = useState(event?.note ?? '')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const driverOptions = [{ value: null as string | null, label: 'Sin asignar' }, ...adults.map(x => ({ value: x.id as string | null, label: x.display_name, color: x.color }))]
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!title.trim()) { setError('Escribe el nombre de la actividad'); return }
+    if (repeat === 'weekly' && !weekdays.length) { setError('Elige al menos un día'); return }
+    if (end && end <= start) { setError('La hora de fin debe ser posterior a la de inicio'); return }
+    if (until && until < startDate) { setError('La fecha de fin debe ser posterior al inicio'); return }
+    setBusy(true); setError('')
+    const err = await onSave({
+      child_id: childId, title: title.trim(), location: location.trim() || null, start_time: start, end_time: end || null,
+      repeat, weekdays, start_date: startDate, until: until || null, drop_off_id: drop, pick_up_id: pick, note: note.trim() || null
+    })
+    setBusy(false)
+    if (err) setError(err)
+  }
+
+  return (
+    <Sheet title={event ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose}>
+      <form onSubmit={submit} className="flex flex-col gap-5">
+        <Choice label="¿De quién?" value={childId} onChange={setChildId}
+          options={[...kids.map(k => ({ value: k.id as string | null, label: k.display_name, color: k.color })), { value: null, label: 'Familia' }]} />
+        <TextField label="Actividad" autoFocus={!event} value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Natación" />
+        <TextField label="Lugar (opcional)" value={location} onChange={e => setLocation(e.target.value)} maxLength={80} placeholder="Ej. Polideportivo" />
+        <Choice<'weekly' | 'none'> label="¿Se repite?" value={repeat} onChange={setRepeat}
+          options={[{ value: 'weekly', label: 'Cada semana' }, { value: 'none', label: 'Solo un día' }]} />
+        {repeat === 'weekly' && <WeekdayPicker value={weekdays} onChange={setWeekdays} />}
+        <div className="grid grid-cols-2 gap-3">
+          <TextField label="Empieza" type="time" value={start} onChange={e => setStart(e.target.value)} required />
+          <TextField label="Termina" type="time" value={end} onChange={e => setEnd(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <TextField label={repeat === 'weekly' ? 'Desde' : 'Fecha'} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+          {repeat === 'weekly' && <TextField label="Hasta (opcional)" type="date" value={until} onChange={e => setUntil(e.target.value)} />}
+        </div>
+        <Choice label="¿Quién lleva?" value={drop} onChange={setDrop} options={driverOptions} />
+        <Choice label="¿Quién recoge?" value={pick} onChange={setPick} options={driverOptions} />
+        <TextField label="Nota (opcional)" value={note} onChange={e => setNote(e.target.value)} maxLength={200} placeholder="Ej. llevar gorro y gafas" />
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        <button type="submit" disabled={busy} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">
+          {busy ? 'Guardando…' : event ? 'Guardar cambios' : 'Añadir actividad'}
+        </button>
+      </form>
+    </Sheet>
+  )
+}

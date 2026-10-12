@@ -89,7 +89,7 @@ export function useShoppingLists() {
   useEffect(() => {
     load()
     const channel = supabase
-      .channel('shopping_lists')
+      .channel(`shopping_lists:${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_lists' }, () => load())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -162,7 +162,7 @@ export function useShoppingItems(listId: string | null) {
     load()
     if (!listId) return
     const channel = supabase
-      .channel(`shopping_items:${listId}`)
+      .channel(`shopping_items:${listId}:${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter: `list_id=eq.${listId}` }, () => load())
       .subscribe()
     // Al volver a la app (móvil en segundo plano) refresca por si se perdió algún evento

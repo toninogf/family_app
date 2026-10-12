@@ -119,7 +119,7 @@ export function useBalances() {
 
   useEffect(() => {
     load()
-    const channel = supabase.channel('money_balances')
+    const channel = supabase.channel(`money_balances:${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements' }, () => load())
       .subscribe()
@@ -162,7 +162,7 @@ export function useExpenses(month: string) {
   useEffect(() => {
     setLoading(true)
     load()
-    const channel = supabase.channel(`expenses:${month}`)
+    const channel = supabase.channel(`expenses:${month}:${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => load())
       .subscribe()
     const onVisible = () => { if (document.visibilityState === 'visible') load() }

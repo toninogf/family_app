@@ -6,16 +6,8 @@ import Hoy from './pages/Hoy'
 import Perfil from './pages/Perfil'
 import Compra from './pages/Compra'
 import Dinero from './pages/Dinero'
-import { Card } from './components/ui'
-
-function Pronto({ title, phase }: { title: string; phase: string }) {
-  return (
-    <div className="flex flex-col gap-5">
-      <h1 className="text-[26px] font-bold tracking-tight">{title}</h1>
-      <Card><p className="text-muted text-sm">Llega en la {phase}.</p></Card>
-    </div>
-  )
-}
+import Casa from './pages/Casa'
+import Ninos from './pages/Ninos'
 
 export default function App() {
   return (
@@ -25,8 +17,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Hoy />} />
             <Route path="/compra" element={<Compra />} />
-            <Route path="/casa" element={<Pronto title="Casa" phase="fase 4" />} />
-            <Route path="/ninos" element={<Pronto title="Niños" phase="fase 4" />} />
+            <Route path="/casa" element={<Casa />} />
+            <Route path="/ninos" element={<Ninos />} />
             <Route path="/dinero" element={<Dinero />} />
             <Route path="/perfil" element={<Perfil />} />
             <Route path="*" element={<Hoy />} />
