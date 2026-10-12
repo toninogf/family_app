@@ -9,15 +9,18 @@ import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../
 import CalendarSheet from '../components/CalendarSheet'
 import MenuCard from '../components/MenuCard'
 import { useSchoolMenu } from '../lib/menu'
+import { useIconCategories, type IconCategories } from '../lib/categories'
+import IconCategoriesSheet from '../components/IconCategoriesSheet'
+import Maestro, { ChipRow } from './agenda/Maestro'
 
-type Mode = 'week' | 'month' | 'agenda' | 'menu'
+type Mode = 'week' | 'month' | 'agenda' | 'menu' | 'master'
 const MODE_KEY = 'ninos-vista'
 const AGENDA_STEP = 30
 
 function savedMode(): Mode {
   try {
     const v = localStorage.getItem(MODE_KEY)
-    if (v === 'week' || v === 'month' || v === 'agenda' || v === 'menu') return v
+    if (v === 'week' || v === 'month' || v === 'agenda' || v === 'menu' || v === 'master') return v
   } catch { /* sin almacenamiento: usamos el valor por defecto */ }
   return 'agenda'
 }
@@ -44,7 +47,10 @@ export default function Ninos() {
   const [monthStart, setMonthStart] = useState(firstOfMonth(today()))
   const [agendaDays, setAgendaDays] = useState(AGENDA_STEP)
   const [selected, setSelected] = useState(today())
-  const [child, setChild] = useState<string>('all')
+  const [person, setPerson] = useState<string>('all')
+  const [cat, setCat] = useState<string>('all')
+  const [catsOpen, setCatsOpen] = useState(false)
+  const cats = useIconCategories('event_categories')
   const [eventSheet, setEventSheet] = useState<{ open: boolean; event?: FamilyEvent }>({ open: false })
   const [occSheet, setOccSheet] = useState<Agenda | null>(null)
   const [calendarOpen, setCalendarOpen] = useState(false)
@@ -70,7 +76,9 @@ export default function Ninos() {
 
   /** Las visitas de la mudanza se gestionan en Casa */
   const openOcc = (a: Agenda) => (a.event.origin ? navigate(`/casa?vista=${a.event.origin === 'venta' ? 'vendemos' : 'buscamos'}`) : setOccSheet(a))
-  const filterChild = (a: Agenda) => child === 'all' || a.event.child_id === child || a.event.child_id === null
+  const filterChild = (a: Agenda) =>
+    (person === 'all' || (person === 'family' ? a.event.child_id === null : a.event.child_id === person)) &&
+    (cat === 'all' || a.event.category_id === cat)
   const itemsOn = (d: string) => agendaFor(ev.events, ev.exceptions, d).filter(filterChild)
   const dayAgenda = itemsOn(selected)
 
@@ -85,7 +93,7 @@ export default function Ninos() {
       if (items.length) out.push({ date: d, items })
     }
     return out
-  }, [mode, agendaDays, agendaStart, ev.events, ev.exceptions, child])
+  }, [mode, agendaDays, agendaStart, ev.events, ev.exceptions, person, cat])
 
   function moveWeek(n: number) {
     const ws = addDays(weekStart, 7 * n)
@@ -115,7 +123,7 @@ export default function Ninos() {
         <Card><p className="text-sm text-muted">{ev.events.length ? 'Nada este día.' : emptyHint}</p></Card>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {dayAgenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => openOcc(a)} />)}
+          {dayAgenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} cats={cats} onOpen={() => openOcc(a)} />)}
         </div>
       )}
     </>
@@ -135,7 +143,7 @@ export default function Ninos() {
   return (
     <div className="flex flex-col gap-4 pb-16">
       <header className="flex justify-between items-center">
-        <h1 className="text-[26px] font-bold tracking-tight">Niños</h1>
+        <h1 className="text-[26px] font-bold tracking-tight">Agenda</h1>
         <button onClick={() => setCalendarOpen(true)} className="min-h-10 px-3 rounded-xl border border-line bg-card text-accent text-[13px] font-semibold flex items-center gap-1.5">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
           A mi calendario
@@ -143,23 +151,40 @@ export default function Ninos() {
       </header>
       {calendarOpen && <CalendarSheet onClose={() => setCalendarOpen(false)} />}
 
-      <div role="tablist" aria-label="Vista" className="grid grid-cols-4 p-1 rounded-xl bg-card border border-line">
-        {([['agenda', 'Agenda'], ['week', 'Semana'], ['month', 'Mes'], ['menu', 'Menú']] as const).map(([m, label]) => (
+      <div role="tablist" aria-label="Vista" className="grid grid-cols-5 p-1 rounded-xl bg-card border border-line">
+        {([['agenda', 'Agenda'], ['week', 'Semana'], ['month', 'Mes'], ['menu', 'Comedor'], ['master', 'Maestro']] as const).map(([m, label]) => (
           <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-            className={`min-h-10 rounded-lg text-[14px] font-semibold ${mode === m ? 'bg-accent text-white dark:text-bg' : 'text-muted'}`}>
+            className={`min-h-10 rounded-lg text-[12.5px] font-semibold ${mode === m ? 'bg-accent text-white dark:text-bg' : 'text-muted'}`}>
             {label}
           </button>
         ))}
       </div>
 
-      {mode !== 'menu' && <div className="flex gap-1.5 flex-wrap">
-        {[{ id: 'all', name: 'Todos', color: '' }, ...kids.map(k => ({ id: k.id, name: k.display_name, color: k.color }))].map(o => (
-          <button key={o.id} onClick={() => setChild(o.id)} aria-pressed={child === o.id}
-            className={`min-h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 ${child === o.id ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>
-            {o.color && <span className="w-2.5 h-2.5 rounded-full" style={{ background: o.color }} aria-hidden="true" />}{o.name}
-          </button>
-        ))}
-      </div>}
+      {mode !== 'menu' && (
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-1.5 overflow-x-auto -mx-5 px-5 pb-0.5" style={{ scrollbarWidth: 'none' }}>
+            {[{ id: 'all', name: 'Todos', color: '' }, ...kids.map(k => ({ id: k.id, name: k.display_name, color: k.color })),
+              ...adults.map(a => ({ id: a.id, name: a.display_name, color: a.color })), { id: 'family', name: 'Familia', color: 'var(--app-accent)' }].map(o => (
+              <button key={o.id} onClick={() => setPerson(o.id)} aria-pressed={person === o.id}
+                className={`min-h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 ${person === o.id ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>
+                {o.color && <span className="w-2.5 h-2.5 rounded-full" style={{ background: o.color }} aria-hidden="true" />}{o.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1.5 items-center">
+            <div className="flex-1 min-w-0">
+              <ChipRow<string> value={cat} onChange={setCat} options={[['all', 'Todas las categorías'], ...cats.active.map(c => [c.id, `${c.icon} ${c.name}`] as [string, string])]} />
+            </div>
+            <button onClick={() => setCatsOpen(true)} aria-label="Editar categorías" className="w-9 h-9 shrink-0 rounded-full bg-card border border-line text-muted">⚙︎</button>
+          </div>
+        </div>
+      )}
+      {catsOpen && <IconCategoriesSheet title="Categorías de la agenda" cats={cats} onClose={() => setCatsOpen(false)} />}
+
+      {mode === 'master' && me && (
+        <Maestro members={members} cats={cats} person={person} cat={cat} householdId={me.household_id}
+          onEdit={e => setEventSheet({ open: true, event: e })} />
+      )}
 
       {errorCard}
 
@@ -266,7 +291,7 @@ export default function Ninos() {
                   <h2 className="text-base font-bold">
                     {rel === longDate(g.date) ? rel : <>{rel} <span className="font-normal text-muted text-sm">· {longDate(g.date)}</span></>}
                   </h2>
-                  {g.items.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => openOcc(a)} />)}
+                  {g.items.map(a => <AgendaCard key={a.event.id} a={a} members={members} cats={cats} onOpen={() => openOcc(a)} />)}
                 </section>
               )
             })}
@@ -298,8 +323,10 @@ export default function Ninos() {
           event={eventSheet.event}
           kids={kids}
           adults={adults}
-          defaultDate={mode === 'agenda' ? today() : selected}
-          defaultChild={child !== 'all' ? child : kids[0]?.id ?? null}
+          cats={cats}
+          defaultDate={mode === 'agenda' || mode === 'master' ? today() : selected}
+          defaultChild={person === 'family' ? null : person !== 'all' ? person : kids[0]?.id ?? null}
+          defaultCategory={cat !== 'all' ? cat : cats.active.find(c => c.key === 'otros')?.id ?? null}
           onClose={() => setEventSheet({ open: false })}
           onSave={async input => { const err = await ev.saveEvent(me.household_id, input, eventSheet.event?.id); if (!err) setEventSheet({ open: false }); return err?.message }}
         />
@@ -316,7 +343,8 @@ function nameOf(id: string | null, members: Member[]) {
   return id ? members.find(m => m.id === id)?.display_name ?? '¿?' : null
 }
 
-export function AgendaCard({ a, members, onOpen, compact }: { a: Agenda; members: Member[]; onOpen?: () => void; compact?: boolean }) {
+export function AgendaCard({ a, members, cats, onOpen, compact }: { a: Agenda; members: Member[]; cats?: IconCategories; onOpen?: () => void; compact?: boolean }) {
+  const icon = cats?.byId(a.event.category_id)?.icon
   const childName = a.event.origin === 'venta' ? 'Venta de casa' : a.event.origin === 'compra' ? 'Buscando casa' : nameOf(a.event.child_id, members) ?? 'Familia'
   const drop = nameOf(a.dropOff, members)
   const pick = nameOf(a.pickUp, members)
@@ -326,7 +354,7 @@ export function AgendaCard({ a, members, onOpen, compact }: { a: Agenda; members
       <span className="w-1 self-stretch rounded-full" style={{ background: colorOf(a.event, members) }} aria-hidden="true" />
       <span className="flex-1 flex flex-col gap-1.5 min-w-0">
         <span className="flex justify-between items-baseline gap-2">
-          <span className={`text-[16px] font-bold ${a.cancelled ? 'line-through text-muted' : ''}`}>{a.event.title}</span>
+          <span className={`text-[16px] font-bold ${a.cancelled ? 'line-through text-muted' : ''}`}>{icon ? `${icon} ` : ''}{a.event.title}</span>
           <span className="text-sm font-semibold shrink-0">{hhmm(a.start)}{a.end ? `–${hhmm(a.end)}` : ''}</span>
         </span>
         <span className="text-[13px] text-muted">
@@ -442,12 +470,13 @@ function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClear
   )
 }
 
-function EventSheet({ event, kids, adults, defaultDate, defaultChild, onClose, onSave }: {
-  event?: FamilyEvent; kids: Member[]; adults: Member[]; defaultDate: string; defaultChild: string | null
+function EventSheet({ event, kids, adults, cats, defaultDate, defaultChild, defaultCategory, onClose, onSave }: {
+  event?: FamilyEvent; kids: Member[]; adults: Member[]; cats: IconCategories; defaultDate: string; defaultChild: string | null; defaultCategory: string | null
   onClose: () => void; onSave: (input: EventInput) => Promise<string | undefined>
 }) {
   const [childId, setChildId] = useState<string | null>(event ? event.child_id : defaultChild)
   const [title, setTitle] = useState(event?.title ?? '')
+  const [categoryId, setCategoryId] = useState<string | null>(event ? event.category_id : defaultCategory)
   const [location, setLocation] = useState(event?.location ?? '')
   const [mapsUrl, setMapsUrl] = useState(event?.maps_url ?? '')
   const [repeat, setRepeat] = useState<'weekly' | 'none'>(event?.repeat ?? 'weekly')
@@ -473,7 +502,7 @@ function EventSheet({ event, kids, adults, defaultDate, defaultChild, onClose, o
     if (mapsUrl.trim() && !isMapsUrl(mapsUrl.trim())) { setError('El enlace debe ser de Google Maps (en Maps: Compartir → Copiar enlace)'); return }
     setBusy(true); setError('')
     const err = await onSave({
-      child_id: childId, title: title.trim(), location: location.trim() || null, maps_url: mapsUrl.trim() || null, start_time: start, end_time: end || null,
+      child_id: childId, category_id: categoryId, title: title.trim(), location: location.trim() || null, maps_url: mapsUrl.trim() || null, start_time: start, end_time: end || null,
       repeat, weekdays, start_date: startDate, until: until || null, drop_off_id: drop, pick_up_id: pick, note: note.trim() || null
     })
     setBusy(false)
@@ -484,7 +513,10 @@ function EventSheet({ event, kids, adults, defaultDate, defaultChild, onClose, o
     <Sheet title={event ? 'Editar actividad' : 'Nueva actividad'} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
         <Choice label="¿De quién?" value={childId} onChange={setChildId}
-          options={[...kids.map(k => ({ value: k.id as string | null, label: k.display_name, color: k.color })), { value: null, label: 'Familia' }]} />
+          options={[...kids.map(k => ({ value: k.id as string | null, label: k.display_name, color: k.color })),
+            ...adults.map(a => ({ value: a.id as string | null, label: a.display_name, color: a.color })), { value: null, label: 'Familia' }]} />
+        <Choice<string | null> label="Categoría" value={categoryId} onChange={setCategoryId}
+          options={cats.categories.filter(c => !c.archived || c.id === categoryId).map(c => ({ value: c.id as string | null, label: `${c.icon} ${c.name}` }))} />
         <TextField label="Actividad" autoFocus={!event} value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Natación" />
         <TextField label="Lugar (opcional)" value={location} onChange={e => setLocation(e.target.value)} maxLength={80} placeholder="Ej. Polideportivo" />
         <div className="flex flex-col gap-1.5">

@@ -12,6 +12,7 @@ export type Task = {
   month_day: number | null
   start_date: string
   active: boolean
+  category_id: string | null
 }
 export type Completion = { id: string; task_id: string; occurrence_date: string; done_by: string | null }
 export type TaskInput = Omit<Task, 'id' | 'active'>
@@ -59,7 +60,7 @@ export function occurrencesBetween(tasks: Task[], completions: Completion[], fro
   return out
 }
 
-export function useTasks(from: string, to: string) {
+export function useTasks(from: string, to: string, includePaused = false) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [completions, setCompletions] = useState<Completion[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,7 +68,9 @@ export function useTasks(from: string, to: string) {
 
   const load = useCallback(async () => {
     const [t, c] = await Promise.all([
-      supabase.from('tasks').select('id, title, assignee_id, repeat, weekdays, month_day, start_date, active').eq('active', true).order('created_at'),
+      includePaused
+        ? supabase.from('tasks').select('id, title, assignee_id, repeat, weekdays, month_day, start_date, active, category_id').order('created_at')
+        : supabase.from('tasks').select('id, title, assignee_id, repeat, weekdays, month_day, start_date, active, category_id').eq('active', true).order('created_at'),
       // Incluye un margen hacia atrás para saber qué puntuales vencidas están hechas
       supabase.from('task_completions').select('id, task_id, occurrence_date, done_by').gte('occurrence_date', addDays(from, -120)).lte('occurrence_date', to)
     ])
@@ -75,7 +78,7 @@ export function useTasks(from: string, to: string) {
     setTasks((t.data ?? []) as Task[])
     setCompletions((c.data ?? []) as Completion[])
     setLoading(false)
-  }, [from, to])
+  }, [from, to, includePaused])
 
   useEffect(() => {
     load()
@@ -116,11 +119,17 @@ export function useTasks(from: string, to: string) {
     return error
   }
 
+  async function setActive(id: string, active: boolean) {
+    const { error } = await supabase.from('tasks').update({ active }).eq('id', id)
+    if (error) setError(error.message)
+    await load()
+  }
+
   async function remove(id: string) {
     setTasks(prev => prev.filter(t => t.id !== id))
     const { error } = await supabase.from('tasks').delete().eq('id', id)
     if (error) { setError(error.message); await load() }
   }
 
-  return { tasks, completions, loading, error, toggle, save, remove, clearError: () => setError('') }
+  return { tasks, completions, loading, error, toggle, save, remove, setActive, clearError: () => setError('') }
 }

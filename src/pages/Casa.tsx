@@ -3,6 +3,10 @@ import { useSearchParams } from 'react-router-dom'
 import { useMudanza } from '../lib/mudanza'
 import Vendemos from './casa/Vendemos'
 import Buscamos from './casa/Buscamos'
+import TareasMaestro from './casa/TareasMaestro'
+import { ChipRow } from './agenda/Maestro'
+import { useIconCategories, type IconCategories } from '../lib/categories'
+import IconCategoriesSheet from '../components/IconCategoriesSheet'
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
 import { addDays, parseISO, relativeDay, today } from '../lib/dates'
@@ -53,13 +57,21 @@ function Tareas() {
   const { me, members } = useHousehold()
   const t = today()
   const end = addDays(t, 6)
-  const { tasks, completions, loading, error, toggle, save, remove, clearError } = useTasks(t, end)
+  const { tasks, completions, loading, error, toggle, save, remove, setActive, clearError } = useTasks(t, end)
+  const cats = useIconCategories('task_categories')
+  const [view, setViewState] = useState<'pendientes' | 'maestro'>(() => {
+    try { return localStorage.getItem('tareas-vista') === 'maestro' ? 'maestro' : 'pendientes' } catch { return 'pendientes' }
+  })
   const [who, setWho] = useState<string>('all')
+  const [cat, setCat] = useState<string>('all')
+  const [catsOpen, setCatsOpen] = useState(false)
   const [sheet, setSheet] = useState<{ open: boolean; task?: Task }>({ open: false })
-  const [showAll, setShowAll] = useState(false)
   const adults = members.filter(m => m.kind === 'adult')
 
-  const visible = (o: Occurrence) => who === 'all' || o.task.assignee_id === who || o.task.assignee_id === null
+  const setView = (v: 'pendientes' | 'maestro') => { setViewState(v); try { localStorage.setItem('tareas-vista', v) } catch { /* nada */ } }
+  const visible = (o: Occurrence) =>
+    (who === 'all' || o.task.assignee_id === who || o.task.assignee_id === null) &&
+    (cat === 'all' || (cat === 'none' ? !o.task.category_id : o.task.category_id === cat))
   const occ = useMemo(() => occurrencesBetween(tasks, completions, t, end, true), [tasks, completions, t, end])
   const overdue = occ.filter(o => o.date < t && visible(o))
   const todays = occ.filter(o => o.date === t && visible(o))
@@ -73,11 +85,23 @@ function Tareas() {
   return (
     <>
       <div className="flex gap-1.5">
-        {[['all', 'Todas'], ...adults.map(a => [a.id, a.display_name])].map(([k, l]) => (
-          <button key={k} onClick={() => setWho(k)} aria-pressed={who === k}
-            className={`min-h-9 px-3 rounded-full text-[13px] font-semibold ${who === k ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>{l}</button>
+        {([['pendientes', 'Pendientes'], ['maestro', 'Maestro']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} aria-pressed={view === k}
+            className={`flex-1 min-h-10 rounded-xl text-[14px] font-semibold border ${view === k ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>{l}</button>
         ))}
       </div>
+
+      <div className="flex flex-col gap-2">
+        <ChipRow<string> value={who} onChange={setWho} options={[['all', 'Todos'], ...adults.map(a => [a.id, a.display_name] as [string, string])]} />
+        <div className="flex gap-1.5 items-center">
+          <div className="flex-1 min-w-0">
+            <ChipRow<string> value={cat} onChange={setCat}
+              options={[['all', 'Todas las categorías'], ...cats.active.map(c => [c.id, `${c.icon} ${c.name}`] as [string, string]), ['none', 'Sin categoría']]} />
+          </div>
+          <button onClick={() => setCatsOpen(true)} aria-label="Editar categorías" className="w-9 h-9 shrink-0 rounded-full bg-card border border-line text-muted">⚙︎</button>
+        </div>
+      </div>
+      {catsOpen && <IconCategoriesSheet title="Categorías de tareas" cats={cats} onClose={() => setCatsOpen(false)} />}
 
       {error && (
         <Card className="flex justify-between items-center gap-3">
@@ -86,41 +110,21 @@ function Tareas() {
         </Card>
       )}
 
-      {loading ? <p className="text-muted text-sm">Cargando…</p> : tasks.length === 0 ? (
+      {view === 'maestro' ? (
+        <TareasMaestro members={members} cats={cats} who={who} cat={cat} onOpen={task => setSheet({ open: true, task })} />
+      ) : loading ? <p className="text-muted text-sm">Cargando…</p> : tasks.length === 0 ? (
         <Card className="flex flex-col gap-1">
           <p className="font-semibold">Aún no hay tareas</p>
-          <p className="text-sm text-muted">Añade las de siempre (basura, lavadora, regar…) con su día y quién se encarga.</p>
+          <p className="text-sm text-muted">Añade las de siempre (basura, lavadora, regar…) con su día, categoría y quién se encarga.</p>
         </Card>
       ) : (
         <>
-          {overdue.length > 0 && <TaskGroup title="Pendientes de otros días" items={overdue} members={members} me={me} onToggle={toggle} showDate />}
-          <TaskGroup title="Hoy" items={todays} members={members} me={me} onToggle={toggle} empty="Nada para hoy." />
+          {overdue.length > 0 && <TaskGroup title="Pendientes de otros días" items={overdue} members={members} me={me} cats={cats} onToggle={toggle} showDate />}
+          <TaskGroup title="Hoy" items={todays} members={members} me={me} cats={cats} onToggle={toggle} empty="Nada para hoy." />
           {byDay.map(([day, items]) => (
-            <TaskGroup key={day} title={relativeDay(day)} items={items} members={members} me={me} onToggle={toggle} />
+            <TaskGroup key={day} title={relativeDay(day)} items={items} members={members} me={me} cats={cats} onToggle={toggle} />
           ))}
         </>
-      )}
-
-      {tasks.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <button onClick={() => setShowAll(s => !s)} aria-expanded={showAll} className="min-h-10 text-sm font-semibold text-muted self-start">
-            Todas las tareas ({tasks.length}) {showAll ? '▾' : '▸'}
-          </button>
-          {showAll && (
-            <Card className="py-1">
-              <ul>
-                {tasks.map((task, idx) => (
-                  <li key={task.id} className={idx < tasks.length - 1 ? 'border-b border-line' : ''}>
-                    <button onClick={() => setSheet({ open: true, task })} className="w-full text-left flex flex-col min-h-14 py-2 justify-center">
-                      <span className="text-[15px] font-semibold">{task.title}</span>
-                      <span className="text-xs text-muted">{repeatLabel(task)} · {assigneeName(task.assignee_id, members)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </section>
       )}
 
       <Fab label="Tarea" onClick={() => setSheet({ open: true })} />
@@ -129,8 +133,11 @@ function Tareas() {
         <TaskSheet
           task={sheet.task}
           adults={adults}
+          cats={cats}
+          defaultCategory={cat !== 'all' && cat !== 'none' ? cat : null}
           onClose={() => setSheet({ open: false })}
           onSave={async input => { const err = await save(me.household_id, input, sheet.task?.id); if (!err) setSheet({ open: false }); return err?.message }}
+          onToggleActive={sheet.task ? async () => { await setActive(sheet.task!.id, !sheet.task!.active); setSheet({ open: false }) } : undefined}
           onDelete={sheet.task ? async () => { await remove(sheet.task!.id); setSheet({ open: false }) } : undefined}
         />
       )}
@@ -138,12 +145,12 @@ function Tareas() {
   )
 }
 
-function assigneeName(id: string | null, members: Member[]) {
+export function assigneeName(id: string | null, members: Member[]) {
   return id ? members.find(m => m.id === id)?.display_name ?? '¿?' : 'Cualquiera'
 }
 
-export function TaskGroup({ title, items, members, me, onToggle, empty, showDate }: {
-  title: string; items: Occurrence[]; members: Member[]; me: Member | null; onToggle: (o: Occurrence) => void; empty?: string; showDate?: boolean
+export function TaskGroup({ title, items, members, me, cats, onToggle, empty, showDate }: {
+  title: string; items: Occurrence[]; members: Member[]; me: Member | null; cats?: IconCategories; onToggle: (o: Occurrence) => void; empty?: string; showDate?: boolean
 }) {
   if (!items.length && !empty) return null
   return (
@@ -160,7 +167,7 @@ export function TaskGroup({ title, items, members, me, onToggle, empty, showDate
                   <label className="flex items-center gap-3 min-h-13 py-2">
                     <input type="checkbox" checked={!!o.done} onChange={() => onToggle(o)} className="w-5 h-5 accent-[var(--app-accent)]" />
                     <span className="flex-1 flex flex-col">
-                      <span className={`text-[15px] ${o.done ? 'line-through text-muted' : ''}`}>{o.task.title}</span>
+                      <span className={`text-[15px] ${o.done ? 'line-through text-muted' : ''}`}>{cats?.byId(o.task.category_id)?.icon ? `${cats.byId(o.task.category_id)!.icon} ` : ''}{o.task.title}</span>
                       <span className="text-xs text-muted">
                         {showDate ? `${relativeDay(o.date)} · ` : ''}
                         {doneBy ? `Hecha por ${doneBy}` : o.task.repeat !== 'none' ? repeatLabel(o.task) : 'Una vez'}
@@ -182,10 +189,12 @@ export function TaskGroup({ title, items, members, me, onToggle, empty, showDate
   )
 }
 
-function TaskSheet({ task, adults, onClose, onSave, onDelete }: {
-  task?: Task; adults: Member[]; onClose: () => void; onSave: (input: TaskInput) => Promise<string | undefined>; onDelete?: () => Promise<void>
+function TaskSheet({ task, adults, cats, defaultCategory, onClose, onSave, onToggleActive, onDelete }: {
+  task?: Task; adults: Member[]; cats: IconCategories; defaultCategory: string | null; onClose: () => void
+  onSave: (input: TaskInput) => Promise<string | undefined>; onToggleActive?: () => Promise<void>; onDelete?: () => Promise<void>
 }) {
   const [title, setTitle] = useState(task?.title ?? '')
+  const [categoryId, setCategoryId] = useState<string | null>(task ? task.category_id : defaultCategory)
   const [assignee, setAssignee] = useState<string | null>(task?.assignee_id ?? null)
   const [repeat, setRepeat] = useState<Repeat>(task?.repeat ?? 'weekly')
   const [weekdays, setWeekdays] = useState<number[]>(task?.weekdays?.length ? task.weekdays : [])
@@ -202,7 +211,7 @@ function TaskSheet({ task, adults, onClose, onSave, onDelete }: {
     const md = parseInt(monthDay, 10)
     if (repeat === 'monthly' && !(md >= 1 && md <= 31)) { setError('Día del mes entre 1 y 31'); return }
     setBusy(true); setError('')
-    const err = await onSave({ title: title.trim(), assignee_id: assignee, repeat, weekdays, month_day: repeat === 'monthly' ? md : null, start_date: startDate })
+    const err = await onSave({ title: title.trim(), category_id: categoryId, assignee_id: assignee, repeat, weekdays, month_day: repeat === 'monthly' ? md : null, start_date: startDate })
     setBusy(false)
     if (err) setError(err)
   }
@@ -211,6 +220,8 @@ function TaskSheet({ task, adults, onClose, onSave, onDelete }: {
     <Sheet title={task ? 'Editar tarea' : 'Nueva tarea'} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
         <TextField label="Tarea" autoFocus={!task} value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Sacar la basura" />
+        <Choice<string | null> label="Categoría" value={categoryId} onChange={setCategoryId}
+          options={[...cats.categories.filter(c => !c.archived || c.id === categoryId).map(c => ({ value: c.id as string | null, label: `${c.icon} ${c.name}` })), { value: null, label: 'Sin categoría' }]} />
         <Choice label="¿Quién se encarga?" value={assignee} onChange={setAssignee}
           options={[{ value: null, label: 'Cualquiera' }, ...adults.map(a => ({ value: a.id as string | null, label: a.display_name, color: a.color }))]} />
         <Choice<Repeat> label="¿Cuándo?" value={repeat} onChange={setRepeat}
@@ -222,6 +233,11 @@ function TaskSheet({ task, adults, onClose, onSave, onDelete }: {
         <button type="submit" disabled={busy} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">
           {busy ? 'Guardando…' : task ? 'Guardar cambios' : 'Añadir tarea'}
         </button>
+        {task && onToggleActive && (
+          <button type="button" onClick={onToggleActive} className="py-3 rounded-xl border border-line bg-card font-semibold">
+            {task.active ? '⏸️ Pausar tarea (deja de salir hasta que la reanudes)' : '▶️ Reanudar tarea'}
+          </button>
+        )}
         {onDelete && <ConfirmDelete label="Eliminar tarea" onConfirm={onDelete} confirming={confirming} setConfirming={setConfirming} />}
       </form>
     </Sheet>

@@ -12,7 +12,7 @@ const items = [
   { to: '/', label: 'Hoy', icon: icons.hoy },
   { to: '/compra', label: 'Compra', icon: icons.compra },
   { to: '/casa', label: 'Casa', icon: icons.casa },
-  { to: '/ninos', label: 'Niños', icon: icons.ninos },
+  { to: '/agenda', label: 'Agenda', icon: icons.ninos },
   { to: '/dinero', label: 'Dinero', icon: icons.dinero }
 ]
 

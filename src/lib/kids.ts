@@ -18,6 +18,8 @@ export type FamilyEvent = {
   pick_up_id: string | null
   note: string | null
   origin?: 'venta' | 'compra' | null
+  category_id: string | null
+  paused: boolean
 }
 export type EventException = {
   id: string
@@ -31,7 +33,7 @@ export type EventException = {
   pick_up_id: string | null
   note: string | null
 }
-export type EventInput = Omit<FamilyEvent, 'id' | 'origin'>
+export type EventInput = Omit<FamilyEvent, 'id' | 'origin' | 'paused'>
 export type ExceptionInput = Omit<EventException, 'id' | 'event_id' | 'occurrence_date'>
 
 /** Una actividad concreta en un día, ya con los cambios puntuales aplicados */
@@ -61,7 +63,7 @@ export function mapsHref(e: Pick<FamilyEvent, 'location' | 'maps_url'>) {
 }
 
 export function eventOccursOn(e: FamilyEvent, date: string) {
-  if (date < e.start_date) return false
+  if (e.paused || date < e.start_date) return false
   if (e.until && date > e.until) return false
   if (e.repeat === 'none') return date === e.start_date
   return e.weekdays.includes(isoWeekday(date))
@@ -98,7 +100,7 @@ export function useEvents(from: string, to: string) {
   const load = useCallback(async () => {
     const [e, x] = await Promise.all([
       supabase.from('events')
-        .select('id, child_id, title, location, maps_url, start_time, end_time, repeat, weekdays, start_date, until, drop_off_id, pick_up_id, note, origin')
+        .select('id, child_id, title, location, maps_url, start_time, end_time, repeat, weekdays, start_date, until, drop_off_id, pick_up_id, note, origin, category_id, paused')
         .lte('start_date', to)
         .or(`until.is.null,until.gte.${from}`)
         .order('start_time'),
@@ -157,11 +159,17 @@ export function useEvents(from: string, to: string) {
     return error
   }
 
+  async function setPaused(id: string, paused: boolean) {
+    const { error } = await supabase.from('events').update({ paused }).eq('id', id)
+    if (error) setError(error.message)
+    await load()
+  }
+
   async function clearException(id: string) {
     const { error } = await supabase.from('event_exceptions').delete().eq('id', id)
     if (error) setError(error.message)
     await load()
   }
 
-  return { events, exceptions, loading, error, saveEvent, removeEvent, endEventFrom, saveException, clearException, clearError: () => setError('') }
+  return { events, exceptions, loading, error, saveEvent, removeEvent, endEventFrom, saveException, clearException, setPaused, clearError: () => setError('') }
 }

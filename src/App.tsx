@@ -18,6 +18,7 @@ export default function App() {
             <Route path="/" element={<Hoy />} />
             <Route path="/compra" element={<Compra />} />
             <Route path="/casa" element={<Casa />} />
+            <Route path="/agenda" element={<Ninos />} />
             <Route path="/ninos" element={<Ninos />} />
             <Route path="/dinero" element={<Dinero />} />
             <Route path="/perfil" element={<Perfil />} />

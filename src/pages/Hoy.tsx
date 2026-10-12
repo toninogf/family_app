@@ -9,6 +9,7 @@ import { mudanzaSummary } from '../lib/mudanza'
 import MenuCard from '../components/MenuCard'
 import { occurrencesBetween, useTasks } from '../lib/home'
 import { agendaFor, useEvents } from '../lib/kids'
+import { useIconCategories } from '../lib/categories'
 import { Card } from '../components/ui'
 import { TaskGroup } from './Casa'
 import { AgendaCard } from './Ninos'
@@ -32,6 +33,7 @@ export default function Hoy() {
   const ev = useEvents(t, t)
   const tk = useTasks(t, t)
   const menu = useSchoolMenu(t, t)
+  const evCats = useIconCategories('event_categories')
   const schoolDay = isoWeekday(t) <= 5
 
   useEffect(() => {
@@ -81,19 +83,19 @@ export default function Hoy() {
 
       <section className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <h2 className="text-base font-bold">Actividades de hoy</h2>
-          <Link to="/ninos" className="text-sm font-semibold text-accent min-h-10 flex items-center">Semana</Link>
+          <h2 className="text-base font-bold">Agenda de hoy</h2>
+          <Link to="/agenda" className="text-sm font-semibold text-accent min-h-10 flex items-center">Semana</Link>
         </div>
         {ev.loading ? <p className="text-sm text-muted">Cargando…</p> : agenda.length === 0
           ? <Card><p className="text-sm text-muted">Hoy no hay actividades.</p></Card>
-          : <div className="flex flex-col gap-2">{agenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} compact />)}</div>}
+          : <div className="flex flex-col gap-2">{agenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} cats={evCats} compact />)}</div>}
       </section>
 
       {schoolDay && !menu.loading && (
         <section className="flex flex-col gap-2">
           <div className="flex justify-between items-center">
             <h2 className="text-base font-bold">Comedor de hoy</h2>
-            <Link to="/ninos" onClick={() => { try { localStorage.setItem('ninos-vista', 'menu') } catch { /* nada */ } }} className="text-sm font-semibold text-accent min-h-10 flex items-center">Semana</Link>
+            <Link to="/agenda" onClick={() => { try { localStorage.setItem('ninos-vista', 'menu') } catch { /* nada */ } }} className="text-sm font-semibold text-accent min-h-10 flex items-center">Semana</Link>
           </div>
           <MenuCard m={menu.byDay(t)} date={t} compact />
         </section>
