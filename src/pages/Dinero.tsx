@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
 import {
-  centsToInput, compressImage, debtOf, deleteReceipt, formatEur, monthLabel, parseEur, partyName, receiptUrl, shiftMonth, todayISO,
+  centsToInput, compressImage, debtOf, deleteReceipt, exportExpensesCsv, formatEur, monthLabel, parseEur, partyName, receiptUrl, shiftMonth, todayISO,
   uploadReceipt, useBalances, useCategories, useExpenses, type Category, type Debt, type Expense, type ExpenseInput
 } from '../lib/money'
 import { useSearchParams } from 'react-router-dom'
 import ImportSheet from '../components/ImportSheet'
+import CategoriesSheet from '../components/CategoriesSheet'
 import { Card } from '../components/ui'
 
 type Tab = 'saldos' | 'gastos' | 'mes'
@@ -16,12 +17,24 @@ export default function Dinero() {
   const [tab, setTab] = useState<Tab>('saldos')
   const [month, setMonth] = useState(todayISO().slice(0, 7))
   const [sheet, setSheet] = useState<{ open: boolean; expense?: Expense; defaults?: ExpenseDefaults }>({ open: false })
-  const { categories, setBudget } = useCategories()
+  const { categories, setBudget, createCategory, renameCategory, setArchived } = useCategories()
+  const [managingCats, setManagingCats] = useState(false)
+  const [exportMsg, setExportMsg] = useState('')
   const balances = useBalances()
   const exp = useExpenses(month)
   const [params, setParams] = useSearchParams()
   const [importing, setImporting] = useState(false)
   const [imported, setImported] = useState(0)
+
+  async function doExport(m?: string) {
+    setExportMsg('')
+    try {
+      const n = await exportExpensesCsv(members, categories, m)
+      setExportMsg(n ? `Descargado: ${n} gastos (se abre con Excel).` : 'No hay gastos que exportar.')
+    } catch {
+      setExportMsg('No se pudo exportar.')
+    }
+  }
 
   // Abrir un gasto precargado desde otra pantalla (p. ej. Compra → "Pasar a gasto")
   useEffect(() => {
@@ -82,9 +95,23 @@ export default function Dinero() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16" /></svg>
             Importar del banco (CSV)
           </button>
+          <div className="flex gap-2 flex-wrap -mt-1">
+            <button onClick={() => doExport(month)} className="min-h-10 px-3 rounded-xl border border-line bg-card text-[13px] font-semibold">Exportar este mes</button>
+            <button onClick={() => doExport()} className="min-h-10 px-3 rounded-xl border border-line bg-card text-[13px] font-semibold">Exportar todo</button>
+          </div>
+          {exportMsg && <p role="status" className="text-sm text-muted">{exportMsg}</p>}
           {imported > 0 && <Card><p className="text-sm">Importados {imported} gastos.</p></Card>}
           <GastosTab expenses={exp.expenses} loading={exp.loading} categories={categories} members={members} onOpen={e => setSheet({ open: true, expense: e })} />
         </>
+      )}
+      {managingCats && me && (
+        <CategoriesSheet
+          categories={categories}
+          onCreate={name => createCategory(me.household_id, name)}
+          onRename={renameCategory}
+          onArchive={setArchived}
+          onClose={() => setManagingCats(false)}
+        />
       )}
       {importing && me && (
         <ImportSheet
@@ -96,7 +123,7 @@ export default function Dinero() {
         />
       )}
       {tab === 'mes' && (
-        <MesTab expenses={exp.expenses} categories={categories} adults={adults} kids={kids} onBudget={setBudget} />
+        <MesTab expenses={exp.expenses} categories={categories} adults={adults} kids={kids} onBudget={setBudget} onManage={() => setManagingCats(true)} />
       )}
 
       <button
@@ -304,8 +331,8 @@ function describeFlow(e: Pick<Expense, 'payer_id' | 'beneficiary_id'>, members: 
 
 /* ---------- Mes ---------- */
 
-function MesTab({ expenses, categories, adults, kids, onBudget }: {
-  expenses: Expense[]; categories: Category[]; adults: Member[]; kids: Member[]; onBudget: (id: string, cents: number) => unknown
+function MesTab({ expenses, categories, adults, kids, onBudget, onManage }: {
+  expenses: Expense[]; categories: Category[]; adults: Member[]; kids: Member[]; onBudget: (id: string, cents: number) => unknown; onManage: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Record<string, string>>({})
@@ -347,7 +374,10 @@ function MesTab({ expenses, categories, adults, kids, onBudget }: {
           <h2 className="text-base font-bold">Por categoría</h2>
           {editing
             ? <button onClick={saveBudgets} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-sm font-semibold">Guardar</button>
-            : <button onClick={() => setEditing(true)} className="min-h-10 px-2 text-sm font-semibold text-accent">Editar presupuestos</button>}
+            : <span className="flex">
+                <button onClick={onManage} className="min-h-10 px-2 text-sm font-semibold text-accent">Categorías</button>
+                <button onClick={() => setEditing(true)} className="min-h-10 px-2 text-sm font-semibold text-accent">Presupuestos</button>
+              </span>}
         </div>
         <Card className="flex flex-col gap-3">
           {rows.length === 0 && !uncategorized && <p className="text-sm text-muted">Aún no hay gastos este mes.</p>}

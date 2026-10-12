@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { useHousehold } from '../lib/household'
 import { disablePush, enablePush, pushStatus, sendTestPush, updatePushPrefs, type PushStatus } from '../lib/push'
 import { Button, Card, ErrorText, Field } from '../components/ui'
+import FamilyCard from '../components/FamilyCard'
+import AuthenticatorsCard from '../components/AuthenticatorsCard'
 
 export default function Perfil() {
   const { me } = useHousehold()
@@ -28,6 +30,8 @@ export default function Perfil() {
       </Card>
 
       <PushCard />
+      <FamilyCard />
+      <AuthenticatorsCard />
 
       <Card>
         <form onSubmit={changePassword} className="flex flex-col gap-4">

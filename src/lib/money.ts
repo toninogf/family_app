@@ -100,7 +100,64 @@ export function useCategories() {
     return error
   }
 
-  return { categories, setBudget, reload: load }
+  async function createCategory(householdId: string, name: string) {
+    const position = categories.reduce((m, c) => Math.max(m, c.position), -1) + 1
+    const { error } = await supabase.from('expense_categories').insert({ household_id: householdId, name: name.trim(), position })
+    await load()
+    return error
+  }
+
+  async function renameCategory(id: string, name: string) {
+    const { error } = await supabase.from('expense_categories').update({ name: name.trim() }).eq('id', id)
+    await load()
+    return error
+  }
+
+  /** Ocultar en vez de borrar: los gastos antiguos conservan su categoría */
+  async function setArchived(id: string, archived: boolean) {
+    const { error } = await supabase.from('expense_categories').update({ archived }).eq('id', id)
+    await load()
+    return error
+  }
+
+  return { categories, setBudget, createCategory, renameCategory, setArchived, reload: load }
+}
+
+/* ---------- Exportación ---------- */
+
+/** CSV con separador «;», coma decimal y BOM: se abre bien en Excel en español */
+export async function exportExpensesCsv(members: { id: string; display_name: string }[], categories: Category[], month?: string) {
+  let q = supabase.from('expenses')
+    .select('spent_on, description, amount_cents, category_id, payer_id, beneficiary_id, child_id, note, created_at')
+    .order('spent_on').order('created_at')
+  if (month) { const { from, to } = monthRange(month); q = q.gte('spent_on', from).lte('spent_on', to) }
+  const { data, error } = await q
+  if (error) throw error
+  const name = (id: string | null, fallback: string) => (id ? members.find(m => m.id === id)?.display_name ?? '' : fallback)
+  const cat = (id: string | null) => categories.find(c => c.id === id)?.name ?? ''
+  const cell = (v: string) => (/[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+  const header = ['Fecha', 'Concepto', 'Importe (€)', 'Categoría', 'Pagó', 'Para', 'Niño', 'Nota']
+  const rows = (data ?? []).map(e => [
+    e.spent_on.split('-').reverse().join('/'),
+    e.description,
+    (e.amount_cents / 100).toFixed(2).replace('.', ','),
+    cat(e.category_id),
+    name(e.payer_id, 'Cuenta común'),
+    name(e.beneficiary_id, 'Familia'),
+    e.child_id ? name(e.child_id, '') : '',
+    e.note ?? ''
+  ])
+  const csv = '﻿' + [header, ...rows].map(r => r.map(v => cell(String(v))).join(';')).join('\r\n') + '\r\n'
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `gastos-${month ?? 'todo'}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+  return rows.length
 }
 
 export function useBalances() {
