@@ -1,4 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useMudanza } from '../lib/mudanza'
+import Vendemos from './casa/Vendemos'
+import Buscamos from './casa/Buscamos'
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
 import { addDays, parseISO, relativeDay, today } from '../lib/dates'
@@ -6,7 +10,46 @@ import { occurrencesBetween, repeatLabel, useTasks, type Occurrence, type Repeat
 import { Card } from '../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
 
+type Vista = 'tareas' | 'vendemos' | 'buscamos'
+
 export default function Casa() {
+  const [params, setParams] = useSearchParams()
+  const raw = params.get('vista')
+  const vista: Vista = raw === 'vendemos' || raw === 'buscamos' ? raw : 'tareas'
+  return (
+    <div className="flex flex-col gap-4 pb-16">
+      <h1 className="text-[26px] font-bold tracking-tight">Casa</h1>
+      <div role="tablist" aria-label="Sección" className="grid grid-cols-3 p-1 rounded-xl bg-card border border-line">
+        {([['tareas', 'Tareas'], ['vendemos', 'Vendemos'], ['buscamos', 'Buscamos']] as const).map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={vista === k} onClick={() => setParams(k === 'tareas' ? {} : { vista: k }, { replace: true })}
+            className={`min-h-10 rounded-lg text-[14px] font-semibold ${vista === k ? 'bg-accent text-white dark:text-bg' : 'text-muted'}`}>{l}</button>
+        ))}
+      </div>
+      {vista === 'tareas' ? <Tareas /> : <MudanzaView vista={vista} />}
+    </div>
+  )
+}
+
+function MudanzaView({ vista }: { vista: 'vendemos' | 'buscamos' }) {
+  const { me, members } = useHousehold()
+  const m = useMudanza()
+  if (!me) return <p className="text-muted text-sm">Cargando…</p>
+  return (
+    <>
+      {m.error && (
+        <Card className="flex justify-between items-center gap-3">
+          <p role="alert" className="text-danger text-sm">{m.error}</p>
+          <button onClick={m.clearError} className="text-sm text-muted min-h-10 px-2">Cerrar</button>
+        </Card>
+      )}
+      {vista === 'vendemos'
+        ? <Vendemos m={m} members={members} householdId={me.household_id} />
+        : <Buscamos m={m} members={members} me={me} householdId={me.household_id} />}
+    </>
+  )
+}
+
+function Tareas() {
   const { me, members } = useHousehold()
   const t = today()
   const end = addDays(t, 6)
@@ -28,9 +71,7 @@ export default function Casa() {
   }, [upcoming])
 
   return (
-    <div className="flex flex-col gap-4 pb-16">
-      <h1 className="text-[26px] font-bold tracking-tight">Casa</h1>
-
+    <>
       <div className="flex gap-1.5">
         {[['all', 'Todas'], ...adults.map(a => [a.id, a.display_name])].map(([k, l]) => (
           <button key={k} onClick={() => setWho(k)} aria-pressed={who === k}
@@ -93,7 +134,7 @@ export default function Casa() {
           onDelete={sheet.task ? async () => { await remove(sheet.task!.id); setSheet({ open: false }) } : undefined}
         />
       )}
-    </div>
+    </>
   )
 }
 

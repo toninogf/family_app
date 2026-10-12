@@ -17,6 +17,7 @@ export type FamilyEvent = {
   drop_off_id: string | null
   pick_up_id: string | null
   note: string | null
+  origin?: 'venta' | 'compra' | null
 }
 export type EventException = {
   id: string
@@ -30,7 +31,7 @@ export type EventException = {
   pick_up_id: string | null
   note: string | null
 }
-export type EventInput = Omit<FamilyEvent, 'id'>
+export type EventInput = Omit<FamilyEvent, 'id' | 'origin'>
 export type ExceptionInput = Omit<EventException, 'id' | 'event_id' | 'occurrence_date'>
 
 /** Una actividad concreta en un día, ya con los cambios puntuales aplicados */
@@ -97,7 +98,7 @@ export function useEvents(from: string, to: string) {
   const load = useCallback(async () => {
     const [e, x] = await Promise.all([
       supabase.from('events')
-        .select('id, child_id, title, location, maps_url, start_time, end_time, repeat, weekdays, start_date, until, drop_off_id, pick_up_id, note')
+        .select('id, child_id, title, location, maps_url, start_time, end_time, repeat, weekdays, start_date, until, drop_off_id, pick_up_id, note, origin')
         .lte('start_date', to)
         .or(`until.is.null,until.gte.${from}`)
         .order('start_time'),

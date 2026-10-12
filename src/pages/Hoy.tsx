@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import { countPending } from '../lib/shopping'
 import { formatEur, moneySummary, partyName, todayISO, type Debt } from '../lib/money'
-import { isoWeekday, today } from '../lib/dates'
+import { hhmm, isoWeekday, relativeDay, today } from '../lib/dates'
 import { useSchoolMenu } from '../lib/menu'
+import { mudanzaSummary } from '../lib/mudanza'
 import MenuCard from '../components/MenuCard'
 import { occurrencesBetween, useTasks } from '../lib/home'
 import { agendaFor, useEvents } from '../lib/kids'
@@ -25,6 +26,7 @@ function greeting() {
 export default function Hoy() {
   const { members, me, loading, error } = useHousehold()
   const [shopping, setShopping] = useState<{ listName: string; count: number } | null>(null)
+  const [mud, setMud] = useState<Awaited<ReturnType<typeof mudanzaSummary>> | null>(null)
   const [money, setMoney] = useState<{ debts: Debt[]; spentCents: number; budgetCents: number } | null>(null)
   const t = today()
   const ev = useEvents(t, t)
@@ -35,6 +37,7 @@ export default function Hoy() {
   useEffect(() => {
     countPending().then(setShopping)
     moneySummary(todayISO().slice(0, 7)).then(setMoney)
+    mudanzaSummary(today()).then(setMud).catch(() => setMud(null))
   }, [])
 
   const mainDebt = money?.debts[0]
@@ -101,6 +104,34 @@ export default function Hoy() {
           {overdue.length > 0 && <TaskGroup title="Tareas pendientes" items={overdue} members={members} me={me} onToggle={tk.toggle} showDate />}
           <TaskGroup title="Tareas de hoy" items={todays} members={members} me={me} onToggle={tk.toggle} empty="Nada para hoy." />
         </>
+      )}
+
+      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0) && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-base font-bold">Mudanza</h2>
+          <div className="bg-card rounded-2xl flex flex-col">
+            {mud.nextSale && (
+              <Link to="/casa?vista=vendemos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
+                <span className="text-[13px] text-muted">Próxima visita de compradores</span>
+                <span className="text-[15px] font-semibold">{relativeDay(mud.nextSale.visit_date)} · {hhmm(mud.nextSale.start_time)}{mud.nextSale.contact_name ? ` · ${mud.nextSale.contact_name}` : ''}</span>
+              </Link>
+            )}
+            {mud.nextHome && (
+              <Link to="/casa?vista=buscamos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
+                <span className="text-[13px] text-muted">Próxima visita a un piso</span>
+                <span className="text-[15px] font-semibold">{relativeDay(mud.nextHome.visit_date)} · {hhmm(mud.nextHome.start_time)} · {mud.nextHome.title}</span>
+              </Link>
+            )}
+            {mud.openOffers > 0 && (
+              <Link to="/casa?vista=vendemos" className="p-4 flex flex-col gap-0.5">
+                <span className="text-[13px] text-muted">{mud.openOffers === 1 ? 'Una oferta abierta' : `${mud.openOffers} ofertas abiertas`}</span>
+                <span className={`text-[15px] font-semibold ${mud.nearestDeadline && mud.nearestDeadline <= today() ? 'text-danger' : ''}`}>
+                  {mud.nearestDeadline ? `Plazo más cercano: ${relativeDay(mud.nearestDeadline).toLowerCase()}` : 'Sin plazo de respuesta'}
+                </span>
+              </Link>
+            )}
+          </div>
+        </section>
       )}
 
       <Link to="/compra" className="bg-card rounded-2xl p-4 flex justify-between items-center">

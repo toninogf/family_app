@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
 import { addDays, hhmm, iso, isoWeekday, longDate, parseISO, relativeDay, shortDate, startOfWeek, today, weekdaysLabel, WEEKDAY_SHORT } from '../lib/dates'
@@ -37,6 +38,7 @@ const menuWeek = () => startOfWeek(isoWeekday(today()) > 5 ? addDays(today(), 7)
 
 export default function Ninos() {
   const { me, members } = useHousehold()
+  const navigate = useNavigate()
   const [mode, setModeState] = useState<Mode>(savedMode)
   const [weekStart, setWeekStart] = useState(() => (savedMode() === 'menu' ? menuWeek() : startOfWeek(today())))
   const [monthStart, setMonthStart] = useState(firstOfMonth(today()))
@@ -66,6 +68,8 @@ export default function Ninos() {
     if (m === 'month') setMonthStart(firstOfMonth(selected))
   }
 
+  /** Las visitas de la mudanza se gestionan en Casa */
+  const openOcc = (a: Agenda) => (a.event.origin ? navigate(`/casa?vista=${a.event.origin === 'venta' ? 'vendemos' : 'buscamos'}`) : setOccSheet(a))
   const filterChild = (a: Agenda) => child === 'all' || a.event.child_id === child || a.event.child_id === null
   const itemsOn = (d: string) => agendaFor(ev.events, ev.exceptions, d).filter(filterChild)
   const dayAgenda = itemsOn(selected)
@@ -111,7 +115,7 @@ export default function Ninos() {
         <Card><p className="text-sm text-muted">{ev.events.length ? 'Nada este día.' : emptyHint}</p></Card>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {dayAgenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => setOccSheet(a)} />)}
+          {dayAgenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => openOcc(a)} />)}
         </div>
       )}
     </>
@@ -262,7 +266,7 @@ export default function Ninos() {
                   <h2 className="text-base font-bold">
                     {rel === longDate(g.date) ? rel : <>{rel} <span className="font-normal text-muted text-sm">· {longDate(g.date)}</span></>}
                   </h2>
-                  {g.items.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => setOccSheet(a)} />)}
+                  {g.items.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => openOcc(a)} />)}
                 </section>
               )
             })}
@@ -313,9 +317,10 @@ function nameOf(id: string | null, members: Member[]) {
 }
 
 export function AgendaCard({ a, members, onOpen, compact }: { a: Agenda; members: Member[]; onOpen?: () => void; compact?: boolean }) {
-  const childName = nameOf(a.event.child_id, members) ?? 'Familia'
+  const childName = a.event.origin === 'venta' ? 'Venta de casa' : a.event.origin === 'compra' ? 'Buscando casa' : nameOf(a.event.child_id, members) ?? 'Familia'
   const drop = nameOf(a.dropOff, members)
   const pick = nameOf(a.pickUp, members)
+  const visitWho = a.event.origin === 'venta' ? (drop ? `Atiende: ${drop}` : 'Sin decidir quién atiende') : a.event.origin === 'compra' ? (drop ? `Va: ${drop}` : 'Vais los dos') : null
   const content = (
     <span className="flex gap-3 items-start w-full">
       <span className="w-1 self-stretch rounded-full" style={{ background: colorOf(a.event, members) }} aria-hidden="true" />
@@ -328,7 +333,12 @@ export function AgendaCard({ a, members, onOpen, compact }: { a: Agenda; members
           {childName}{a.event.location ? ` · ${a.event.location}` : ''}
           {a.cancelled ? ' · Cancelada este día' : a.changed ? ' · Cambiada este día' : ''}
         </span>
-        {!a.cancelled && !compact && (drop || pick) && (
+        {visitWho && !a.cancelled && (
+          <span className="flex gap-1.5 flex-wrap">
+            <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-accent-soft text-accent">🏠 {visitWho}</span>
+          </span>
+        )}
+        {!visitWho && !a.cancelled && !compact && (drop || pick) && (
           <span className="flex gap-1.5 flex-wrap">
             {drop && pick && drop === pick
               ? <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-accent-soft text-accent">Lleva y recoge: {drop}</span>
@@ -338,7 +348,7 @@ export function AgendaCard({ a, members, onOpen, compact }: { a: Agenda; members
                 </>}
           </span>
         )}
-        {compact && !a.cancelled && (drop || pick) && (
+        {!visitWho && compact && !a.cancelled && (drop || pick) && (
           <span className="text-xs text-muted">{drop && pick && drop === pick ? `Lleva y recoge ${drop}` : [drop && `Lleva ${drop}`, pick && `recoge ${pick}`].filter(Boolean).join(' · ')}</span>
         )}
         {a.note && !compact && <span className="text-xs text-muted">{a.note}</span>}

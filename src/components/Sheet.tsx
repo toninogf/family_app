@@ -1,4 +1,4 @@
-import { useEffect, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react'
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -118,5 +118,40 @@ export function Fab({ label, onClick }: { label: string; onClick: () => void }) 
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
       {label}
     </button>
+  )
+}
+
+export function TextArea({ label, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-muted">{label}</span>
+      <textarea rows={3} {...props} className="w-full px-4 py-3 rounded-xl border border-line bg-card text-[16px] outline-none focus:border-accent resize-y" />
+    </label>
+  )
+}
+
+/** Selección múltiple con chips */
+export function MultiChips({ label, options, value, onChange }: {
+  label: string
+  options: { value: string; label: string }[]
+  value: string[]
+  onChange: (v: string[]) => void
+}) {
+  return (
+    <fieldset className="flex flex-col">
+      <legend className="text-sm font-medium text-muted mb-1.5">{label}</legend>
+      <div className="flex gap-1.5 flex-wrap">
+        {options.map(o => {
+          const on = value.includes(o.value)
+          return (
+            <button type="button" key={o.value} aria-pressed={on}
+              onClick={() => onChange(on ? value.filter(x => x !== o.value) : [...value, o.value])}
+              className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+    </fieldset>
   )
 }

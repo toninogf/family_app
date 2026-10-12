@@ -20,6 +20,7 @@ const madridDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZo
 function addDays(d: string, n: number) { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) }
 function isoWeekday(d: string) { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return w === 0 ? 7 : w }
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '')
+const eur0 = (c: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(c / 100)
 const eur = (c: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(c / 100)
 
 Deno.serve(async (req: Request) => {
@@ -85,6 +86,22 @@ Deno.serve(async (req: Request) => {
     const { data: menuRows } = await db.from('school_menu').select('day, holiday, first_course, second_course, first_type, second_type')
       .eq('household_id', hh).gte('day', today).lte('day', addDays(today, 7))
     const menuOf = (d: string) => (menuRows ?? []).find(r => r.day === d)
+    // Ofertas de la mudanza con plazo de respuesta hoy o mañana
+    const [{ data: bOffers }, { data: hOffers }] = await Promise.all([
+      db.from('buyer_offers').select('amount_cents, buyer_name, response_deadline').eq('household_id', hh).in('status', ['pending', 'countered'])
+        .gte('response_deadline', today).lte('response_deadline', addDays(today, 1)),
+      db.from('home_offers').select('amount_cents, response_deadline, homes(title)').eq('household_id', hh).in('status', ['pending', 'countered'])
+        .gte('response_deadline', today).lte('response_deadline', addDays(today, 1))
+    ])
+    const when = (d: string) => (d === today ? 'hoy' : 'mañana')
+    const offerLines = [
+      ...(bOffers ?? []).map(o => `Oferta de ${o.buyer_name || 'un comprador'} (${eur0(o.amount_cents)}): responder ${when(o.response_deadline)}`),
+      ...(hOffers ?? []).map(o => {
+        const h = o.homes as { title: string } | { title: string }[] | null
+        const title = Array.isArray(h) ? h[0]?.title : h?.title
+        return `Nuestra oferta por ${title ?? 'el piso'}: esperamos respuesta ${when(o.response_deadline)}`
+      })
+    ]
     const ms = (members ?? []) as Member[]
     const name = (id: string | null) => ms.find(m => m.id === id)?.display_name ?? ''
 
@@ -97,7 +114,7 @@ Deno.serve(async (req: Request) => {
           title: e.title as string, child: name(e.child_id), start: (x?.start_time ?? e.start_time) as string,
           drop: (x?.override_drivers ? x.drop_off_id : e.drop_off_id) as string | null,
           pick: (x?.override_drivers ? x.pick_up_id : e.pick_up_id) as string | null,
-          cancelled: !!x?.cancelled, date
+          cancelled: !!x?.cancelled, date, origin: (e.origin ?? null) as string | null
         }
       })
       .filter(a => !a.cancelled)
@@ -126,16 +143,20 @@ Deno.serve(async (req: Request) => {
 
     for (const s of subs.filter(s => s.household_id === hh)) {
       if (mode === 'daily') {
-        const items = agenda(today).map(a => {
+        const todays = agenda(today)
+        const items = todays.map(a => {
+          if (a.origin === 'venta') return `${hhmm(a.start)} 🏠 ${a.title}${a.drop === s.member_id ? ' · atiendes tú' : ''}`
+          if (a.origin === 'compra') return `${hhmm(a.start)} 🏠 ${a.title}${!a.drop ? ' · vais los dos' : a.drop === s.member_id ? ' · vas tú' : ''}`
           const roles = [a.drop === s.member_id ? 'llevas tú' : '', a.pick === s.member_id ? 'recoges tú' : ''].filter(Boolean).join(' y ')
           return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`
         })
+        if (todays.some(a => a.origin === 'venta')) items.push('Prepara la casa antes de la visita (en Casa → Vendemos tienes la lista)')
         const mine = tasksToday.filter(t => !t.assignee_id || t.assignee_id === s.member_id).map(t => t.title)
         const mt = menuOf(today)
         const comedor = mt && !mt.holiday && mt.first_course ? `Comedor: ${shortDish(mt.first_course)} y ${shortDish(mt.second_course ?? '')}` : ''
         const cena = mt && !mt.holiday ? dinnerTip(mt.first_type, mt.second_type) : ''
-        if (!items.length && !mine.length && !comedor) continue
-        const lines = [...items, mine.length ? `Tareas: ${mine.join(', ')}` : '', comedor, cena].filter(Boolean)
+        if (!items.length && !mine.length && !comedor && !offerLines.length) continue
+        const lines = [...items, ...offerLines, mine.length ? `Tareas: ${mine.join(', ')}` : '', comedor, cena].filter(Boolean)
         total += await send([s], { title: 'Hoy', body: lines.join('\n'), url: '/', tag: `daily-${today}` })
       } else {
         const days = Array.from({ length: 7 }, (_, i) => addDays(today, i + 1))
