@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(37);
+select plan(53);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -50,6 +50,8 @@ select ok(public.test_fails('select count(*) from public.events'), 'Anónimo: no
 select ok(public.test_fails('select count(*) from public.calendar_tokens'), 'Anónimo: no puede leer enlaces de calendario');
 select ok(public.test_fails('select public.push_config()'), 'Anónimo: no puede leer las claves de avisos');
 select ok(public.test_fails('select count(*) from public.school_menu'), 'Anónimo: no puede leer el menú del colegio');
+select ok(public.test_fails('select count(*) from public.homes'), 'Anónimo: no puede leer los pisos');
+select ok(public.test_fails('select count(*) from public.buyer_visits'), 'Anónimo: no puede leer las visitas de compradores');
 reset role;
 
 -- ---------- Toni con contraseña pero SIN 2FA (aal1) ----------
@@ -89,6 +91,23 @@ select ok(not public.test_fails('insert into public.calendar_tokens default valu
 select is((select count(*) from public.school_menu), 1::bigint, 'Con 2FA: ve el menú del colegio');
 select ok(public.test_fails($$ update public.school_menu set first_course = 'Otra cosa' $$) or (select first_course from public.school_menu limit 1) = 'Espaguetis',
   'El menú no se puede cambiar desde la app');
+-- Mudanza
+select ok(not public.test_fails($$ insert into public.buyer_visits (visit_date, start_time, contact_name) values ('2026-10-20', '17:30', 'Comprador') $$),
+  'Toni puede apuntar una visita de compradores');
+select is((select count(*) from public.events where origin = 'venta'), 1::bigint, 'La visita de compradores aparece en la Agenda');
+select ok(not public.test_fails($$ update public.buyer_visits set status = 'cancelled' $$), 'Toni puede cancelar la visita');
+select is((select count(*) from public.events where origin = 'venta'), 0::bigint, 'Al cancelar la visita desaparece de la Agenda');
+select ok(not public.test_fails($$ insert into public.homes (title, price_cents) values ('Piso centro', 30000000) $$), 'Toni puede guardar un piso');
+select ok(not public.test_fails($$ insert into public.home_ratings (home_id, member_id, score) select id, gen_random_uuid(), 4 from public.homes $$),
+  'Toni puede poner su nota a un piso');
+select ok(not public.test_fails(format('insert into public.sale_listing (household_id, price_cents) values (%L, 28500000)', current_setting('test.hh'))),
+  'Toni puede poner el precio de venta');
+update public.sale_listing set price_cents = 27900000;
+select is((select count(*) from public.sale_price_history), 2::bigint, 'Los cambios de precio quedan en el historial');
+select ok(public.test_fails(format('insert into public.sale_price_history (household_id, price_cents) values (%L, 1)', current_setting('test.hh'))),
+  'Nadie puede escribir el historial de precios a mano');
+select ok((select member_id from public.home_ratings limit 1) = (select id from public.members where email = 'toninogf@gmail.com'),
+  'La nota queda a nombre de quien la pone, aunque se intente otro');
 reset role;
 
 -- ---------- Rebeca con 2FA ----------
@@ -96,6 +115,9 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 set local role authenticated;
 select is((select count(*) from public.calendar_tokens), 0::bigint, 'Rebeca no ve el enlace privado de Toni');
 select is((select count(*) from public.expenses), 2::bigint, 'Rebeca ve los gastos de la familia');
+select is((select count(*) from public.homes), 1::bigint, 'Rebeca ve los pisos guardados');
+update public.home_ratings set score = 1;
+select is((select score from public.home_ratings limit 1), 4::smallint, 'Rebeca no puede cambiar la nota de Toni');
 reset role;
 
 -- ---------- Intruso de otro hogar con 2FA ----------
@@ -106,6 +128,8 @@ select is((select count(*) from public.members), 1::bigint, 'Otro hogar: solo se
 select is((select count(*) from public.shopping_items), 0::bigint, 'Otro hogar: no ve vuestra compra');
 select is((select count(*) from public.calendar_tokens), 0::bigint, 'Otro hogar: no ve enlaces de calendario');
 select is((select count(*) from public.school_menu), 0::bigint, 'Otro hogar: no ve vuestro menú');
+select is((select count(*) from public.homes), 0::bigint, 'Otro hogar: no ve vuestros pisos');
+select is((select count(*) from public.sale_listing), 0::bigint, 'Otro hogar: no ve vuestro anuncio');
 reset role;
 
 select * from finish();
