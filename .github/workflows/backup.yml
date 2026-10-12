@@ -43,7 +43,29 @@ jobs:
           name="family-app-$(date -u +%Y-%m-%d)"
           # Muestra el error como aviso legible, ocultando cualquier contraseña
           fail() { msg=$(sed -E 's#(postgres(ql)?://[^:/@]+:)[^@]*@#\1***@#g; s/password[^ ]*/password ***/Ig; s/"[^"]*"/"***"/g' "$1" | tr '\n' ' ' | cut -c1-500); echo "::error title=$2::$msg"; exit 1; }
-          if ! /usr/lib/postgresql/17/bin/psql "$DB_URL" -tAc "select 1" > /dev/null 2> conn.err; then fail conn.err "No se pudo conectar"; fi
+          # Si es la conexión directa (solo IPv6, que GitHub no tiene), probar el Session pooler equivalente
+          candidates=$(python3 - <<'PY'
+          import os, urllib.parse as u
+          url = os.environ["DB_URL"]
+          p = u.urlsplit(url)
+          print(url)
+          host = p.hostname or ""
+          if host.startswith("db.") and host.endswith(".supabase.co"):
+              ref = host.split(".")[1]
+              user = p.username if (p.username or "").startswith("postgres.") else f"postgres.{ref}"
+              pw = u.quote(u.unquote(p.password or ""), safe="")
+              for pre in ("aws-0", "aws-1"):
+                  print(f"postgresql://{user}:{pw}@{pre}-eu-west-3.pooler.supabase.com:5432/{(p.path or '/postgres').lstrip('/') or 'postgres'}")
+          PY
+          )
+          ok=""
+          while read -r cand; do
+            [ -z "$cand" ] && continue
+            echo "::add-mask::$cand"
+            if /usr/lib/postgresql/17/bin/psql "$cand" -tAc "select 1" > /dev/null 2> conn.err; then ok="$cand"; break; fi
+          done <<< "$candidates"
+          if [ -z "$ok" ]; then fail conn.err "No se pudo conectar"; fi
+          DB_URL="$ok"
           if ! /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
             --schema=public --schema=private --schema=auth \
             --no-owner --no-privileges --quote-all-identifiers \
