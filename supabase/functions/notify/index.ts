@@ -82,6 +82,9 @@ Deno.serve(async (req: Request) => {
       db.from('tasks').select('*').eq('household_id', hh).eq('active', true),
       db.from('task_completions').select('task_id, occurrence_date').eq('household_id', hh).eq('occurrence_date', today)
     ])
+    const { data: menuRows } = await db.from('school_menu').select('day, holiday, first_course, second_course, first_type, second_type')
+      .eq('household_id', hh).gte('day', today).lte('day', addDays(today, 7))
+    const menuOf = (d: string) => (menuRows ?? []).find(r => r.day === d)
     const ms = (members ?? []) as Member[]
     const name = (id: string | null) => ms.find(m => m.id === id)?.display_name ?? ''
 
@@ -128,8 +131,11 @@ Deno.serve(async (req: Request) => {
           return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`
         })
         const mine = tasksToday.filter(t => !t.assignee_id || t.assignee_id === s.member_id).map(t => t.title)
-        if (!items.length && !mine.length) continue
-        const lines = [...items, mine.length ? `Tareas: ${mine.join(', ')}` : ''].filter(Boolean)
+        const mt = menuOf(today)
+        const comedor = mt && !mt.holiday && mt.first_course ? `Comedor: ${shortDish(mt.first_course)} y ${shortDish(mt.second_course ?? '')}` : ''
+        const cena = mt && !mt.holiday ? dinnerTip(mt.first_type, mt.second_type) : ''
+        if (!items.length && !mine.length && !comedor) continue
+        const lines = [...items, mine.length ? `Tareas: ${mine.join(', ')}` : '', comedor, cena].filter(Boolean)
         total += await send([s], { title: 'Hoy', body: lines.join('\n'), url: '/', tag: `daily-${today}` })
       } else {
         const days = Array.from({ length: 7 }, (_, i) => addDays(today, i + 1))
@@ -137,11 +143,37 @@ Deno.serve(async (req: Request) => {
         const mineDrive = all.filter(a => a.drop === s.member_id || a.pick === s.member_id).length
         const bodyText = [
           `La semana que viene: ${all.length} actividad${all.length === 1 ? '' : 'es'}${mineDrive ? `, en ${mineDrive} llevas o recoges tú` : ''}.`,
-          money
-        ].join('\n')
+          money,
+          menuMissing(days.filter(d => isoWeekday(d) <= 5), menuOf)
+        ].filter(Boolean).join('\n')
         total += await send([s], { title: 'Resumen de la semana', body: bodyText, url: '/ninos', tag: `weekly-${today}` })
       }
     }
   }
   return json({ sent: total })
 })
+
+// ---- Menú del comedor ----
+const LABEL: Record<string, string> = { verdura: 'verdura', legumbre: 'legumbre', pasta_arroz: 'pasta o arroz', carne: 'carne', pescado: 'pescado', huevo: 'huevo' }
+const DINNER_FIRST: Record<string, string[]> = { verdura: ['pasta_arroz'], pasta_arroz: ['verdura'], legumbre: ['verdura', 'pasta_arroz'] }
+const DINNER_SECOND: Record<string, string[]> = { huevo: ['carne', 'pescado'], pescado: ['huevo', 'carne'], legumbre: ['verdura', 'huevo'], carne: ['huevo', 'pescado'] }
+
+/** "Lentejas ecológicas estofadas con verduras (judía…)" → "Lentejas ecológicas estofadas con verduras" */
+function shortDish(s: string) {
+  const t = s.replace(/\s*\(.*?\)\s*/g, ' ').trim()
+  return t.charAt(0).toLowerCase() + t.slice(1)
+}
+
+function dinnerTip(first: string | null, second: string | null) {
+  const f = first ? DINNER_FIRST[first]?.map(x => LABEL[x]).join(' o ') : ''
+  const s = second ? DINNER_SECOND[second]?.map(x => LABEL[x]).join(' o ') : ''
+  if (!f && !s) return ''
+  return `Cena: ${[f, s].filter(Boolean).join(' + ')}`
+}
+
+function menuMissing(schoolDays: string[], menuOf: (d: string) => unknown) {
+  const missing = schoolDays.filter(d => !menuOf(d))
+  if (!missing.length) return ''
+  const month = new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(new Date(`${missing[0]}T12:00:00`))
+  return `Falta el menú del comedor de ${month}: pásale el PDF a Claude.`
+}

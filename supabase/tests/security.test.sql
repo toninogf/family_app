@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(33);
+select plan(37);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -37,6 +37,7 @@ select ok(public.test_fails($$ insert into auth.users (id, email, aud, role) val
 -- Datos de la familia (como administrador, sin RLS)
 insert into public.expenses (household_id, amount_cents, description) values (current_setting('test.hh')::uuid, 1000, 'Gasto familia');
 insert into public.tasks (household_id, title) values (current_setting('test.hh')::uuid, 'Tarea familia');
+insert into public.school_menu (household_id, day, first_course, second_course) values (current_setting('test.hh')::uuid, '2026-10-13', 'Espaguetis', 'Albóndigas');
 insert into public.shopping_items (list_id, name, household_id)
   select id, 'Leche', household_id from public.shopping_lists where household_id = current_setting('test.hh')::uuid limit 1;
 
@@ -48,6 +49,7 @@ select ok(public.test_fails('select count(*) from public.shopping_items'), 'Anó
 select ok(public.test_fails('select count(*) from public.events'), 'Anónimo: no puede leer actividades');
 select ok(public.test_fails('select count(*) from public.calendar_tokens'), 'Anónimo: no puede leer enlaces de calendario');
 select ok(public.test_fails('select public.push_config()'), 'Anónimo: no puede leer las claves de avisos');
+select ok(public.test_fails('select count(*) from public.school_menu'), 'Anónimo: no puede leer el menú del colegio');
 reset role;
 
 -- ---------- Toni con contraseña pero SIN 2FA (aal1) ----------
@@ -84,6 +86,9 @@ select is((select count(*) from public.audit_log where table_name = 'expenses' a
 select ok(public.test_fails('delete from public.audit_log'), 'Nadie puede borrar la auditoría');
 select ok(public.test_fails('select public.push_config()'), 'Usuario: no puede leer las claves de avisos');
 select ok(not public.test_fails('insert into public.calendar_tokens default values'), 'Toni puede crear su enlace de calendario');
+select is((select count(*) from public.school_menu), 1::bigint, 'Con 2FA: ve el menú del colegio');
+select ok(public.test_fails($$ update public.school_menu set first_course = 'Otra cosa' $$) or (select first_course from public.school_menu limit 1) = 'Espaguetis',
+  'El menú no se puede cambiar desde la app');
 reset role;
 
 -- ---------- Rebeca con 2FA ----------
@@ -100,6 +105,7 @@ select is((select count(*) from public.expenses), 0::bigint, 'Otro hogar: no ve 
 select is((select count(*) from public.members), 1::bigint, 'Otro hogar: solo se ve a sí mismo');
 select is((select count(*) from public.shopping_items), 0::bigint, 'Otro hogar: no ve vuestra compra');
 select is((select count(*) from public.calendar_tokens), 0::bigint, 'Otro hogar: no ve enlaces de calendario');
+select is((select count(*) from public.school_menu), 0::bigint, 'Otro hogar: no ve vuestro menú');
 reset role;
 
 select * from finish();

@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import { countPending } from '../lib/shopping'
 import { formatEur, moneySummary, partyName, todayISO, type Debt } from '../lib/money'
-import { today } from '../lib/dates'
+import { isoWeekday, today } from '../lib/dates'
+import { useSchoolMenu } from '../lib/menu'
+import MenuCard from '../components/MenuCard'
 import { occurrencesBetween, useTasks } from '../lib/home'
 import { agendaFor, useEvents } from '../lib/kids'
 import { Card } from '../components/ui'
@@ -27,6 +29,8 @@ export default function Hoy() {
   const t = today()
   const ev = useEvents(t, t)
   const tk = useTasks(t, t)
+  const menu = useSchoolMenu(t, t)
+  const schoolDay = isoWeekday(t) <= 5
 
   useEffect(() => {
     countPending().then(setShopping)
@@ -81,6 +85,16 @@ export default function Hoy() {
           ? <Card><p className="text-sm text-muted">Hoy no hay actividades.</p></Card>
           : <div className="flex flex-col gap-2">{agenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} compact />)}</div>}
       </section>
+
+      {schoolDay && !menu.loading && (
+        <section className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <h2 className="text-base font-bold">Comedor de hoy</h2>
+            <Link to="/ninos" onClick={() => { try { localStorage.setItem('ninos-vista', 'menu') } catch { /* nada */ } }} className="text-sm font-semibold text-accent min-h-10 flex items-center">Semana</Link>
+          </div>
+          <MenuCard m={menu.byDay(t)} date={t} compact />
+        </section>
+      )}
 
       {!tk.loading && (overdue.length > 0 || todays.length > 0 || tk.tasks.length > 0) && (
         <>

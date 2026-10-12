@@ -6,15 +6,17 @@ import { agendaFor, isMapsUrl, mapsHref, useEvents, type Agenda, type EventInput
 import { Card } from '../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
 import CalendarSheet from '../components/CalendarSheet'
+import MenuCard from '../components/MenuCard'
+import { useSchoolMenu } from '../lib/menu'
 
-type Mode = 'week' | 'month' | 'agenda'
+type Mode = 'week' | 'month' | 'agenda' | 'menu'
 const MODE_KEY = 'ninos-vista'
 const AGENDA_STEP = 30
 
 function savedMode(): Mode {
   try {
     const v = localStorage.getItem(MODE_KEY)
-    if (v === 'week' || v === 'month' || v === 'agenda') return v
+    if (v === 'week' || v === 'month' || v === 'agenda' || v === 'menu') return v
   } catch { /* sin almacenamiento: usamos el valor por defecto */ }
   return 'agenda'
 }
@@ -30,10 +32,13 @@ function monthLabel(s: string) {
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
+/** Semana del comedor: en fin de semana, la siguiente */
+const menuWeek = () => startOfWeek(isoWeekday(today()) > 5 ? addDays(today(), 7) : today())
+
 export default function Ninos() {
   const { me, members } = useHousehold()
   const [mode, setModeState] = useState<Mode>(savedMode)
-  const [weekStart, setWeekStart] = useState(startOfWeek(today()))
+  const [weekStart, setWeekStart] = useState(() => (savedMode() === 'menu' ? menuWeek() : startOfWeek(today())))
   const [monthStart, setMonthStart] = useState(firstOfMonth(today()))
   const [agendaDays, setAgendaDays] = useState(AGENDA_STEP)
   const [selected, setSelected] = useState(today())
@@ -47,7 +52,8 @@ export default function Ninos() {
   const weekEnd = addDays(weekStart, 6)
   const gridStart = startOfWeek(monthStart)
   const agendaStart = today()
-  const [from, to] = mode === 'week' ? [weekStart, weekEnd]
+  const menu = useSchoolMenu(weekStart, addDays(weekStart, 4))
+  const [from, to] = mode === 'week' || mode === 'menu' ? [weekStart, weekEnd]
     : mode === 'month' ? [gridStart, addDays(gridStart, 41)]
     : [agendaStart, addDays(agendaStart, agendaDays - 1)]
   const ev = useEvents(from, to)
@@ -56,6 +62,7 @@ export default function Ninos() {
     setModeState(m)
     try { localStorage.setItem(MODE_KEY, m) } catch { /* no pasa nada */ }
     if (m === 'week') setWeekStart(startOfWeek(selected))
+    if (m === 'menu') setWeekStart(mode === 'agenda' ? menuWeek() : startOfWeek(selected))
     if (m === 'month') setMonthStart(firstOfMonth(selected))
   }
 
@@ -132,8 +139,8 @@ export default function Ninos() {
       </header>
       {calendarOpen && <CalendarSheet onClose={() => setCalendarOpen(false)} />}
 
-      <div role="tablist" aria-label="Vista" className="grid grid-cols-3 p-1 rounded-xl bg-card border border-line">
-        {([['agenda', 'Agenda'], ['week', 'Semana'], ['month', 'Mes']] as const).map(([m, label]) => (
+      <div role="tablist" aria-label="Vista" className="grid grid-cols-4 p-1 rounded-xl bg-card border border-line">
+        {([['agenda', 'Agenda'], ['week', 'Semana'], ['month', 'Mes'], ['menu', 'Menú']] as const).map(([m, label]) => (
           <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
             className={`min-h-10 rounded-lg text-[14px] font-semibold ${mode === m ? 'bg-accent text-white dark:text-bg' : 'text-muted'}`}>
             {label}
@@ -141,16 +148,48 @@ export default function Ninos() {
         ))}
       </div>
 
-      <div className="flex gap-1.5 flex-wrap">
+      {mode !== 'menu' && <div className="flex gap-1.5 flex-wrap">
         {[{ id: 'all', name: 'Todos', color: '' }, ...kids.map(k => ({ id: k.id, name: k.display_name, color: k.color }))].map(o => (
           <button key={o.id} onClick={() => setChild(o.id)} aria-pressed={child === o.id}
             className={`min-h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 ${child === o.id ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>
             {o.color && <span className="w-2.5 h-2.5 rounded-full" style={{ background: o.color }} aria-hidden="true" />}{o.name}
           </button>
         ))}
-      </div>
+      </div>}
 
       {errorCard}
+
+      {mode === 'menu' && (
+        <>
+          <div className="flex items-center justify-between">
+            <button onClick={() => moveWeek(-1)} aria-label="Semana anterior" className="w-11 h-11 rounded-full bg-card border border-line">‹</button>
+            <button onClick={() => { setWeekStart(menuWeek()); setSelected(today()) }} className="font-semibold min-h-11 px-2">
+              Comedor · {shortDate(weekStart)} – {shortDate(addDays(weekStart, 4))}
+            </button>
+            <button onClick={() => moveWeek(1)} aria-label="Semana siguiente" className="w-11 h-11 rounded-full bg-card border border-line">›</button>
+          </div>
+          {menu.loading ? <p className="text-muted text-sm">Cargando…</p> : (
+            <div className="flex flex-col gap-5">
+              {weekDays.slice(0, 5).map(d => {
+                const rel = relativeDay(d)
+                return (
+                  <section key={d} className={`flex flex-col gap-2 ${d < today() ? 'opacity-60' : ''}`}>
+                    <h2 className="text-base font-bold">
+                      {rel === longDate(d) ? rel : <>{rel} <span className="font-normal text-muted text-sm">· {longDate(d)}</span></>}
+                    </h2>
+                    <MenuCard m={menu.byDay(d)} date={d} />
+                  </section>
+                )
+              })}
+              {menu.days.find(x => x.source_url) && (
+                <a href={menu.days.find(x => x.source_url)!.source_url!} target="_blank" rel="noopener noreferrer" className="text-sm text-accent font-semibold min-h-11 flex items-center justify-center">
+                  Ver el PDF del colegio
+                </a>
+              )}
+            </div>
+          )}
+        </>
+      )}
 
       {mode === 'week' && (
         <>
@@ -234,7 +273,7 @@ export default function Ninos() {
         )
       )}
 
-      <Fab label="Actividad" onClick={() => setEventSheet({ open: true })} />
+      {mode !== 'menu' && <Fab label="Actividad" onClick={() => setEventSheet({ open: true })} />}
 
       {occSheet && (
         <OccurrenceSheet
