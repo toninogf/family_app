@@ -5,6 +5,7 @@ import { addDays, hhmm, isoWeekday, longDate, parseISO, shortDate, startOfWeek, 
 import { agendaFor, useEvents, type Agenda, type EventInput, type FamilyEvent } from '../lib/kids'
 import { Card } from '../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
+import CalendarSheet from '../components/CalendarSheet'
 
 export default function Ninos() {
   const { me, members } = useHousehold()
@@ -13,6 +14,7 @@ export default function Ninos() {
   const [child, setChild] = useState<string>('all')
   const [eventSheet, setEventSheet] = useState<{ open: boolean; event?: FamilyEvent }>({ open: false })
   const [occSheet, setOccSheet] = useState<Agenda | null>(null)
+  const [calendarOpen, setCalendarOpen] = useState(false)
   const weekEnd = addDays(weekStart, 6)
   const ev = useEvents(weekStart, weekEnd)
   const kids = members.filter(m => m.kind === 'child')
@@ -30,7 +32,14 @@ export default function Ninos() {
 
   return (
     <div className="flex flex-col gap-4 pb-16">
-      <h1 className="text-[26px] font-bold tracking-tight">Niños</h1>
+      <header className="flex justify-between items-center">
+        <h1 className="text-[26px] font-bold tracking-tight">Niños</h1>
+        <button onClick={() => setCalendarOpen(true)} className="min-h-10 px-3 rounded-xl border border-line bg-card text-accent text-[13px] font-semibold flex items-center gap-1.5">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+          A mi calendario
+        </button>
+      </header>
+      {calendarOpen && <CalendarSheet onClose={() => setCalendarOpen(false)} />}
 
       <div className="flex gap-1.5">
         {[{ id: 'all', name: 'Todos', color: '' }, ...kids.map(k => ({ id: k.id, name: k.display_name, color: k.color }))].map(o => (
