@@ -35,6 +35,7 @@ export default function Perfil() {
       </Card>
       <Button variant="ghost" onClick={() => supabase.auth.signOut()}>Cerrar sesión</Button>
       <Button variant="ghost" onClick={() => supabase.auth.signOut({ scope: 'global' })}>Cerrar sesión en todos los dispositivos</Button>
+      <p className="text-xs text-muted text-center">Versión del {__APP_BUILD__}</p>
     </div>
   )
 }

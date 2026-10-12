@@ -3,7 +3,14 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const build = new Intl.DateTimeFormat('es-ES', {
+  timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+}).format(new Date())
+
 export default defineConfig({
+  define: {
+    __APP_BUILD__: JSON.stringify(build)
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -26,7 +33,10 @@ export default defineConfig({
       workbox: {
         // Nunca cachear llamadas a Supabase: los datos siempre frescos y privados
         navigateFallbackDenylist: [/^\/auth/],
-        runtimeCaching: []
+        runtimeCaching: [],
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true
       }
     })
   ]
