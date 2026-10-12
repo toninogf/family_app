@@ -15,3 +15,16 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npm run build
+
+  # Levanta una base de datos local con todas las migraciones y ejecuta las pruebas de seguridad (RLS, 2FA, aislamiento)
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Base de datos local con las migraciones
+        run: supabase db start
+      - name: Pruebas de seguridad
+        run: supabase test db
