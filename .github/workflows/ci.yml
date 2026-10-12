@@ -27,4 +27,7 @@ jobs:
       - name: Base de datos local con las migraciones
         run: supabase db start
       - name: Pruebas de seguridad
-        run: supabase test db
+        run: |
+          set -o pipefail
+          supabase test db 2>&1 | tee resultado.txt
+          echo "::notice title=Pruebas de seguridad::$(grep -E 'Files=|Result:' resultado.txt | tr '\n' ' ')"
