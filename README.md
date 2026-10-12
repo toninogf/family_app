@@ -21,11 +21,13 @@ npm install
 npm run dev
 ```
 
-## Publicación en Cloudflare Pages
+## Publicación en Cloudflare Workers (static assets)
 
-- Framework: ninguno (Vite)
+Configuración en `wrangler.jsonc` (nombre `family-app`, carpeta `dist`, fallback de SPA).
+
 - Comando de build: `npm run build`
-- Directorio de salida: `dist`
+- Comando de deploy: `npx wrangler deploy`
 - Variable de entorno: `NODE_VERSION=22`
+- Protegido con Cloudflare Access (solo los dos emails del hogar)
 
 Las migraciones de la base de datos están en `supabase/migrations/`.

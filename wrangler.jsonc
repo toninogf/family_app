@@ -1,0 +1,11 @@
+{
+  // Sitio estático servido por Cloudflare Workers (static assets)
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "family-app",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist",
+    // Rutas como /compra o /dinero devuelven index.html (app de una sola página)
+    "not_found_handling": "single-page-application"
+  }
+}
