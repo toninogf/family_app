@@ -42,7 +42,7 @@ jobs:
           set -uo pipefail
           name="family-app-$(date -u +%Y-%m-%d)"
           # Muestra el error como aviso legible, ocultando cualquier contraseña
-          fail() { msg=$(sed -E 's#(postgres(ql)?://[^:/@]+:)[^@]*@#\1***@#g; s/password[^ ]*/password ***/Ig' "$1" | tr '\n' ' ' | cut -c1-500); echo "::error title=$2::$msg"; exit 1; }
+          fail() { msg=$(sed -E 's#(postgres(ql)?://[^:/@]+:)[^@]*@#\1***@#g; s/password[^ ]*/password ***/Ig; s/"[^"]*"/"***"/g' "$1" | tr '\n' ' ' | cut -c1-500); echo "::error title=$2::$msg"; exit 1; }
           if ! /usr/lib/postgresql/17/bin/psql "$DB_URL" -tAc "select 1" > /dev/null 2> conn.err; then fail conn.err "No se pudo conectar"; fi
           if ! /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
             --schema=public --schema=private --schema=auth \
