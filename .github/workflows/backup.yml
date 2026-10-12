@@ -39,12 +39,17 @@ jobs:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           PASS: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           name="family-app-$(date -u +%Y-%m-%d)"
-          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
+          # Muestra el error como aviso legible, ocultando cualquier contraseña
+          fail() { msg=$(sed -E 's#(postgres(ql)?://[^:/@]+:)[^@]*@#\1***@#g; s/password[^ ]*/password ***/Ig' "$1" | tr '\n' ' ' | cut -c1-500); echo "::error title=$2::$msg"; exit 1; }
+          if ! /usr/lib/postgresql/17/bin/psql "$DB_URL" -tAc "select 1" > /dev/null 2> conn.err; then fail conn.err "No se pudo conectar"; fi
+          if ! /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
             --schema=public --schema=private --schema=auth \
             --no-owner --no-privileges --quote-all-identifiers \
-            | gzip -9 > "$name.sql.gz"
+            -f "$name.sql" 2> dump.err; then fail dump.err "Fallo de pg_dump"; fi
+          set -e
+          gzip -9 "$name.sql"
           test -s "$name.sql.gz"
           gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
             --passphrase "$PASS" -o "$name.sql.gz.gpg" "$name.sql.gz"
