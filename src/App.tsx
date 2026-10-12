@@ -4,6 +4,7 @@ import { HouseholdProvider } from './lib/household'
 import BottomNav from './components/BottomNav'
 import Hoy from './pages/Hoy'
 import Perfil from './pages/Perfil'
+import Compra from './pages/Compra'
 import { Card } from './components/ui'
 
 function Pronto({ title, phase }: { title: string; phase: string }) {
@@ -22,7 +23,7 @@ export default function App() {
         <main className="max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28">
           <Routes>
             <Route path="/" element={<Hoy />} />
-            <Route path="/compra" element={<Pronto title="Compra" phase="fase 2" />} />
+            <Route path="/compra" element={<Compra />} />
             <Route path="/casa" element={<Pronto title="Casa" phase="fase 4" />} />
             <Route path="/ninos" element={<Pronto title="Niños" phase="fase 4" />} />
             <Route path="/dinero" element={<Pronto title="Dinero" phase="fase 3" />} />

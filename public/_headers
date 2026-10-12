@@ -4,4 +4,5 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=()
+  Cache-Control: no-cache
   X-Robots-Tag: noindex, nofollow
