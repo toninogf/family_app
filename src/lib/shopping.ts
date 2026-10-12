@@ -194,6 +194,14 @@ export function useShoppingItems(listId: string | null) {
     if (error) { setError(error.message); await load() }
   }
 
+  /** Mueve un artículo a otra lista (desaparece de la actual) */
+  async function moveItem(item: ShoppingItem, toListId: string) {
+    setItems(prev => prev.filter(i => i.id !== item.id))
+    const { error } = await supabase.from('shopping_items').update({ list_id: toListId }).eq('id', item.id)
+    if (error) setError(error.message)
+    await load()
+  }
+
   async function updateItem(item: ShoppingItem, changes: Partial<Pick<ShoppingItem, 'name' | 'quantity' | 'category'>>) {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...changes } : i))
     const { error } = await supabase.from('shopping_items').update(changes).eq('id', item.id)
@@ -215,7 +223,7 @@ export function useShoppingItems(listId: string | null) {
     await load()
   }
 
-  return { items, frequent, loading, error, addItem, toggle, updateItem, remove, clearChecked, clearError: () => setError('') }
+  return { items, frequent, loading, error, addItem, toggle, updateItem, moveItem, remove, clearChecked, clearError: () => setError('') }
 }
 
 export async function countPending(): Promise<{ listName: string; count: number } | null> {

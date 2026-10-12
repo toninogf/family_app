@@ -33,7 +33,7 @@ export default function Compra() {
   }, [lists, listId])
 
   const current = lists.find(l => l.id === listId)
-  const { items, frequent, loading, error, addItem, toggle, updateItem, remove, clearChecked, clearError } = useShoppingItems(listId)
+  const { items, frequent, loading, error, addItem, toggle, updateItem, moveItem, remove, clearChecked, clearError } = useShoppingItems(listId)
 
   const memberName = (id: string | null) => members.find(m => m.id === id)?.display_name
   const pending = items.filter(i => !i.checked)
@@ -186,7 +186,13 @@ export default function Compra() {
                     editing={editing === item.id}
                     onEdit={() => setEditing(editing === item.id ? null : item.id)}
                     onToggle={() => toggle(item)}
-                    onSave={changes => { updateItem(item, changes); setEditing(null) }}
+                    lists={lists}
+                    onSave={changes => {
+                      const { list_id, ...rest } = changes
+                      updateItem(item, rest)
+                      if (list_id !== item.list_id) moveItem(item, list_id)
+                      setEditing(null)
+                    }}
                     onDelete={() => { remove(item); setEditing(null) }}
                   />
                 ))}
@@ -298,24 +304,26 @@ function ManageLists({ lists, onRename, onMove, onDelete, onClose }: {
   )
 }
 
-function ItemRow({ item, last, addedBy, editing, onEdit, onToggle, onSave, onDelete }: {
+function ItemRow({ item, last, addedBy, editing, lists, onEdit, onToggle, onSave, onDelete }: {
   item: ShoppingItem
   last: boolean
+  lists: { id: string; name: string }[]
   addedBy?: string
   editing: boolean
   onEdit: () => void
   onToggle: () => void
-  onSave: (changes: { name: string; quantity: string | null; category: string }) => void
+  onSave: (changes: { name: string; quantity: string | null; category: string; list_id: string }) => void
   onDelete: () => void
 }) {
   const [name, setName] = useState(item.name)
   const [quantity, setQuantity] = useState(item.quantity ?? '')
   const [category, setCategory] = useState(item.category)
+  const [listId, setListId] = useState(item.list_id)
   const pendingSync = item.id.startsWith('tmp-')
 
   // Solo al abrir el editor: así un cambio en directo del otro móvil no borra lo que estás escribiendo
   useEffect(() => {
-    if (editing) { setName(item.name); setQuantity(item.quantity ?? ''); setCategory(item.category) }
+    if (editing) { setName(item.name); setQuantity(item.quantity ?? ''); setCategory(item.category); setListId(item.list_id) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing])
 
@@ -336,7 +344,7 @@ function ItemRow({ item, last, addedBy, editing, onEdit, onToggle, onSave, onDel
       </div>
       {editing && (
         <form
-          onSubmit={e => { e.preventDefault(); if (name.trim()) onSave({ name: name.trim(), quantity: quantity.trim() || null, category }) }}
+          onSubmit={e => { e.preventDefault(); if (name.trim()) onSave({ name: name.trim(), quantity: quantity.trim() || null, category, list_id: listId }) }}
           className="flex flex-col gap-2 pb-3"
         >
           <div className="flex gap-2">
@@ -355,6 +363,14 @@ function ItemRow({ item, last, addedBy, editing, onEdit, onToggle, onSave, onDel
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
+          {lists.length > 1 && (
+            <label className="flex items-center gap-2">
+              <span className="text-sm text-muted shrink-0">Lista</span>
+              <select value={listId} onChange={e => setListId(e.target.value)} className="flex-1 min-h-11 px-3 rounded-lg border border-line bg-bg text-[15px]">
+                {lists.map(l => <option key={l.id} value={l.id}>{l.id === item.list_id ? `${l.name} (actual)` : `Mover a ${l.name}`}</option>)}
+              </select>
+            </label>
+          )}
           <div className="flex gap-2 justify-between">
             <button type="button" onClick={onDelete} className="min-h-11 px-3 text-danger text-sm font-semibold">Eliminar</button>
             <button type="submit" className="min-h-11 px-4 rounded-lg bg-accent text-white dark:text-bg text-sm font-semibold">Guardar</button>

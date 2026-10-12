@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(60);
+select plan(62);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -42,6 +42,8 @@ insert into public.shopping_items (list_id, name, household_id)
   select id, 'Leche', household_id from public.shopping_lists where household_id = current_setting('test.hh')::uuid limit 1;
 
 insert into public.event_categories (household_id, name) values ('00000000-0000-0000-0000-0000000000b0', 'Ajena');
+insert into public.shopping_lists (household_id, name) values ('00000000-0000-0000-0000-0000000000b0', 'Lista ajena');
+select set_config('test.lista_ajena', (select id::text from public.shopping_lists where name = 'Lista ajena'), true);
 select set_config('test.cat_ajena', (select id::text from public.event_categories where name = 'Ajena'), true);
 
 -- ---------- Visitante anónimo ----------
@@ -95,6 +97,11 @@ select ok(not public.test_fails('insert into public.calendar_tokens default valu
 select is((select count(*) from public.school_menu), 1::bigint, 'Con 2FA: ve el menú del colegio');
 select ok(public.test_fails($$ update public.school_menu set first_course = 'Otra cosa' $$) or (select first_course from public.school_menu limit 1) = 'Espaguetis',
   'El menú no se puede cambiar desde la app');
+-- Compra: mover artículos entre listas
+select ok(not public.test_fails($$ update public.shopping_items set list_id = (select id from public.shopping_lists where name = 'Farmacia') where name = 'Leche' $$),
+  'Se puede mover un artículo a otra lista de la familia');
+select ok(public.test_fails(format('update public.shopping_items set list_id = %L where name = %L', current_setting('test.lista_ajena'), 'Leche')),
+  'No se puede mover un artículo a una lista de otro hogar');
 -- Categorías y agenda familiar
 select is((select count(*) from public.event_categories), 9::bigint, 'Toni ve las 9 categorías de actividades de su familia');
 select is((select count(*) from public.task_categories), 10::bigint, 'Toni ve las 10 categorías de tareas');
