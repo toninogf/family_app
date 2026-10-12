@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
 import { addDays, hhmm, iso, isoWeekday, longDate, parseISO, relativeDay, shortDate, startOfWeek, today, weekdaysLabel, WEEKDAY_SHORT } from '../lib/dates'
-import { agendaFor, useEvents, type Agenda, type EventInput, type FamilyEvent } from '../lib/kids'
+import { agendaFor, isMapsUrl, mapsHref, useEvents, type Agenda, type EventInput, type FamilyEvent } from '../lib/kids'
 import { Card } from '../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
 import CalendarSheet from '../components/CalendarSheet'
@@ -306,9 +306,22 @@ export function AgendaCard({ a, members, onOpen, compact }: { a: Agenda; members
       </span>
     </span>
   )
-  return onOpen
-    ? <button onClick={onOpen} className="bg-card rounded-2xl p-4 text-left">{content}</button>
-    : <div className="bg-card rounded-2xl p-4">{content}</div>
+  const maps = !a.cancelled ? mapsHref(a.event) : null
+  const mapsLink = maps && (
+    <a href={maps} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-1.5 min-h-11 px-4 border-t border-line text-accent text-[13px] font-semibold">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+      Cómo llegar{a.event.location ? ` · ${a.event.location}` : ''}
+    </a>
+  )
+  return (
+    <div className="bg-card rounded-2xl flex flex-col overflow-hidden">
+      {onOpen
+        ? <button onClick={onOpen} className="p-4 text-left">{content}</button>
+        : <div className="p-4">{content}</div>}
+      {mapsLink}
+    </div>
+  )
 }
 
 function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClearException, onEdit, onEndFrom, onDelete }: {
@@ -387,6 +400,7 @@ function EventSheet({ event, kids, adults, defaultDate, defaultChild, onClose, o
   const [childId, setChildId] = useState<string | null>(event ? event.child_id : defaultChild)
   const [title, setTitle] = useState(event?.title ?? '')
   const [location, setLocation] = useState(event?.location ?? '')
+  const [mapsUrl, setMapsUrl] = useState(event?.maps_url ?? '')
   const [repeat, setRepeat] = useState<'weekly' | 'none'>(event?.repeat ?? 'weekly')
   const [weekdays, setWeekdays] = useState<number[]>(event?.weekdays?.length ? event.weekdays : [isoWeekday(defaultDate)])
   const [startDate, setStartDate] = useState(event?.start_date ?? defaultDate)
@@ -407,9 +421,10 @@ function EventSheet({ event, kids, adults, defaultDate, defaultChild, onClose, o
     if (repeat === 'weekly' && !weekdays.length) { setError('Elige al menos un día'); return }
     if (end && end <= start) { setError('La hora de fin debe ser posterior a la de inicio'); return }
     if (until && until < startDate) { setError('La fecha de fin debe ser posterior al inicio'); return }
+    if (mapsUrl.trim() && !isMapsUrl(mapsUrl.trim())) { setError('El enlace debe ser de Google Maps (en Maps: Compartir → Copiar enlace)'); return }
     setBusy(true); setError('')
     const err = await onSave({
-      child_id: childId, title: title.trim(), location: location.trim() || null, start_time: start, end_time: end || null,
+      child_id: childId, title: title.trim(), location: location.trim() || null, maps_url: mapsUrl.trim() || null, start_time: start, end_time: end || null,
       repeat, weekdays, start_date: startDate, until: until || null, drop_off_id: drop, pick_up_id: pick, note: note.trim() || null
     })
     setBusy(false)
@@ -423,6 +438,10 @@ function EventSheet({ event, kids, adults, defaultDate, defaultChild, onClose, o
           options={[...kids.map(k => ({ value: k.id as string | null, label: k.display_name, color: k.color })), { value: null, label: 'Familia' }]} />
         <TextField label="Actividad" autoFocus={!event} value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Natación" />
         <TextField label="Lugar (opcional)" value={location} onChange={e => setLocation(e.target.value)} maxLength={80} placeholder="Ej. Polideportivo" />
+        <div className="flex flex-col gap-1.5">
+          <TextField label="Enlace de Google Maps (opcional)" type="url" inputMode="url" value={mapsUrl} onChange={e => setMapsUrl(e.target.value)} maxLength={500} placeholder="https://maps.app.goo.gl/…" />
+          <p className="text-xs text-muted">En Google Maps, busca el sitio → Compartir → Copiar enlace, y pégalo aquí. Si lo dejas vacío, «Cómo llegar» buscará el lugar por su nombre.</p>
+        </div>
         <Choice<'weekly' | 'none'> label="¿Se repite?" value={repeat} onChange={setRepeat}
           options={[{ value: 'weekly', label: 'Cada semana' }, { value: 'none', label: 'Solo un día' }]} />
         {repeat === 'weekly' && <WeekdayPicker value={weekdays} onChange={setWeekdays} />}

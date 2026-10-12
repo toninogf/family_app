@@ -7,6 +7,7 @@ export type FamilyEvent = {
   child_id: string | null
   title: string
   location: string | null
+  maps_url: string | null
   start_time: string
   end_time: string | null
   repeat: 'none' | 'weekly'
@@ -44,6 +45,18 @@ export type Agenda = {
   changed: boolean
   note: string | null
   exception: EventException | undefined
+}
+
+const MAPS_RE = /^https:\/\/(maps\.app\.goo\.gl\/|goo\.gl\/maps\/|maps\.google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})\/|(www\.)?google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})\/maps)/
+
+/** ¿Es un enlace de Google Maps válido? (mismo criterio que la base de datos) */
+export const isMapsUrl = (u: string) => u.length <= 500 && MAPS_RE.test(u)
+
+/** Enlace para abrir el sitio en Google Maps: el guardado o, si no hay, una búsqueda del lugar */
+export function mapsHref(e: Pick<FamilyEvent, 'location' | 'maps_url'>) {
+  if (e.maps_url && isMapsUrl(e.maps_url)) return e.maps_url
+  if (e.location?.trim()) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location.trim())}`
+  return null
 }
 
 export function eventOccursOn(e: FamilyEvent, date: string) {
@@ -84,7 +97,7 @@ export function useEvents(from: string, to: string) {
   const load = useCallback(async () => {
     const [e, x] = await Promise.all([
       supabase.from('events')
-        .select('id, child_id, title, location, start_time, end_time, repeat, weekdays, start_date, until, drop_off_id, pick_up_id, note')
+        .select('id, child_id, title, location, maps_url, start_time, end_time, repeat, weekdays, start_date, until, drop_off_id, pick_up_id, note')
         .lte('start_date', to)
         .or(`until.is.null,until.gte.${from}`)
         .order('start_time'),
