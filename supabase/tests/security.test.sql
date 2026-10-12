@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(53);
+select plan(60);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -41,6 +41,9 @@ insert into public.school_menu (household_id, day, first_course, second_course) 
 insert into public.shopping_items (list_id, name, household_id)
   select id, 'Leche', household_id from public.shopping_lists where household_id = current_setting('test.hh')::uuid limit 1;
 
+insert into public.event_categories (household_id, name) values ('00000000-0000-0000-0000-0000000000b0', 'Ajena');
+select set_config('test.cat_ajena', (select id::text from public.event_categories where name = 'Ajena'), true);
+
 -- ---------- Visitante anónimo ----------
 set local role anon;
 select ok(public.test_fails('select count(*) from public.expenses'), 'Anónimo: no puede leer gastos');
@@ -51,6 +54,7 @@ select ok(public.test_fails('select count(*) from public.calendar_tokens'), 'An�
 select ok(public.test_fails('select public.push_config()'), 'Anónimo: no puede leer las claves de avisos');
 select ok(public.test_fails('select count(*) from public.school_menu'), 'Anónimo: no puede leer el menú del colegio');
 select ok(public.test_fails('select count(*) from public.homes'), 'Anónimo: no puede leer los pisos');
+select ok(public.test_fails('select count(*) from public.event_categories'), 'Anónimo: no puede leer las categorías');
 select ok(public.test_fails('select count(*) from public.buyer_visits'), 'Anónimo: no puede leer las visitas de compradores');
 reset role;
 
@@ -91,6 +95,16 @@ select ok(not public.test_fails('insert into public.calendar_tokens default valu
 select is((select count(*) from public.school_menu), 1::bigint, 'Con 2FA: ve el menú del colegio');
 select ok(public.test_fails($$ update public.school_menu set first_course = 'Otra cosa' $$) or (select first_course from public.school_menu limit 1) = 'Espaguetis',
   'El menú no se puede cambiar desde la app');
+-- Categorías y agenda familiar
+select is((select count(*) from public.event_categories), 9::bigint, 'Toni ve las 9 categorías de actividades de su familia');
+select is((select count(*) from public.task_categories), 10::bigint, 'Toni ve las 10 categorías de tareas');
+select ok(not public.test_fails(format('insert into public.events (household_id, child_id, title, start_time, repeat, start_date) values (%L, %L, %L, %L, %L, %L)',
+  current_setting('test.hh'), (select id from public.members where email = 'riukaab@gmail.com'), 'Dentista Rebeca', '10:00', 'none', '2026-10-20')),
+  'Una actividad puede ser de un adulto');
+select ok(public.test_fails(format('insert into public.events (household_id, title, start_time, repeat, start_date, category_id) values (%L, %L, %L, %L, %L, %L)',
+  current_setting('test.hh'), 'Colada', '10:00', 'none', '2026-10-20', current_setting('test.cat_ajena'))),
+  'No se puede usar una categoría de otro hogar');
+select ok(public.test_fails($$ delete from public.event_categories where key = 'mudanza' $$), 'Las categorías de sistema no se pueden borrar');
 -- Mudanza
 select ok(not public.test_fails($$ insert into public.buyer_visits (visit_date, start_time, contact_name) values ('2026-10-20', '17:30', 'Comprador') $$),
   'Toni puede apuntar una visita de compradores');
@@ -130,6 +144,7 @@ select is((select count(*) from public.calendar_tokens), 0::bigint, 'Otro hogar:
 select is((select count(*) from public.school_menu), 0::bigint, 'Otro hogar: no ve vuestro menú');
 select is((select count(*) from public.homes), 0::bigint, 'Otro hogar: no ve vuestros pisos');
 select is((select count(*) from public.sale_listing), 0::bigint, 'Otro hogar: no ve vuestro anuncio');
+select is((select count(*) from public.event_categories), 1::bigint, 'Otro hogar: solo ve sus propias categorías');
 reset role;
 
 select * from finish();
