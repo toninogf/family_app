@@ -1,33 +1,124 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
-import { addDays, hhmm, isoWeekday, longDate, parseISO, shortDate, startOfWeek, today, weekdaysLabel, WEEKDAY_SHORT } from '../lib/dates'
+import { addDays, hhmm, iso, isoWeekday, longDate, parseISO, relativeDay, shortDate, startOfWeek, today, weekdaysLabel, WEEKDAY_SHORT } from '../lib/dates'
 import { agendaFor, useEvents, type Agenda, type EventInput, type FamilyEvent } from '../lib/kids'
 import { Card } from '../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
 import CalendarSheet from '../components/CalendarSheet'
 
+type Mode = 'week' | 'month' | 'agenda'
+const MODE_KEY = 'ninos-vista'
+const AGENDA_STEP = 30
+
+function savedMode(): Mode {
+  try {
+    const v = localStorage.getItem(MODE_KEY)
+    if (v === 'week' || v === 'month' || v === 'agenda') return v
+  } catch { /* sin almacenamiento: usamos el valor por defecto */ }
+  return 'agenda'
+}
+
+const firstOfMonth = (s: string) => s.slice(0, 8) + '01'
+function addMonths(s: string, n: number) {
+  const d = parseISO(firstOfMonth(s))
+  d.setMonth(d.getMonth() + n)
+  return iso(d)
+}
+function monthLabel(s: string) {
+  const t = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(parseISO(s))
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 export default function Ninos() {
   const { me, members } = useHousehold()
+  const [mode, setModeState] = useState<Mode>(savedMode)
   const [weekStart, setWeekStart] = useState(startOfWeek(today()))
+  const [monthStart, setMonthStart] = useState(firstOfMonth(today()))
+  const [agendaDays, setAgendaDays] = useState(AGENDA_STEP)
   const [selected, setSelected] = useState(today())
   const [child, setChild] = useState<string>('all')
   const [eventSheet, setEventSheet] = useState<{ open: boolean; event?: FamilyEvent }>({ open: false })
   const [occSheet, setOccSheet] = useState<Agenda | null>(null)
   const [calendarOpen, setCalendarOpen] = useState(false)
-  const weekEnd = addDays(weekStart, 6)
-  const ev = useEvents(weekStart, weekEnd)
   const kids = members.filter(m => m.kind === 'child')
   const adults = members.filter(m => m.kind === 'adult')
 
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
+  const weekEnd = addDays(weekStart, 6)
+  const gridStart = startOfWeek(monthStart)
+  const agendaStart = today()
+  const [from, to] = mode === 'week' ? [weekStart, weekEnd]
+    : mode === 'month' ? [gridStart, addDays(gridStart, 41)]
+    : [agendaStart, addDays(agendaStart, agendaDays - 1)]
+  const ev = useEvents(from, to)
+
+  function setMode(m: Mode) {
+    setModeState(m)
+    try { localStorage.setItem(MODE_KEY, m) } catch { /* no pasa nada */ }
+    if (m === 'week') setWeekStart(startOfWeek(selected))
+    if (m === 'month') setMonthStart(firstOfMonth(selected))
+  }
+
   const filterChild = (a: Agenda) => child === 'all' || a.event.child_id === child || a.event.child_id === null
-  const dayAgenda = agendaFor(ev.events, ev.exceptions, selected).filter(filterChild)
+  const itemsOn = (d: string) => agendaFor(ev.events, ev.exceptions, d).filter(filterChild)
+  const dayAgenda = itemsOn(selected)
+
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
+  const monthDays = useMemo(() => Array.from({ length: 42 }, (_, i) => addDays(gridStart, i)), [gridStart])
+  const agendaGroups = useMemo(() => {
+    if (mode !== 'agenda') return []
+    const out: { date: string; items: Agenda[] }[] = []
+    for (let i = 0; i < agendaDays; i++) {
+      const d = addDays(agendaStart, i)
+      const items = agendaFor(ev.events, ev.exceptions, d).filter(filterChild)
+      if (items.length) out.push({ date: d, items })
+    }
+    return out
+  }, [mode, agendaDays, agendaStart, ev.events, ev.exceptions, child])
 
   function moveWeek(n: number) {
     const ws = addDays(weekStart, 7 * n)
     setWeekStart(ws)
-    setSelected(n === 0 ? today() : addDays(ws, isoWeekday(selected) - 1))
+    setSelected(addDays(ws, isoWeekday(selected) - 1))
+  }
+
+  function moveMonth(n: number) {
+    const ms = addMonths(monthStart, n)
+    setMonthStart(ms)
+    setSelected(firstOfMonth(today()) === ms ? today() : ms)
+  }
+
+  const errorCard = ev.error && (
+    <Card className="flex justify-between items-center gap-3">
+      <p role="alert" className="text-danger text-sm">No se pudo guardar: {ev.error}</p>
+      <button onClick={ev.clearError} className="text-sm text-muted min-h-10 px-2">Cerrar</button>
+    </Card>
+  )
+
+  const emptyHint = 'Añade las actividades de la semana (natación, música, inglés…) con quién lleva y quién recoge.'
+
+  const selectedDayList = (
+    <>
+      <h2 className="text-base font-bold">{longDate(selected)}</h2>
+      {ev.loading ? <p className="text-muted text-sm">Cargando…</p> : dayAgenda.length === 0 ? (
+        <Card><p className="text-sm text-muted">{ev.events.length ? 'Nada este día.' : emptyHint}</p></Card>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {dayAgenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => setOccSheet(a)} />)}
+        </div>
+      )}
+    </>
+  )
+
+  function dots(items: Agenda[], isSel: boolean) {
+    const active = items.filter(a => !a.cancelled)
+    return (
+      <span className="flex gap-0.5 h-1.5">
+        {active.slice(0, 4).map(a => (
+          <span key={a.event.id} className="w-1.5 h-1.5 rounded-full" style={{ background: isSel ? 'currentColor' : colorOf(a.event, members) }} />
+        ))}
+      </span>
+    )
   }
 
   return (
@@ -41,7 +132,16 @@ export default function Ninos() {
       </header>
       {calendarOpen && <CalendarSheet onClose={() => setCalendarOpen(false)} />}
 
-      <div className="flex gap-1.5">
+      <div role="tablist" aria-label="Vista" className="grid grid-cols-3 p-1 rounded-xl bg-card border border-line">
+        {([['agenda', 'Agenda'], ['week', 'Semana'], ['month', 'Mes']] as const).map(([m, label]) => (
+          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
+            className={`min-h-10 rounded-lg text-[14px] font-semibold ${mode === m ? 'bg-accent text-white dark:text-bg' : 'text-muted'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap">
         {[{ id: 'all', name: 'Todos', color: '' }, ...kids.map(k => ({ id: k.id, name: k.display_name, color: k.color }))].map(o => (
           <button key={o.id} onClick={() => setChild(o.id)} aria-pressed={child === o.id}
             className={`min-h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 ${child === o.id ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>
@@ -50,49 +150,88 @@ export default function Ninos() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
-        <button onClick={() => moveWeek(-1)} aria-label="Semana anterior" className="w-11 h-11 rounded-full bg-card border border-line">‹</button>
-        <button onClick={() => { setWeekStart(startOfWeek(today())); setSelected(today()) }} className="font-semibold min-h-11 px-2">
-          {shortDate(weekStart)} – {shortDate(weekEnd)}
-        </button>
-        <button onClick={() => moveWeek(1)} aria-label="Semana siguiente" className="w-11 h-11 rounded-full bg-card border border-line">›</button>
-      </div>
+      {errorCard}
 
-      <div className="grid grid-cols-7 gap-1">
-        {days.map((d, i) => {
-          const items = agendaFor(ev.events, ev.exceptions, d).filter(filterChild).filter(a => !a.cancelled)
-          const isSel = d === selected
-          const isToday = d === today()
-          return (
-            <button key={d} onClick={() => setSelected(d)} aria-pressed={isSel} aria-label={`${longDate(d)}, ${items.length} actividades`}
-              className={`h-16 rounded-xl flex flex-col items-center justify-center gap-1 ${isSel ? 'bg-accent text-white dark:text-bg' : 'bg-card'} ${isToday && !isSel ? 'ring-2 ring-accent' : ''}`}>
-              <span className="text-[11px] opacity-80">{WEEKDAY_SHORT[i]}</span>
-              <span className="text-base font-bold">{parseISO(d).getDate()}</span>
-              <span className="flex gap-0.5 h-1.5">
-                {items.slice(0, 4).map(a => (
-                  <span key={a.event.id} className="w-1.5 h-1.5 rounded-full" style={{ background: isSel ? 'currentColor' : colorOf(a.event, members) }} />
-                ))}
-              </span>
+      {mode === 'week' && (
+        <>
+          <div className="flex items-center justify-between">
+            <button onClick={() => moveWeek(-1)} aria-label="Semana anterior" className="w-11 h-11 rounded-full bg-card border border-line">‹</button>
+            <button onClick={() => { setWeekStart(startOfWeek(today())); setSelected(today()) }} className="font-semibold min-h-11 px-2">
+              {shortDate(weekStart)} – {shortDate(weekEnd)}
             </button>
-          )
-        })}
-      </div>
+            <button onClick={() => moveWeek(1)} aria-label="Semana siguiente" className="w-11 h-11 rounded-full bg-card border border-line">›</button>
+          </div>
 
-      <h2 className="text-base font-bold">{longDate(selected)}</h2>
-
-      {ev.error && (
-        <Card className="flex justify-between items-center gap-3">
-          <p role="alert" className="text-danger text-sm">No se pudo guardar: {ev.error}</p>
-          <button onClick={ev.clearError} className="text-sm text-muted min-h-10 px-2">Cerrar</button>
-        </Card>
+          <div className="grid grid-cols-7 gap-1">
+            {weekDays.map((d, i) => {
+              const items = itemsOn(d)
+              const isSel = d === selected
+              const isToday = d === today()
+              return (
+                <button key={d} onClick={() => setSelected(d)} aria-pressed={isSel} aria-label={`${longDate(d)}, ${items.filter(a => !a.cancelled).length} actividades`}
+                  className={`h-16 rounded-xl flex flex-col items-center justify-center gap-1 ${isSel ? 'bg-accent text-white dark:text-bg' : 'bg-card'} ${isToday && !isSel ? 'ring-2 ring-accent' : ''}`}>
+                  <span className="text-[11px] opacity-80">{WEEKDAY_SHORT[i]}</span>
+                  <span className="text-base font-bold">{parseISO(d).getDate()}</span>
+                  {dots(items, isSel)}
+                </button>
+              )
+            })}
+          </div>
+          {selectedDayList}
+        </>
       )}
 
-      {ev.loading ? <p className="text-muted text-sm">Cargando…</p> : dayAgenda.length === 0 ? (
-        <Card><p className="text-sm text-muted">{ev.events.length ? 'Nada este día.' : 'Añade las actividades de la semana (natación, música, inglés…) con quién lleva y quién recoge.'}</p></Card>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {dayAgenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => setOccSheet(a)} />)}
-        </div>
+      {mode === 'month' && (
+        <>
+          <div className="flex items-center justify-between">
+            <button onClick={() => moveMonth(-1)} aria-label="Mes anterior" className="w-11 h-11 rounded-full bg-card border border-line">‹</button>
+            <button onClick={() => { setMonthStart(firstOfMonth(today())); setSelected(today()) }} className="font-semibold min-h-11 px-2">
+              {monthLabel(monthStart)}
+            </button>
+            <button onClick={() => moveMonth(1)} aria-label="Mes siguiente" className="w-11 h-11 rounded-full bg-card border border-line">›</button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {WEEKDAY_SHORT.map(w => <span key={w} className="text-center text-[11px] font-semibold text-muted pb-0.5">{w}</span>)}
+            {monthDays.map(d => {
+              const inMonth = d.slice(0, 7) === monthStart.slice(0, 7)
+              const items = itemsOn(d)
+              const isSel = d === selected
+              const isToday = d === today()
+              return (
+                <button key={d} onClick={() => setSelected(d)} aria-pressed={isSel} aria-label={`${longDate(d)}, ${items.filter(a => !a.cancelled).length} actividades`}
+                  className={`h-12 rounded-lg flex flex-col items-center justify-center gap-1 ${isSel ? 'bg-accent text-white dark:text-bg' : 'bg-card'} ${isToday && !isSel ? 'ring-2 ring-accent' : ''} ${inMonth ? '' : 'opacity-40'}`}>
+                  <span className="text-[14px] font-semibold leading-none">{parseISO(d).getDate()}</span>
+                  {dots(items, isSel)}
+                </button>
+              )
+            })}
+          </div>
+          {selectedDayList}
+        </>
+      )}
+
+      {mode === 'agenda' && (
+        ev.loading ? <p className="text-muted text-sm">Cargando…</p> : (
+          <div className="flex flex-col gap-5">
+            {agendaGroups.length === 0 ? (
+              <Card><p className="text-sm text-muted">{ev.events.length ? `Nada en los próximos ${agendaDays} días.` : emptyHint}</p></Card>
+            ) : agendaGroups.map(g => {
+              const rel = relativeDay(g.date)
+              return (
+                <section key={g.date} className="flex flex-col gap-2">
+                  <h2 className="text-base font-bold">
+                    {rel === longDate(g.date) ? rel : <>{rel} <span className="font-normal text-muted text-sm">· {longDate(g.date)}</span></>}
+                  </h2>
+                  {g.items.map(a => <AgendaCard key={a.event.id} a={a} members={members} onOpen={() => setOccSheet(a)} />)}
+                </section>
+              )
+            })}
+            <button onClick={() => setAgendaDays(n => n + AGENDA_STEP)} className="min-h-12 rounded-xl border border-line bg-card text-accent font-semibold">
+              Ver más (hasta {shortDate(addDays(agendaStart, agendaDays + AGENDA_STEP - 1))})
+            </button>
+          </div>
+        )
       )}
 
       <Fab label="Actividad" onClick={() => setEventSheet({ open: true })} />
@@ -116,7 +255,7 @@ export default function Ninos() {
           event={eventSheet.event}
           kids={kids}
           adults={adults}
-          defaultDate={selected}
+          defaultDate={mode === 'agenda' ? today() : selected}
           defaultChild={child !== 'all' ? child : kids[0]?.id ?? null}
           onClose={() => setEventSheet({ open: false })}
           onSave={async input => { const err = await ev.saveEvent(me.household_id, input, eventSheet.event?.id); if (!err) setEventSheet({ open: false }); return err?.message }}
