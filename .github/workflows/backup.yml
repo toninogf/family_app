@@ -1,0 +1,61 @@
+name: Copia de seguridad semanal
+
+# Cada lunes a las 03:00 UTC, y a mano desde la pestaña Actions ("Run workflow").
+# Necesita dos secretos del repositorio (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL     cadena de conexión "Session pooler" de Supabase (con la contraseña de la base de datos)
+#   BACKUP_PASSPHRASE   frase larga para cifrar la copia; guárdala en tu gestor de contraseñas
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comprobar secretos
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB_URL" ] || [ -z "$PASS" ]; then
+            echo "::error::Faltan los secretos SUPABASE_DB_URL o BACKUP_PASSPHRASE"
+            exit 1
+          fi
+
+      - name: Instalar cliente de PostgreSQL 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Volcar y cifrar
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          name="family-app-$(date -u +%Y-%m-%d)"
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
+            --schema=public --schema=private --schema=auth \
+            --no-owner --no-privileges --quote-all-identifiers \
+            | gzip -9 > "$name.sql.gz"
+          test -s "$name.sql.gz"
+          gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+            --passphrase "$PASS" -o "$name.sql.gz.gpg" "$name.sql.gz"
+          rm "$name.sql.gz"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+          ls -lh "$name.sql.gz.gpg"
+
+      - name: Guardar copia cifrada (60 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ env.NAME }}.sql.gz.gpg
+          retention-days: 60
+          if-no-files-found: error
