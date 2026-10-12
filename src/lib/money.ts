@@ -190,7 +190,7 @@ export function useExpenses(month: string) {
     return error
   }
 
-  return { expenses, loading, error, save, remove, clearError: () => setError('') }
+  return { expenses, loading, error, save, remove, reload: load, clearError: () => setError('') }
 }
 
 /* ---------- Tickets (bucket privado) ---------- */

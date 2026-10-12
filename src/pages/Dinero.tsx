@@ -6,6 +6,7 @@ import {
   uploadReceipt, useBalances, useCategories, useExpenses, type Category, type Debt, type Expense, type ExpenseInput
 } from '../lib/money'
 import { useSearchParams } from 'react-router-dom'
+import ImportSheet from '../components/ImportSheet'
 import { Card } from '../components/ui'
 
 type Tab = 'saldos' | 'gastos' | 'mes'
@@ -19,6 +20,8 @@ export default function Dinero() {
   const balances = useBalances()
   const exp = useExpenses(month)
   const [params, setParams] = useSearchParams()
+  const [importing, setImporting] = useState(false)
+  const [imported, setImported] = useState(0)
 
   // Abrir un gasto precargado desde otra pantalla (p. ej. Compra → "Pasar a gasto")
   useEffect(() => {
@@ -74,7 +77,23 @@ export default function Dinero() {
         />
       )}
       {tab === 'gastos' && (
-        <GastosTab expenses={exp.expenses} loading={exp.loading} categories={categories} members={members} onOpen={e => setSheet({ open: true, expense: e })} />
+        <>
+          <button onClick={() => setImporting(true)} className="min-h-11 px-4 rounded-xl border border-line bg-card text-accent text-sm font-semibold self-start flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16" /></svg>
+            Importar del banco (CSV)
+          </button>
+          {imported > 0 && <Card><p className="text-sm">Importados {imported} gastos.</p></Card>}
+          <GastosTab expenses={exp.expenses} loading={exp.loading} categories={categories} members={members} onOpen={e => setSheet({ open: true, expense: e })} />
+        </>
+      )}
+      {importing && me && (
+        <ImportSheet
+          householdId={me.household_id}
+          categories={categories}
+          adults={adults}
+          onClose={() => setImporting(false)}
+          onDone={n => { setImporting(false); setImported(n); exp.reload(); balances.reload() }}
+        />
       )}
       {tab === 'mes' && (
         <MesTab expenses={exp.expenses} categories={categories} adults={adults} kids={kids} onBudget={setBudget} />
