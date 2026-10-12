@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import { CATEGORIES, useShoppingItems, useShoppingLists, type ShoppingItem, type ShoppingList } from '../lib/shopping'
 import { Card } from '../components/ui'
@@ -14,6 +15,7 @@ function saveLastList(id: string) {
 
 export default function Compra() {
   const { me, members } = useHousehold()
+  const navigate = useNavigate()
   const { lists, loading: listsLoading, createList, renameList, deleteList, moveList } = useShoppingLists()
   const [managing, setManaging] = useState(false)
   const [listId, setListId] = useState<string | null>(null)
@@ -200,9 +202,17 @@ export default function Compra() {
             <button onClick={() => setShowChecked(s => !s)} aria-expanded={showChecked} className="min-h-10 text-sm font-semibold text-muted flex items-center gap-1">
               En el carro ({checked.length}) <span aria-hidden="true">{showChecked ? '▾' : '▸'}</span>
             </button>
-            <button onClick={clearChecked} className="min-h-10 px-3 rounded-xl border border-line bg-card text-accent text-[13px] font-semibold">
-              Vaciar comprados
-            </button>
+            <span className="flex gap-1.5">
+              <button
+                onClick={() => navigate(`/dinero?nuevo=1&concepto=${encodeURIComponent(`Compra ${current?.name ?? ''}`.trim())}&categoria=${encodeURIComponent(current?.name.toLowerCase().includes('farmacia') ? 'Salud' : 'Supermercado')}`)}
+                className="min-h-10 px-3 rounded-xl border border-line bg-card text-accent text-[13px] font-semibold"
+              >
+                Pasar a gasto
+              </button>
+              <button onClick={clearChecked} className="min-h-10 px-3 rounded-xl border border-line bg-card text-accent text-[13px] font-semibold">
+                Vaciar comprados
+              </button>
+            </span>
           </div>
           {showChecked && (
             <Card className="py-1">

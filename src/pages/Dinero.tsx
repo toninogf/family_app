@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
 import {
-  centsToInput, debtOf, formatEur, monthLabel, parseEur, partyName, shiftMonth, todayISO,
-  useBalances, useCategories, useExpenses, type Category, type Debt, type Expense, type ExpenseInput
+  centsToInput, compressImage, debtOf, deleteReceipt, formatEur, monthLabel, parseEur, partyName, receiptUrl, shiftMonth, todayISO,
+  uploadReceipt, useBalances, useCategories, useExpenses, type Category, type Debt, type Expense, type ExpenseInput
 } from '../lib/money'
+import { useSearchParams } from 'react-router-dom'
 import { Card } from '../components/ui'
 
 type Tab = 'saldos' | 'gastos' | 'mes'
@@ -13,10 +14,18 @@ export default function Dinero() {
   const { me, members } = useHousehold()
   const [tab, setTab] = useState<Tab>('saldos')
   const [month, setMonth] = useState(todayISO().slice(0, 7))
-  const [sheet, setSheet] = useState<{ open: boolean; expense?: Expense }>({ open: false })
+  const [sheet, setSheet] = useState<{ open: boolean; expense?: Expense; defaults?: ExpenseDefaults }>({ open: false })
   const { categories, setBudget } = useCategories()
   const balances = useBalances()
   const exp = useExpenses(month)
+  const [params, setParams] = useSearchParams()
+
+  // Abrir un gasto precargado desde otra pantalla (p. ej. Compra → "Pasar a gasto")
+  useEffect(() => {
+    if (params.get('nuevo') !== '1' || !categories.length) return
+    setSheet({ open: true, defaults: { description: params.get('concepto') ?? undefined, categoryName: params.get('categoria') ?? undefined } })
+    setParams({}, { replace: true })
+  }, [params, categories, setParams])
 
   const adults = members.filter(m => m.kind === 'adult')
   const kids = members.filter(m => m.kind === 'child')
@@ -82,6 +91,8 @@ export default function Dinero() {
       {sheet.open && me && (
         <ExpenseSheet
           expense={sheet.expense}
+          defaults={sheet.defaults}
+          householdId={me.household_id}
           categories={categories}
           adults={adults}
           kids={kids}
@@ -418,8 +429,12 @@ function Segmented({ label, options, value, onChange }: {
   )
 }
 
-function ExpenseSheet({ expense, categories, adults, kids, onClose, onSave, onDelete }: {
+export type ExpenseDefaults = { description?: string; categoryName?: string }
+
+function ExpenseSheet({ expense, defaults, householdId, categories, adults, kids, onClose, onSave, onDelete }: {
   expense?: Expense
+  defaults?: ExpenseDefaults
+  householdId: string
   categories: Category[]
   adults: Member[]
   kids: Member[]
@@ -428,8 +443,30 @@ function ExpenseSheet({ expense, categories, adults, kids, onClose, onSave, onDe
   onDelete?: () => Promise<void>
 }) {
   const [amount, setAmount] = useState(expense ? centsToInput(expense.amount_cents) : '')
-  const [description, setDescription] = useState(expense?.description ?? '')
-  const [categoryId, setCategoryId] = useState<string | null>(expense?.category_id ?? null)
+  const [description, setDescription] = useState(expense?.description ?? defaults?.description ?? '')
+  const [categoryId, setCategoryId] = useState<string | null>(
+    expense?.category_id ?? categories.find(c => c.name === defaults?.categoryName)?.id ?? null
+  )
+  const [receiptPath, setReceiptPath] = useState<string | null>(expense?.receipt_path ?? null)
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
+  const [newReceipt, setNewReceipt] = useState<Blob | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (receiptPath && !newReceipt) receiptUrl(receiptPath).then(u => { if (!cancelled) setReceiptPreview(u) })
+    return () => { cancelled = true }
+  }, [receiptPath, newReceipt])
+
+  async function pickReceipt(file: File | undefined) {
+    if (!file) return
+    try {
+      const blob = await compressImage(file)
+      setNewReceipt(blob)
+      setReceiptPreview(URL.createObjectURL(blob))
+    } catch {
+      setError('No se pudo leer la foto')
+    }
+  }
   const [spentOn, setSpentOn] = useState(expense?.spent_on ?? todayISO())
   const [payer, setPayer] = useState<string | null>(expense ? expense.payer_id : null)
   const [beneficiary, setBeneficiary] = useState<string | null>(expense ? expense.beneficiary_id : null)
@@ -458,12 +495,26 @@ function ExpenseSheet({ expense, categories, adults, kids, onClose, onSave, onDe
     if (!cents) { setError('Escribe un importe válido, por ejemplo 12,50'); return }
     if (!description.trim()) { setError('Escribe un concepto'); return }
     setBusy(true); setError('')
+    let path = receiptPath
+    try {
+      if (newReceipt) path = await uploadReceipt(householdId, newReceipt)
+    } catch {
+      setBusy(false); setError('No se pudo subir la foto del ticket'); return
+    }
     const err = await onSave({
       amount_cents: cents, description: description.trim(), category_id: categoryId, spent_on: spentOn,
-      payer_id: payer, beneficiary_id: beneficiary, child_id: beneficiary === null ? child : null, note: note.trim() || null
+      payer_id: payer, beneficiary_id: beneficiary, child_id: beneficiary === null ? child : null, note: note.trim() || null,
+      receipt_path: path
     })
     setBusy(false)
-    if (err) setError(err)
+    if (err) {
+      setError(err)
+      if (newReceipt && path) await deleteReceipt(path)
+      return
+    }
+    // Borra la foto anterior si se cambió o se quitó
+    const old = expense?.receipt_path
+    if (old && old !== path) await deleteReceipt(old)
   }
 
   return (
@@ -525,6 +576,30 @@ function ExpenseSheet({ expense, categories, adults, kids, onClose, onSave, onDe
           <Field2 label="Nota (opcional)">
             <input value={note} onChange={e => setNote(e.target.value)} maxLength={200} className="w-full min-h-12 px-4 rounded-xl border border-line bg-card text-[16px]" />
           </Field2>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-muted">Ticket (opcional)</span>
+            {receiptPreview ? (
+              <div className="flex items-center gap-3">
+                <a href={receiptPreview} target="_blank" rel="noreferrer" className="shrink-0">
+                  <img src={receiptPreview} alt="Foto del ticket" className="w-20 h-20 object-cover rounded-xl border border-line" />
+                </a>
+                <div className="flex flex-col gap-1">
+                  <label className="min-h-10 flex items-center text-sm font-semibold text-accent cursor-pointer">
+                    Cambiar foto
+                    <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={e => pickReceipt(e.target.files?.[0])} />
+                  </label>
+                  <button type="button" onClick={() => { setReceiptPath(null); setNewReceipt(null); setReceiptPreview(null) }} className="min-h-10 text-left text-sm text-danger">Quitar</button>
+                </div>
+              </div>
+            ) : (
+              <label className="min-h-12 px-4 rounded-xl border border-dashed border-line bg-card flex items-center gap-2 text-[15px] font-semibold text-accent cursor-pointer">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z" /><circle cx="12" cy="13" r="4" /></svg>
+                Hacer o elegir foto
+                <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={e => pickReceipt(e.target.files?.[0])} />
+              </label>
+            )}
+          </div>
 
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 

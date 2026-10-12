@@ -12,6 +12,7 @@ export type Expense = {
   beneficiary_id: string | null
   child_id: string | null
   note: string | null
+  receipt_path: string | null
   created_by: string | null
   created_at: string
 }
@@ -151,7 +152,7 @@ export function useExpenses(month: string) {
   const load = useCallback(async () => {
     const { from, to } = monthRange(month)
     const { data, error } = await supabase.from('expenses')
-      .select('id, amount_cents, description, category_id, spent_on, payer_id, beneficiary_id, child_id, note, created_by, created_at')
+      .select('id, amount_cents, description, category_id, spent_on, payer_id, beneficiary_id, child_id, note, receipt_path, created_by, created_at')
       .gte('spent_on', from).lte('spent_on', to)
       .order('spent_on', { ascending: false }).order('created_at', { ascending: false })
     if (error) setError(error.message)
@@ -181,13 +182,46 @@ export function useExpenses(month: string) {
   }
 
   async function remove(id: string) {
+    const receipt = expenses.find(e => e.id === id)?.receipt_path
     setExpenses(prev => prev.filter(e => e.id !== id))
     const { error } = await supabase.from('expenses').delete().eq('id', id)
     if (error) { setError(error.message); await load() }
+    else if (receipt) await deleteReceipt(receipt)
     return error
   }
 
   return { expenses, loading, error, save, remove, clearError: () => setError('') }
+}
+
+/* ---------- Tickets (bucket privado) ---------- */
+
+/** Reduce la foto a 1600 px y JPEG para ocupar poco */
+export async function compressImage(file: File, max = 1600): Promise<Blob> {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('No se pudo procesar la imagen'))), 'image/jpeg', 0.8))
+}
+
+export async function uploadReceipt(householdId: string, blob: Blob): Promise<string> {
+  const path = `${householdId}/${crypto.randomUUID()}.jpg`
+  const { error } = await supabase.storage.from('receipts').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+  if (error) throw error
+  return path
+}
+
+export async function receiptUrl(path: string): Promise<string | null> {
+  const { data } = await supabase.storage.from('receipts').createSignedUrl(path, 60 * 10)
+  return data?.signedUrl ?? null
+}
+
+export async function deleteReceipt(path: string) {
+  await supabase.storage.from('receipts').remove([path])
 }
 
 /** Resumen ligero para la pantalla Hoy */
