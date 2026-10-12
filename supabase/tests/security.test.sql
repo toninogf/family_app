@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(62);
+select plan(71);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -97,6 +97,14 @@ select ok(not public.test_fails('insert into public.calendar_tokens default valu
 select is((select count(*) from public.school_menu), 1::bigint, 'Con 2FA: ve el menú del colegio');
 select ok(public.test_fails($$ update public.school_menu set first_course = 'Otra cosa' $$) or (select first_course from public.school_menu limit 1) = 'Espaguetis',
   'El menú no se puede cambiar desde la app');
+-- Gimnasio y preferencias (privado de cada uno)
+select ok(not public.test_fails($$ insert into public.gym_body (weight_kg) values (80) $$), 'Toni puede apuntar su peso');
+select is((select count(*) from public.gym_exercises), 29::bigint, 'Toni ve solo sus 29 ejercicios iniciales');
+insert into public.gym_sessions (title) values ('Entreno Toni');
+select set_config('test.toni_session', (select id::text from public.gym_sessions limit 1), true);
+select ok(not public.test_fails($$ insert into public.member_preferences (member_id, household_id, gym_share, gym_days, gym_start, gym_end)
+  values (gen_random_uuid(), gen_random_uuid(), true, '{1,3}', '19:00', '20:00') $$), 'Toni guarda sus preferencias (se corrigen dueño y hogar)');
+select is((select count(*) from public.events where title = 'Gimnasio'), 1::bigint, 'Si comparte, sale «Gimnasio» en la Agenda familiar');
 -- Compra: mover artículos entre listas
 select ok(not public.test_fails($$ update public.shopping_items set list_id = (select id from public.shopping_lists where name = 'Farmacia') where name = 'Leche' $$),
   'Se puede mover un artículo a otra lista de la familia');
@@ -137,6 +145,11 @@ set local role authenticated;
 select is((select count(*) from public.calendar_tokens), 0::bigint, 'Rebeca no ve el enlace privado de Toni');
 select is((select count(*) from public.expenses), 2::bigint, 'Rebeca ve los gastos de la familia');
 select is((select count(*) from public.homes), 1::bigint, 'Rebeca ve los pisos guardados');
+select is((select count(*) from public.gym_body), 0::bigint, 'Rebeca no ve el peso de Toni');
+select is((select count(*) from public.gym_exercises), 29::bigint, 'Rebeca solo ve sus propios ejercicios');
+select ok(public.test_fails(format('insert into public.gym_sets (session_id, exercise_id) values (%L, %L)', current_setting('test.toni_session'),
+  (select id from public.gym_exercises limit 1))), 'Rebeca no puede escribir en un entreno de Toni');
+select is((select count(*) from public.member_preferences), 0::bigint, 'Rebeca no ve las preferencias de Toni');
 update public.home_ratings set score = 1;
 select is((select score from public.home_ratings limit 1), 4::smallint, 'Rebeca no puede cambiar la nota de Toni');
 reset role;
@@ -152,6 +165,7 @@ select is((select count(*) from public.school_menu), 0::bigint, 'Otro hogar: no 
 select is((select count(*) from public.homes), 0::bigint, 'Otro hogar: no ve vuestros pisos');
 select is((select count(*) from public.sale_listing), 0::bigint, 'Otro hogar: no ve vuestro anuncio');
 select is((select count(*) from public.event_categories), 1::bigint, 'Otro hogar: solo ve sus propias categorías');
+select is((select count(*) from public.gym_body), 0::bigint, 'Otro hogar: no ve datos del gimnasio');
 reset role;
 
 select * from finish();
