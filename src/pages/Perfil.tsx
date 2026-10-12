@@ -5,6 +5,7 @@ import { disablePush, enablePush, pushStatus, sendTestPush, updatePushPrefs, typ
 import { Button, Card, ErrorText, Field } from '../components/ui'
 import FamilyCard from '../components/FamilyCard'
 import AuthenticatorsCard from '../components/AuthenticatorsCard'
+import { ALL_SECTIONS, ALL_TABS, SECTION_LABEL, TAB_LABEL, moveIn, usePrefs, type SectionKey, type TabKey } from '../lib/prefs'
 
 export default function Perfil() {
   const { me } = useHousehold()
@@ -29,6 +30,7 @@ export default function Perfil() {
         <span className="font-semibold">{me?.display_name}</span>
       </Card>
 
+      <PersonalizeCard />
       <PushCard />
       <FamilyCard />
       <AuthenticatorsCard />
@@ -115,5 +117,71 @@ function PushCard() {
         )}
       {note && <p role="status" className="text-sm text-muted">{note}</p>}
     </Card>
+  )
+}
+
+/** Personalizar: qué pestañas ve cada uno y en qué orden, y qué tarjetas salen en Hoy */
+function PersonalizeCard() {
+  const { prefs, save } = usePrefs()
+  const [open, setOpen] = useState(false)
+  const tabsOrdered = [...prefs.tabs, ...ALL_TABS.filter(t => !prefs.tabs.includes(t))]
+  const secOrdered = [...prefs.home_sections, ...ALL_SECTIONS.filter(t => !prefs.home_sections.includes(t))]
+
+  const toggleTab = (t: TabKey) => save({ tabs: prefs.tabs.includes(t) ? prefs.tabs.filter(x => x !== t) : [...prefs.tabs, t] })
+  const toggleSec = (s: SectionKey) => save({ home_sections: prefs.home_sections.includes(s) ? prefs.home_sections.filter(x => x !== s) : [...prefs.home_sections, s] })
+
+  return (
+    <Card className="flex flex-col gap-3">
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} className="flex justify-between items-center text-left">
+        <span className="flex flex-col gap-0.5">
+          <span className="font-bold text-[15px]">Personalizar mi app</span>
+          <span className="text-sm text-muted">Pestañas que ves y orden de las tarjetas de Hoy. Solo cambia en tu cuenta.</span>
+        </span>
+        <span className="text-muted">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <>
+          <section className="flex flex-col gap-1">
+            <h3 className="text-sm font-bold text-muted">Pestañas de abajo</h3>
+            <p className="text-xs text-muted">«Hoy» está siempre. Ocultar una pestaña solo la quita de tu vista: los datos siguen compartidos.</p>
+            <OrderList items={tabsOrdered} label={t => TAB_LABEL[t]} on={t => prefs.tabs.includes(t)} onToggle={toggleTab}
+              onMove={(t, d) => prefs.tabs.includes(t) && save({ tabs: moveIn(prefs.tabs, t, d) })} />
+          </section>
+          <section className="flex flex-col gap-1">
+            <h3 className="text-sm font-bold text-muted">Tarjetas de Hoy (y del aviso de la mañana)</h3>
+            <OrderList items={secOrdered} label={s => SECTION_LABEL[s]} on={s => prefs.home_sections.includes(s)} onToggle={toggleSec}
+              onMove={(s, d) => prefs.home_sections.includes(s) && save({ home_sections: moveIn(prefs.home_sections, s, d) })} />
+          </section>
+        </>
+      )}
+    </Card>
+  )
+}
+
+function OrderList<T extends string>({ items, label, on, onToggle, onMove }: {
+  items: T[]; label: (t: T) => string; on: (t: T) => boolean; onToggle: (t: T) => void; onMove: (t: T, d: -1 | 1) => void
+}) {
+  const visible = items.filter(on)
+  return (
+    <ul className="flex flex-col">
+      {items.map((t, i) => {
+        const isOn = on(t)
+        const vi = visible.indexOf(t)
+        return (
+          <li key={t} className={`flex items-center gap-2 min-h-12 ${i < items.length - 1 ? 'border-b border-line' : ''}`}>
+            <label className="flex-1 flex items-center gap-3 min-h-12">
+              <input type="checkbox" checked={isOn} onChange={() => onToggle(t)} className="w-5 h-5 accent-[var(--app-accent)]" />
+              <span className={`text-[15px] ${isOn ? '' : 'text-muted'}`}>{label(t)}</span>
+            </label>
+            {isOn && (
+              <>
+                <button onClick={() => onMove(t, -1)} disabled={vi === 0} aria-label={`Subir ${label(t)}`} className="w-10 h-10 text-muted disabled:opacity-30">↑</button>
+                <button onClick={() => onMove(t, 1)} disabled={vi === visible.length - 1} aria-label={`Bajar ${label(t)}`} className="w-10 h-10 text-muted disabled:opacity-30">↓</button>
+              </>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }

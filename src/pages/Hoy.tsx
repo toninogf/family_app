@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import { countPending } from '../lib/shopping'
@@ -6,6 +6,8 @@ import { formatEur, moneySummary, partyName, todayISO, type Debt } from '../lib/
 import { hhmm, isoWeekday, relativeDay, today } from '../lib/dates'
 import { useSchoolMenu } from '../lib/menu'
 import { mudanzaSummary } from '../lib/mudanza'
+import { gymSummary } from '../lib/gym'
+import { usePrefs, type SectionKey } from '../lib/prefs'
 import MenuCard from '../components/MenuCard'
 import { occurrencesBetween, useTasks } from '../lib/home'
 import { agendaFor, useEvents } from '../lib/kids'
@@ -27,6 +29,8 @@ function greeting() {
 export default function Hoy() {
   const { members, me, loading, error } = useHousehold()
   const [shopping, setShopping] = useState<{ listName: string; count: number } | null>(null)
+  const { prefs } = usePrefs()
+  const [gym, setGym] = useState<Awaited<ReturnType<typeof gymSummary>> | null>(null)
   const [mud, setMud] = useState<Awaited<ReturnType<typeof mudanzaSummary>> | null>(null)
   const [money, setMoney] = useState<{ debts: Debt[]; spentCents: number; budgetCents: number } | null>(null)
   const t = today()
@@ -40,6 +44,7 @@ export default function Hoy() {
     countPending().then(setShopping)
     moneySummary(todayISO().slice(0, 7)).then(setMoney)
     mudanzaSummary(today()).then(setMud).catch(() => setMud(null))
+    gymSummary().then(setGym).catch(() => setGym(null))
   }, [])
 
   const mainDebt = money?.debts[0]
@@ -48,24 +53,9 @@ export default function Hoy() {
   const overdue = occ.filter(o => o.date < t)
   const todays = occ.filter(o => o.date === t)
 
-  return (
-    <div className="flex flex-col gap-5">
-      <header className="flex justify-between items-start">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-muted">{todayLabel()}</p>
-          <h1 className="text-[26px] font-bold tracking-tight">{greeting()}{me ? `, ${me.display_name}` : ''}</h1>
-        </div>
-        <Link to="/perfil" aria-label="Perfil" className="w-11 h-11 rounded-full flex items-center justify-center text-white font-semibold" style={{ background: me?.color ?? 'var(--app-accent)' }}>
-          {me?.display_name.charAt(0) ?? '·'}
-        </Link>
-      </header>
-
-      {error && <Card><p role="alert" className="text-danger text-sm">No se pudieron cargar los datos: {error}</p></Card>}
-
-      {!loading && !me && !error && (
-        <Card><p className="text-sm">Tu cuenta no está vinculada a ningún miembro del hogar.</p></Card>
-      )}
-
+  const sections: Record<SectionKey, ReactNode> = {
+    saldo: (
+    <>
       <Link to="/dinero" className="bg-accent text-white dark:text-bg rounded-2xl p-4 flex flex-col gap-1">
         <span className="text-[13px] opacity-85">{mainDebt ? 'Saldo pendiente' : 'Saldos'}</span>
         <span className="text-[19px] font-bold leading-snug">
@@ -80,7 +70,10 @@ export default function Hoy() {
           </span>
         )}
       </Link>
-
+    </>
+  ),
+    agenda: (
+    <>
       <section className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
           <h2 className="text-base font-bold">Agenda de hoy</h2>
@@ -90,7 +83,10 @@ export default function Hoy() {
           ? <Card><p className="text-sm text-muted">Hoy no hay actividades.</p></Card>
           : <div className="flex flex-col gap-2">{agenda.map(a => <AgendaCard key={a.event.id} a={a} members={members} cats={evCats} compact />)}</div>}
       </section>
-
+    </>
+  ),
+    comedor: (
+    <>
       {schoolDay && !menu.loading && (
         <section className="flex flex-col gap-2">
           <div className="flex justify-between items-center">
@@ -100,14 +96,20 @@ export default function Hoy() {
           <MenuCard m={menu.byDay(t)} date={t} compact />
         </section>
       )}
-
+    </>
+  ),
+    tareas: (
+    <>
       {!tk.loading && (overdue.length > 0 || todays.length > 0 || tk.tasks.length > 0) && (
         <>
           {overdue.length > 0 && <TaskGroup title="Tareas pendientes" items={overdue} members={members} me={me} onToggle={tk.toggle} showDate />}
           <TaskGroup title="Tareas de hoy" items={todays} members={members} me={me} onToggle={tk.toggle} empty="Nada para hoy." />
         </>
       )}
-
+    </>
+  ),
+    mudanza: (
+    <>
       {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0) && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-bold">Mudanza</h2>
@@ -135,7 +137,10 @@ export default function Hoy() {
           </div>
         </section>
       )}
-
+    </>
+  ),
+    compra: (
+    <>
       <Link to="/compra" className="bg-card rounded-2xl p-4 flex justify-between items-center">
         <span className="flex flex-col gap-0.5">
           <span className="text-[15px] font-semibold">Compra{shopping ? ` · ${shopping.listName}` : ''}</span>
@@ -145,6 +150,47 @@ export default function Hoy() {
         </span>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
       </Link>
+    </>
+  ),
+    gym: (
+    <>
+      {gym && (gym.active || gym.last || prefs.gym_days.length > 0) && (
+        <Link to="/gym" className="bg-card rounded-2xl p-4 flex justify-between items-center gap-3">
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[15px] font-semibold">
+              {gym.active ? '🏋️ Entreno en marcha' : prefs.gym_days.includes(isoWeekday(t)) ? '💪 Hoy toca gimnasio' : '🏋️ Gimnasio'}
+            </span>
+            <span className="text-[13px] text-muted">
+              {gym.active ? `${gym.active.title ?? 'Entreno'} · toca para seguir`
+                : gym.last ? `Último: ${relativeDay(gym.last.session_date).toLowerCase()} · ${gym.last.title ?? 'Entreno'}` : 'Aún no has entrenado'}
+            </span>
+          </span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+        </Link>
+      )}
+    </>
+  )
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <header className="flex justify-between items-start">
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-muted">{todayLabel()}</p>
+          <h1 className="text-[26px] font-bold tracking-tight">{greeting()}{me ? `, ${me.display_name}` : ''}</h1>
+        </div>
+        <Link to="/perfil" aria-label="Perfil" className="w-11 h-11 rounded-full flex items-center justify-center text-white font-semibold" style={{ background: me?.color ?? 'var(--app-accent)' }}>
+          {me?.display_name.charAt(0) ?? '·'}
+        </Link>
+      </header>
+
+      {error && <Card><p role="alert" className="text-danger text-sm">No se pudieron cargar los datos: {error}</p></Card>}
+
+      {!loading && !me && !error && (
+        <Card><p className="text-sm">Tu cuenta no está vinculada a ningún miembro del hogar.</p></Card>
+      )}
+
+      {prefs.home_sections.map(k => <Fragment key={k}>{sections[k]}</Fragment>)}
     </div>
   )
 }

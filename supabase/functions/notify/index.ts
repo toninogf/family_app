@@ -102,6 +102,10 @@ Deno.serve(async (req: Request) => {
         return `Nuestra oferta por ${title ?? 'el piso'}: esperamos respuesta ${when(o.response_deadline)}`
       })
     ]
+    // Preferencias de cada uno: qué tarjetas quiere y en qué orden (las mismas que en Hoy)
+    const { data: prefsRows } = await db.from('member_preferences').select('member_id, home_sections, gym_days').eq('household_id', hh)
+    const DEFAULT_ORDER = ['saldo', 'agenda', 'comedor', 'tareas', 'mudanza', 'gym', 'compra']
+    const prefsOf = (memberId: string) => (prefsRows ?? []).find(p => p.member_id === memberId) as { home_sections: string[]; gym_days: number[] } | undefined
     const ms = (members ?? []) as Member[]
     const name = (id: string | null) => ms.find(m => m.id === id)?.display_name ?? ''
 
@@ -155,8 +159,14 @@ Deno.serve(async (req: Request) => {
         const mt = menuOf(today)
         const comedor = mt && !mt.holiday && mt.first_course ? `Comedor: ${shortDish(mt.first_course)} y ${shortDish(mt.second_course ?? '')}` : ''
         const cena = mt && !mt.holiday ? dinnerTip(mt.first_type, mt.second_type) : ''
-        if (!items.length && !mine.length && !comedor && !offerLines.length) continue
-        const lines = [...items, ...offerLines, mine.length ? `Tareas: ${mine.join(', ')}` : '', comedor, cena].filter(Boolean)
+        const p = prefsOf(s.member_id)
+        const gymLine = p?.gym_days?.includes(isoWeekday(today)) ? '💪 Hoy toca gimnasio' : ''
+        const blocks: Record<string, string[]> = {
+          agenda: items, mudanza: offerLines, tareas: mine.length ? [`Tareas: ${mine.join(', ')}`] : [],
+          comedor: [comedor, cena].filter(Boolean), gym: gymLine ? [gymLine] : []
+        }
+        const lines = (p?.home_sections ?? DEFAULT_ORDER).flatMap(k => blocks[k] ?? []).filter(Boolean)
+        if (!lines.length) continue
         total += await send([s], { title: 'Hoy', body: lines.join('\n'), url: '/', tag: `daily-${today}` })
       } else {
         const days = Array.from({ length: 7 }, (_, i) => addDays(today, i + 1))
