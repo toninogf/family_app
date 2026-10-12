@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     const to = mode === 'daily' ? today : addDays(today, 7)
     const [{ data: members }, { data: events }, { data: exceptions }, { data: tasks }, { data: completions }] = await Promise.all([
       db.from('members').select('id, household_id, display_name, kind, user_id').eq('household_id', hh),
-      db.from('events').select('*').eq('household_id', hh).lte('start_date', to),
+      db.from('events').select('*').eq('household_id', hh).eq('paused', false).lte('start_date', to),
       db.from('event_exceptions').select('*').eq('household_id', hh).gte('occurrence_date', from).lte('occurrence_date', to),
       db.from('tasks').select('*').eq('household_id', hh).eq('active', true),
       db.from('task_completions').select('task_id, occurrence_date').eq('household_id', hh).eq('occurrence_date', today)
@@ -167,7 +167,7 @@ Deno.serve(async (req: Request) => {
           money,
           menuMissing(days.filter(d => isoWeekday(d) <= 5), menuOf)
         ].filter(Boolean).join('\n')
-        total += await send([s], { title: 'Resumen de la semana', body: bodyText, url: '/ninos', tag: `weekly-${today}` })
+        total += await send([s], { title: 'Resumen de la semana', body: bodyText, url: '/agenda', tag: `weekly-${today}` })
       }
     }
   }
