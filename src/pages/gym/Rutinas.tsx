@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { MUSCLES, parseNum, type Exercise, type Gym, type Muscle, type Routine, type RoutineItem } from '../../lib/gym'
 import { usePrefs } from '../../lib/prefs'
 import { hhmm, weekdaysLabel } from '../../lib/dates'
@@ -104,11 +104,17 @@ function RoutineSheet({ g, routine, onClose }: { g: Gym; routine?: Routine; onCl
   )
 }
 
+/** Campo pequeño: se escribe libremente y el valor se comprueba al salir del campo */
 function Mini({ label, value, onChange, placeholder, text }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; text?: boolean }) {
+  const [draft, setDraft] = useState(value)
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setDraft(value) }, [value, focused])
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] text-muted font-semibold">{label}</span>
-      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} inputMode={text ? 'text' : 'decimal'}
+      <input value={draft} onChange={e => setDraft(e.target.value)} placeholder={placeholder} inputMode={text ? 'text' : 'decimal'}
+        onFocus={e => { setFocused(true); e.target.select() }}
+        onBlur={() => { setFocused(false); onChange(draft) }}
         className="w-full min-h-10 px-2 rounded-lg border border-line bg-bg text-[16px] text-center" />
     </label>
   )
