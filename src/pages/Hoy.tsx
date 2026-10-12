@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import { countPending } from '../lib/shopping'
+import { formatEur, moneySummary, partyName, todayISO, type Debt } from '../lib/money'
 import { Card } from '../components/ui'
 
 function todayLabel() {
@@ -19,7 +20,14 @@ export default function Hoy() {
   const [shopping, setShopping] = useState<{ listName: string; count: number } | null>(null)
   const kids = members.filter(m => m.kind === 'child')
 
-  useEffect(() => { countPending().then(setShopping) }, [])
+  const [money, setMoney] = useState<{ debts: Debt[]; spentCents: number; budgetCents: number } | null>(null)
+
+  useEffect(() => {
+    countPending().then(setShopping)
+    moneySummary(todayISO().slice(0, 7)).then(setMoney)
+  }, [])
+
+  const mainDebt = money?.debts[0]
 
   return (
     <div className="flex flex-col gap-5">
@@ -38,6 +46,21 @@ export default function Hoy() {
       {!loading && !me && !error && (
         <Card><p className="text-sm">Tu cuenta no está vinculada a ningún miembro del hogar.</p></Card>
       )}
+
+      <Link to="/dinero" className="bg-accent text-white dark:text-bg rounded-2xl p-4 flex flex-col gap-1">
+        <span className="text-[13px] opacity-85">{mainDebt ? 'Saldo pendiente' : 'Saldos'}</span>
+        <span className="text-[19px] font-bold leading-snug">
+          {money == null ? 'Cargando…' : mainDebt
+            ? `${partyName(mainDebt.debtor, members, 'subject')} debe ${formatEur(mainDebt.cents)} a ${partyName(mainDebt.creditor, members).replace('Cuenta común', 'la cuenta común')}`
+            : 'Todo en orden'}
+        </span>
+        {money && money.debts.length > 1 && <span className="text-[13px] opacity-85">y {money.debts.length - 1} saldo{money.debts.length > 2 ? 's' : ''} más</span>}
+        {money && (
+          <span className="text-[13px] opacity-85">
+            Este mes: {formatEur(money.spentCents)}{money.budgetCents > 0 ? ` de ${formatEur(money.budgetCents)}` : ''}
+          </span>
+        )}
+      </Link>
 
       <Link to="/compra" className="bg-card rounded-2xl p-4 flex justify-between items-center">
         <span className="flex flex-col gap-0.5">
@@ -65,7 +88,7 @@ export default function Hoy() {
       <Card className="flex flex-col gap-1">
         <p className="font-semibold">Próximamente</p>
         <p className="text-sm text-muted">
-          Gastos y saldos, tareas de casa y actividades{kids.length ? ` de ${kids.map(k => k.display_name).join(' y ')}` : ' de los niños'}.
+          Tareas de casa y actividades{kids.length ? ` de ${kids.map(k => k.display_name).join(' y ')}` : ' de los niños'}.
         </p>
       </Card>
     </div>

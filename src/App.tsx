@@ -5,6 +5,7 @@ import BottomNav from './components/BottomNav'
 import Hoy from './pages/Hoy'
 import Perfil from './pages/Perfil'
 import Compra from './pages/Compra'
+import Dinero from './pages/Dinero'
 import { Card } from './components/ui'
 
 function Pronto({ title, phase }: { title: string; phase: string }) {
@@ -26,7 +27,7 @@ export default function App() {
             <Route path="/compra" element={<Compra />} />
             <Route path="/casa" element={<Pronto title="Casa" phase="fase 4" />} />
             <Route path="/ninos" element={<Pronto title="Niños" phase="fase 4" />} />
-            <Route path="/dinero" element={<Pronto title="Dinero" phase="fase 3" />} />
+            <Route path="/dinero" element={<Dinero />} />
             <Route path="/perfil" element={<Perfil />} />
             <Route path="*" element={<Hoy />} />
           </Routes>
