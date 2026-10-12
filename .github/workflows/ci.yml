@@ -31,3 +31,22 @@ jobs:
           set -o pipefail
           supabase test db 2>&1 | tee resultado.txt
           echo "::notice title=Pruebas de seguridad::$(grep -E 'Files=|Result:' resultado.txt | tr '\n' ' ')"
+
+  # Ensayo del despliegue de Cloudflare (sin publicar) para ver errores aquí
+  deploy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - name: Ensayo de wrangler
+        run: |
+          set +e
+          npx wrangler --version > w.txt 2>&1
+          npx wrangler deploy --dry-run >> w.txt 2>&1
+          code=$?
+          echo "::notice title=wrangler::$(tail -c 1500 w.txt | tr '\n' ' ' | sed 's/%/%25/g')"
+          exit $code
