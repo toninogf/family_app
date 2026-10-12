@@ -26,6 +26,7 @@ export type EventException = {
   event_id: string
   occurrence_date: string
   cancelled: boolean
+  hidden: boolean
   start_time: string | null
   end_time: string | null
   override_drivers: boolean
@@ -34,7 +35,7 @@ export type EventException = {
   note: string | null
 }
 export type EventInput = Omit<FamilyEvent, 'id' | 'origin' | 'paused'>
-export type ExceptionInput = Omit<EventException, 'id' | 'event_id' | 'occurrence_date'>
+export type ExceptionInput = Omit<EventException, 'id' | 'event_id' | 'occurrence_date' | 'hidden'> & { hidden?: boolean }
 
 /** Una actividad concreta en un día, ya con los cambios puntuales aplicados */
 export type Agenda = {
@@ -72,7 +73,7 @@ export function eventOccursOn(e: FamilyEvent, date: string) {
 export function agendaFor(events: FamilyEvent[], exceptions: EventException[], date: string): Agenda[] {
   const exc = new Map(exceptions.filter(x => x.occurrence_date === date).map(x => [x.event_id, x]))
   return events
-    .filter(e => eventOccursOn(e, date))
+    .filter(e => eventOccursOn(e, date) && !exc.get(e.id)?.hidden)
     .map(e => {
       const x = exc.get(e.id)
       return {
@@ -105,7 +106,7 @@ export function useEvents(from: string, to: string) {
         .or(`until.is.null,until.gte.${from}`)
         .order('start_time'),
       supabase.from('event_exceptions')
-        .select('id, event_id, occurrence_date, cancelled, start_time, end_time, override_drivers, drop_off_id, pick_up_id, note')
+        .select('id, event_id, occurrence_date, cancelled, hidden, start_time, end_time, override_drivers, drop_off_id, pick_up_id, note')
         .gte('occurrence_date', from).lte('occurrence_date', to)
     ])
     if (e.error) setError(e.error.message)
@@ -151,7 +152,7 @@ export function useEvents(from: string, to: string) {
 
   async function saveException(eventId: string, date: string, input: ExceptionInput) {
     const { error } = await supabase.from('event_exceptions').upsert(
-      { event_id: eventId, occurrence_date: date, ...input },
+      { event_id: eventId, occurrence_date: date, hidden: false, ...input },
       { onConflict: 'event_id,occurrence_date' }
     )
     if (error) setError(error.message)

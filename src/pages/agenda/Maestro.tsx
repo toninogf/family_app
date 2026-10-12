@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Member } from '../../lib/supabase'
-import { hhmm, shortDate, today, weekdaysLabel, WEEKDAY_SHORT } from '../../lib/dates'
+import { hhmm, longDate, shortDate, today, weekdaysLabel, WEEKDAY_SHORT } from '../../lib/dates'
 import { useEvents, type FamilyEvent } from '../../lib/kids'
 import type { IconCategories } from '../../lib/categories'
 import { fold } from '../../data/places'
@@ -157,6 +157,8 @@ export default function Maestro({ members, cats, person, cat, householdId, onEdi
 
       {open && (
         <ActionsSheet e={open} members={members} onClose={() => setOpen(null)}
+          hiddenDays={ev.exceptions.filter(x => x.event_id === open.id && x.hidden).map(x => ({ id: x.id, date: x.occurrence_date })).sort((a, b) => a.date.localeCompare(b.date))}
+          onRestore={id => ev.clearException(id)}
           onEdit={() => { onEdit(open); setOpen(null) }}
           onPause={async () => { await ev.setPaused(open.id, !open.paused); setOpen(null) }}
           onEnd={async () => { await ev.endEventFrom(open, t); setOpen(null) }}
@@ -187,8 +189,8 @@ export function ChipRow<T extends string>({ value, onChange, options }: { value:
   )
 }
 
-function ActionsSheet({ e, members, onClose, onEdit, onPause, onEnd, onDelete, onDuplicate }: {
-  e: FamilyEvent; members: Member[]; onClose: () => void; onEdit: () => void; onPause: () => void; onEnd: () => void
+function ActionsSheet({ e, members, hiddenDays, onRestore, onClose, onEdit, onPause, onEnd, onDelete, onDuplicate }: {
+  e: FamilyEvent; members: Member[]; hiddenDays: { id: string; date: string }[]; onRestore: (id: string) => void; onClose: () => void; onEdit: () => void; onPause: () => void; onEnd: () => void
   onDelete: () => void; onDuplicate: (personId: string | null) => void
 }) {
   const [confirming, setConfirming] = useState(false)
@@ -220,6 +222,17 @@ function ActionsSheet({ e, members, onClose, onEdit, onPause, onEnd, onDelete, o
           )}
           {e.repeat === 'weekly' && !(e.until && e.until < t) && e.start_date < t && (
             <button onClick={onEnd} className={btn}>🏁 Terminar desde hoy (se guarda el historial)</button>
+          )}
+          {hiddenDays.length > 0 && (
+            <section className="flex flex-col gap-1 bg-card rounded-xl px-4 py-2">
+              <h3 className="text-sm font-bold">Días quitados</h3>
+              {hiddenDays.map(d => (
+                <div key={d.id} className="flex justify-between items-center min-h-10">
+                  <span className="text-sm">{longDate(d.date)}</span>
+                  <button onClick={() => onRestore(d.id)} className="min-h-10 px-2 text-sm text-accent font-semibold">Recuperar</button>
+                </div>
+              ))}
+            </section>
           )}
           <ConfirmDelete label="Eliminar por completo" confirming={confirming} setConfirming={setConfirming} onConfirm={onDelete} />
         </div>

@@ -403,7 +403,7 @@ export function AgendaCard({ a, members, cats, onOpen, compact }: { a: Agenda; m
 
 function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClearException, onEdit, onEndFrom, onDelete }: {
   a: Agenda; adults: Member[]; members: Member[]; onClose: () => void
-  onSaveException: (input: { cancelled: boolean; start_time: string | null; end_time: string | null; override_drivers: boolean; drop_off_id: string | null; pick_up_id: string | null; note: string | null }) => Promise<void>
+  onSaveException: (input: { cancelled: boolean; hidden?: boolean; start_time: string | null; end_time: string | null; override_drivers: boolean; drop_off_id: string | null; pick_up_id: string | null; note: string | null }) => Promise<void>
   onClearException?: () => Promise<void>
   onEdit: () => void; onEndFrom: () => Promise<void>; onDelete: () => Promise<void>
 }) {
@@ -437,7 +437,11 @@ function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClear
 
       {weekly && (
         a.cancelled ? (
-          <button onClick={onClearException} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold">Recuperar este día</button>
+          <div className="flex flex-col gap-2">
+            <button onClick={onClearException} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold">Recuperar este día</button>
+            <button onClick={() => onSaveException({ cancelled: true, hidden: true, start_time: null, end_time: null, override_drivers: false, drop_off_id: null, pick_up_id: null, note: null })}
+              className="py-3 rounded-xl border border-line bg-card font-semibold">Quitarla del todo (que no salga tachada)</button>
+          </div>
         ) : (
           <form onSubmit={saveChanges} className="flex flex-col gap-4 bg-card rounded-2xl p-4">
             <h3 className="font-bold text-[15px]">Solo este día</h3>
@@ -454,6 +458,9 @@ function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClear
                 className="min-h-11 text-danger text-sm font-semibold">Cancelar este día</button>
               {onClearException && <button type="button" onClick={onClearException} className="min-h-11 text-sm text-muted">Deshacer cambios</button>}
             </div>
+            <button type="button" onClick={() => onSaveException({ cancelled: true, hidden: true, start_time: null, end_time: null, override_drivers: false, drop_off_id: null, pick_up_id: null, note: null })}
+              className="min-h-11 rounded-xl border border-line text-sm font-semibold">Quitar este día (no aparecerá en la agenda)</button>
+            <p className="text-xs text-muted -mt-2">«Cancelar» la deja tachada para que sepáis que ese día no hay; «Quitar» la hace desaparecer. Los días quitados se recuperan desde Maestro.</p>
           </form>
         )
       )}
