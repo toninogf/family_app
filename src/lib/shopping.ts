@@ -102,7 +102,35 @@ export function useShoppingLists() {
     return error
   }
 
-  return { lists, loading, createList, reload: load }
+  async function renameList(id: string, name: string) {
+    const clean = name.trim()
+    if (!clean) return null
+    setLists(prev => prev.map(l => l.id === id ? { ...l, name: clean } : l))
+    const { error } = await supabase.from('shopping_lists').update({ name: clean }).eq('id', id)
+    if (error) await load()
+    return error
+  }
+
+  // Borra la lista y todos sus artículos (en cascada)
+  async function deleteList(id: string) {
+    setLists(prev => prev.filter(l => l.id !== id))
+    const { error } = await supabase.from('shopping_lists').delete().eq('id', id)
+    if (error) await load()
+    return error
+  }
+
+  async function moveList(id: string, direction: -1 | 1) {
+    const idx = lists.findIndex(l => l.id === id)
+    const target = idx + direction
+    if (idx < 0 || target < 0 || target >= lists.length) return
+    const reordered = [...lists]
+    ;[reordered[idx], reordered[target]] = [reordered[target], reordered[idx]]
+    const withPos = reordered.map((l, i) => ({ ...l, position: i }))
+    setLists(withPos)
+    await Promise.all(withPos.map(l => supabase.from('shopping_lists').update({ position: l.position }).eq('id', l.id)))
+  }
+
+  return { lists, loading, createList, renameList, deleteList, moveList, reload: load }
 }
 
 export function useShoppingItems(listId: string | null) {

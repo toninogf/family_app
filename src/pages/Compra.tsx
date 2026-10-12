@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useHousehold } from '../lib/household'
-import { CATEGORIES, useShoppingItems, useShoppingLists, type ShoppingItem } from '../lib/shopping'
+import { CATEGORIES, useShoppingItems, useShoppingLists, type ShoppingItem, type ShoppingList } from '../lib/shopping'
 import { Card } from '../components/ui'
 
 const LAST_LIST_KEY = 'compra:lastList'
@@ -14,7 +14,8 @@ function saveLastList(id: string) {
 
 export default function Compra() {
   const { me, members } = useHousehold()
-  const { lists, loading: listsLoading, createList } = useShoppingLists()
+  const { lists, loading: listsLoading, createList, renameList, deleteList, moveList } = useShoppingLists()
+  const [managing, setManaging] = useState(false)
   const [listId, setListId] = useState<string | null>(null)
   const [newListOpen, setNewListOpen] = useState(false)
   const [newListName, setNewListName] = useState('')
@@ -94,7 +95,28 @@ export default function Compra() {
             + Lista
           </button>
         )}
+        <button
+          onClick={() => setManaging(m => !m)}
+          aria-expanded={managing}
+          aria-label="Gestionar listas"
+          className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center border border-line ${managing ? 'bg-ink text-bg' : 'bg-card text-muted'}`}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+        </button>
       </div>
+
+      {managing && (
+        <ManageLists
+          lists={lists}
+          onRename={renameList}
+          onMove={moveList}
+          onDelete={async id => {
+            await deleteList(id)
+            if (id === listId) setListId(lists.find(l => l.id !== id)?.id ?? null)
+          }}
+          onClose={() => setManaging(false)}
+        />
+      )}
 
       {newListOpen && (
         <form onSubmit={submitList} className="flex gap-2">
@@ -200,6 +222,69 @@ export default function Compra() {
         </section>
       )}
     </div>
+  )
+}
+
+function ManageLists({ lists, onRename, onMove, onDelete, onClose }: {
+  lists: ShoppingList[]
+  onRename: (id: string, name: string) => Promise<unknown>
+  onMove: (id: string, direction: -1 | 1) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  onClose: () => void
+}) {
+  const [names, setNames] = useState<Record<string, string>>({})
+  const [confirming, setConfirming] = useState<string | null>(null)
+
+  return (
+    <Card className="flex flex-col gap-3">
+      <div className="flex justify-between items-center">
+        <h2 className="font-bold text-[15px]">Gestionar listas</h2>
+        <button onClick={onClose} className="min-h-10 px-2 text-sm font-semibold text-accent">Hecho</button>
+      </div>
+      <ul className="flex flex-col gap-2">
+        {lists.map((l, idx) => {
+          const value = names[l.id] ?? l.name
+          const changed = value.trim() && value.trim() !== l.name
+          return (
+            <li key={l.id} className="flex flex-col gap-2 border-b border-line last:border-b-0 pb-2">
+              <div className="flex items-center gap-1.5">
+                <label className="flex-1">
+                  <span className="sr-only">Nombre de la lista</span>
+                  <input
+                    value={value}
+                    maxLength={40}
+                    onChange={e => setNames(n => ({ ...n, [l.id]: e.target.value }))}
+                    onBlur={() => { if (changed) onRename(l.id, value) }}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                    className="w-full min-h-11 px-3 rounded-lg border border-line bg-bg text-[16px]"
+                  />
+                </label>
+                <button onClick={() => onMove(l.id, -1)} disabled={idx === 0} aria-label={`Subir ${l.name}`} className="w-10 h-11 flex items-center justify-center text-muted disabled:opacity-30">▲</button>
+                <button onClick={() => onMove(l.id, 1)} disabled={idx === lists.length - 1} aria-label={`Bajar ${l.name}`} className="w-10 h-11 flex items-center justify-center text-muted disabled:opacity-30">▼</button>
+                <button
+                  onClick={() => setConfirming(confirming === l.id ? null : l.id)}
+                  disabled={lists.length === 1}
+                  aria-label={`Borrar ${l.name}`}
+                  className="w-10 h-11 flex items-center justify-center text-danger disabled:opacity-30"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                </button>
+              </div>
+              {confirming === l.id && (
+                <div className="flex items-center justify-between gap-2 bg-bg rounded-lg px-3 py-2">
+                  <span className="text-sm">¿Borrar «{l.name}» y todos sus artículos?</span>
+                  <span className="flex gap-1">
+                    <button onClick={() => setConfirming(null)} className="min-h-10 px-2 text-sm text-muted">No</button>
+                    <button onClick={async () => { setConfirming(null); await onDelete(l.id) }} className="min-h-10 px-3 rounded-lg bg-danger text-white dark:text-bg text-sm font-semibold">Borrar</button>
+                  </span>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      {lists.length === 1 && <p className="text-xs text-muted">Siempre tiene que quedar al menos una lista.</p>}
+    </Card>
   )
 }
 
