@@ -7,6 +7,17 @@ import FamilyCard from '../components/FamilyCard'
 import AuthenticatorsCard from '../components/AuthenticatorsCard'
 import { ALL_SECTIONS, ALL_TABS, SECTION_LABEL, TAB_LABEL, moveIn, usePrefs, type SectionKey, type TabKey } from '../lib/prefs'
 
+/** Borra la copia guardada de la app y vuelve a descargarla (pasando por Cloudflare Access si hace falta) */
+async function forceUpdate() {
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.() ?? []
+    await Promise.all(regs.map(r => r.unregister()))
+    const keys = await caches?.keys?.() ?? []
+    await Promise.all(keys.map(k => caches.delete(k)))
+  } catch { /* seguimos igualmente */ }
+  window.location.href = `/renovar?t=${Date.now()}`
+}
+
 export default function Perfil() {
   const { me } = useHousehold()
   const [password, setPassword] = useState('')
@@ -45,7 +56,10 @@ export default function Perfil() {
       </Card>
       <Button variant="ghost" onClick={() => supabase.auth.signOut()}>Cerrar sesión</Button>
       <Button variant="ghost" onClick={() => supabase.auth.signOut({ scope: 'global' })}>Cerrar sesión en todos los dispositivos</Button>
-      <p className="text-xs text-muted text-center">Versión del {__APP_BUILD__}</p>
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-xs text-muted text-center">Versión del {__APP_BUILD__}</p>
+        <button onClick={forceUpdate} className="min-h-10 px-3 text-xs font-semibold text-accent">Forzar actualización</button>
+      </div>
     </div>
   )
 }
