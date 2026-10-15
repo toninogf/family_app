@@ -82,6 +82,40 @@ export default function Entrenar({ g, gymDays }: { g: Gym; gymDays: number[] }) 
   )
 }
 
+// ---------- Aviso de fin de descanso: vibración larga, pitidos y pantalla encendida ----------
+const VIBRATION = [700, 250, 700, 250, 700, 250, 700, 250, 700]   // 5 vibraciones largas
+let audio: AudioContext | null = null
+
+/** El navegador solo deja sonar si antes hubo un toque del usuario: se prepara al marcar una serie */
+function unlockAudio() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctx) return
+    audio = audio ?? new Ctx()
+    if (audio.state === 'suspended') void audio.resume()
+  } catch { /* sin audio */ }
+}
+
+function beeps(times = 5) {
+  if (!audio) return
+  const t0 = audio.currentTime + 0.05
+  for (let i = 0; i < times; i++) {
+    const osc = audio.createOscillator()
+    const gain = audio.createGain()
+    osc.type = 'square'
+    osc.frequency.value = 1100
+    gain.gain.setValueAtTime(0.0001, t0 + i * 0.95)
+    gain.gain.exponentialRampToValueAtTime(0.5, t0 + i * 0.95 + 0.02)
+    gain.gain.setValueAtTime(0.5, t0 + i * 0.95 + 0.55)
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.95 + 0.6)
+    osc.connect(gain).connect(audio.destination)
+    osc.start(t0 + i * 0.95)
+    osc.stop(t0 + i * 0.95 + 0.62)
+  }
+}
+
+const soundPref = () => { try { return localStorage.getItem('gym-sonido') !== 'off' } catch { return true } }
+
 function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; live: boolean; onClose: () => void; onFinished: () => void }) {
   const [now, setNow] = useState(Date.now())
   const [rest, setRest] = useState<{ until: number; total: number } | null>(null)
@@ -89,19 +123,44 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
   const [finishing, setFinishing] = useState(false)
   const [notes, setNotes] = useState(s.notes ?? '')
   const [confirming, setConfirming] = useState(false)
+  const [sound, setSound] = useState(soundPref)
+  const [alarm, setAlarm] = useState(false)
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
+    const t = setInterval(() => setNow(Date.now()), 250)
     return () => clearInterval(t)
   }, [])
 
-  // Aviso al terminar el descanso
+  // Pantalla encendida mientras entrenas (si se bloquea, el navegador congela la app y no puede avisar)
+  useEffect(() => {
+    if (!live) return
+    let lock: { release: () => Promise<void> } | null = null
+    const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
+    const request = async () => { try { lock = (await nav.wakeLock?.request('screen')) ?? null } catch { /* no disponible */ } }
+    const onVisible = () => { if (document.visibilityState === 'visible') void request() }
+    void request()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { document.removeEventListener('visibilitychange', onVisible); void lock?.release().catch(() => {}) }
+  }, [live])
+
+  // Aviso al terminar el descanso: 5 vibraciones largas, 5 pitidos y la barra parpadea
   useEffect(() => {
     if (rest && now >= rest.until) {
-      try { navigator.vibrate?.([200, 100, 200]) } catch { /* sin vibración */ }
+      try { navigator.vibrate?.(VIBRATION) } catch { /* sin vibración */ }
+      if (sound) beeps(5)
       setRest(null)
+      setAlarm(true)
+      const t = setTimeout(() => setAlarm(false), 5000)
+      return () => clearTimeout(t)
     }
-  }, [now, rest])
+  }, [now, rest, sound])
+
+  function toggleSound() {
+    const v = !sound
+    setSound(v)
+    try { localStorage.setItem('gym-sonido', v ? 'on' : 'off') } catch { /* nada */ }
+    if (v) unlockAudio()
+  }
 
   const sets = g.sets.filter(x => x.session_id === s.id)
   const groups = useMemo(() => {
@@ -113,6 +172,8 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
   const mins = Math.floor((now - new Date(s.started_at).getTime()) / 60000)
 
   async function toggleDone(x: GymSet) {
+    if (sound) unlockAudio()
+    setAlarm(false)
     await g.updateSet(x.id, { done: !x.done })
     if (!x.done && live && x.rest_seconds > 0 && g.exerciseById(x.exercise_id)?.kind !== 'cardio') {
       setRest({ until: Date.now() + x.rest_seconds * 1000, total: x.rest_seconds })
@@ -154,9 +215,19 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
               {Math.floor(Math.max(0, rest.until - now) / 60000)}:{String(Math.floor((Math.max(0, rest.until - now) % 60000) / 1000)).padStart(2, '0')}
             </span>
             <button onClick={() => setRest(r => (r ? { ...r, until: r.until + 30000 } : r))} className="min-h-10 px-3 rounded-lg bg-bg/15 font-semibold text-sm">+30 s</button>
+            <button onClick={toggleSound} aria-label={sound ? 'Silenciar pitidos' : 'Activar pitidos'} className="min-h-10 w-10 rounded-lg bg-bg/15 text-base">{sound ? '🔔' : '🔕'}</button>
             <button onClick={() => setRest(null)} className="min-h-10 px-3 rounded-lg bg-bg/15 font-semibold text-sm">Saltar</button>
           </div>
         </div>
+      )}
+
+      {alarm && (
+        <button onClick={() => { setAlarm(false); try { navigator.vibrate?.(0) } catch { /* nada */ } }}
+          className="fixed left-0 right-0 bottom-[calc(max(env(safe-area-inset-bottom),8px)+72px)] z-20 px-4">
+          <div className="max-w-xl mx-auto bg-accent text-white dark:text-bg rounded-2xl px-4 py-4 text-center font-bold text-[18px] shadow-lg animate-pulse">
+            ⏱️ ¡Descanso terminado! A por la siguiente serie
+          </div>
+        </button>
       )}
 
       {picker && <ExercisePicker exercises={g.exercises.filter(e => !e.archived && !groups.some(gr => gr.ex?.id === e.id))}
