@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isoWeekday, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { MUSCLES, fmtKg, fmtNum, minutesBetween, parseNum, volumeOf, type Exercise, type GymSet, type Gym, type Muscle, type Session } from '../../lib/gym'
 import { fold } from '../../data/places'
@@ -83,7 +83,18 @@ export default function Entrenar({ g, gymDays }: { g: Gym; gymDays: number[] }) 
 }
 
 // ---------- Aviso de fin de descanso: vibración larga, pitidos y pantalla encendida ----------
-const VIBRATION = [700, 250, 700, 250, 700, 250, 700, 250, 700]   // 5 vibraciones largas
+const PULSES = 5          // vibraciones (y pitidos)
+const PULSE_MS = 700      // duración de cada vibración
+const EVERY_MS = 950      // una cada casi un segundo
+
+/** 5 vibraciones independientes: muchos Android solo hacen el primer tramo si se manda un patrón */
+function vibratePulses(): number[] {
+  const timers: number[] = []
+  for (let i = 0; i < PULSES; i++) {
+    timers.push(window.setTimeout(() => { try { navigator.vibrate?.(PULSE_MS) } catch { /* sin vibración */ } }, i * EVERY_MS))
+  }
+  return timers
+}
 let audio: AudioContext | null = null
 
 /** El navegador solo deja sonar si antes hubo un toque del usuario: se prepara al marcar una serie */
@@ -104,13 +115,14 @@ function beeps(times = 5) {
     const gain = audio.createGain()
     osc.type = 'square'
     osc.frequency.value = 1100
-    gain.gain.setValueAtTime(0.0001, t0 + i * 0.95)
-    gain.gain.exponentialRampToValueAtTime(0.5, t0 + i * 0.95 + 0.02)
-    gain.gain.setValueAtTime(0.5, t0 + i * 0.95 + 0.55)
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.95 + 0.6)
+    const at = t0 + (i * EVERY_MS) / 1000
+    gain.gain.setValueAtTime(0.0001, at)
+    gain.gain.exponentialRampToValueAtTime(0.5, at + 0.02)
+    gain.gain.setValueAtTime(0.5, at + 0.55)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.6)
     osc.connect(gain).connect(audio.destination)
-    osc.start(t0 + i * 0.95)
-    osc.stop(t0 + i * 0.95 + 0.62)
+    osc.start(at)
+    osc.stop(at + 0.62)
   }
 }
 
@@ -125,6 +137,12 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
   const [confirming, setConfirming] = useState(false)
   const [sound, setSound] = useState(soundPref)
   const [alarm, setAlarm] = useState(false)
+  const pulseTimers = useRef<number[]>([])
+  const stopPulses = () => {
+    pulseTimers.current.forEach(t => clearTimeout(t))
+    pulseTimers.current = []
+    try { navigator.vibrate?.(0) } catch { /* nada */ }
+  }
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250)
@@ -146,14 +164,24 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
   // Aviso al terminar el descanso: 5 vibraciones largas, 5 pitidos y la barra parpadea
   useEffect(() => {
     if (rest && now >= rest.until) {
-      try { navigator.vibrate?.(VIBRATION) } catch { /* sin vibración */ }
-      if (sound) beeps(5)
+      stopPulses()
+      pulseTimers.current = vibratePulses()
+      if (sound) beeps(PULSES)
       setRest(null)
       setAlarm(true)
-      const t = setTimeout(() => setAlarm(false), 5000)
-      return () => clearTimeout(t)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now, rest, sound])
+
+  // El aviso en pantalla se oculta solo a los 6 segundos
+  useEffect(() => {
+    if (!alarm) return
+    const t = setTimeout(() => setAlarm(false), 6000)
+    return () => clearTimeout(t)
+  }, [alarm])
+
+  // Si sales del entreno, se cortan las vibraciones pendientes
+  useEffect(() => () => stopPulses(), [])
 
   function toggleSound() {
     const v = !sound
@@ -174,6 +202,7 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
   async function toggleDone(x: GymSet) {
     if (sound) unlockAudio()
     setAlarm(false)
+    stopPulses()
     await g.updateSet(x.id, { done: !x.done })
     if (!x.done && live && x.rest_seconds > 0 && g.exerciseById(x.exercise_id)?.kind !== 'cardio') {
       setRest({ until: Date.now() + x.rest_seconds * 1000, total: x.rest_seconds })
@@ -222,7 +251,7 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
       )}
 
       {alarm && (
-        <button onClick={() => { setAlarm(false); try { navigator.vibrate?.(0) } catch { /* nada */ } }}
+        <button onClick={() => { setAlarm(false); stopPulses() }}
           className="fixed left-0 right-0 bottom-[calc(max(env(safe-area-inset-bottom),8px)+72px)] z-20 px-4">
           <div className="max-w-xl mx-auto bg-accent text-white dark:text-bg rounded-2xl px-4 py-4 text-center font-bold text-[18px] shadow-lg animate-pulse">
             ⏱️ ¡Descanso terminado! A por la siguiente serie
