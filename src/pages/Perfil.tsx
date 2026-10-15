@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useHousehold } from '../lib/household'
 import { disablePush, enablePush, pushStatus, sendTestPush, updatePushPrefs, type PushStatus } from '../lib/push'
 import { Button, Card, ErrorText, Field } from '../components/ui'
-import FamilyCard from '../components/FamilyCard'
+import FamilyPanel, { Avatar } from '../components/FamilyPanel'
 import AuthenticatorsCard from '../components/AuthenticatorsCard'
 import { ALL_SECTIONS, ALL_TABS, SECTION_LABEL, TAB_LABEL, moveIn, usePrefs, type SectionKey, type TabKey } from '../lib/prefs'
 
@@ -18,8 +18,78 @@ async function forceUpdate() {
   window.location.href = `/renovar?t=${Date.now()}`
 }
 
+type Section = 'cuenta' | 'familia' | 'avisos' | 'personalizar' | 'sesion'
+const SECTIONS: { key: Section; icon: string; title: string; hint: string }[] = [
+  { key: 'cuenta', icon: '👤', title: 'Mi cuenta', hint: 'Contraseña y autenticadores' },
+  { key: 'familia', icon: '👪', title: 'Familia', hint: 'Nombres, colores y niños' },
+  { key: 'avisos', icon: '🔔', title: 'Avisos', hint: 'Agenda de la mañana y resumen semanal' },
+  { key: 'personalizar', icon: '🎨', title: 'Personalizar mi app', hint: 'Pestañas y tarjetas de Hoy' },
+  { key: 'sesion', icon: '🔒', title: 'Sesión y seguridad', hint: 'Cerrar sesión en este u otros dispositivos' }
+]
+
 export default function Perfil() {
   const { me } = useHousehold()
+  const [section, setSection] = useState<Section | null>(null)
+  const current = SECTIONS.find(x => x.key === section)
+
+  // Cada sección se abre como una subpantalla con «‹ Perfil» para volver
+  if (current) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-1">
+          <button onClick={() => setSection(null)} className="self-start min-h-10 -ml-1 px-1 text-accent font-semibold">‹ Perfil</button>
+          <h1 className="text-[26px] font-bold tracking-tight">{current.title}</h1>
+        </div>
+        {section === 'cuenta' && <><PasswordCard /><AuthenticatorsCard /></>}
+        {section === 'familia' && <FamilyPanel />}
+        {section === 'avisos' && <PushCard />}
+        {section === 'personalizar' && <PersonalizeCard />}
+        {section === 'sesion' && (
+          <Card className="flex flex-col gap-2">
+            <Button variant="ghost" onClick={() => supabase.auth.signOut()}>Cerrar sesión en este dispositivo</Button>
+            <Button variant="ghost" onClick={() => supabase.auth.signOut({ scope: 'global' })}>Cerrar sesión en todos los dispositivos</Button>
+            <p className="text-xs text-muted">Usa «todos los dispositivos» si pierdes el móvil o crees que alguien ha entrado con tu cuenta.</p>
+          </Card>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <h1 className="text-[26px] font-bold tracking-tight">Perfil</h1>
+      <Card className="flex items-center gap-3">
+        {me && <Avatar name={me.display_name} color={me.color} size={52} />}
+        <span className="flex flex-col">
+          <span className="text-[18px] font-bold">{me?.display_name}</span>
+          <span className="text-xs text-muted">Sesión protegida con verificación en dos pasos</span>
+        </span>
+      </Card>
+
+      <ul className="flex flex-col bg-card rounded-2xl px-4">
+        {SECTIONS.map((x, i) => (
+          <li key={x.key} className={i < SECTIONS.length - 1 ? 'border-b border-line' : ''}>
+            <button onClick={() => setSection(x.key)} className="w-full flex items-center gap-3 min-h-16 text-left">
+              <span className="w-10 h-10 rounded-xl bg-bg flex items-center justify-center text-[20px]" aria-hidden="true">{x.icon}</span>
+              <span className="flex-1 flex flex-col">
+                <span className="text-[16px] font-semibold">{x.title}</span>
+                <span className="text-xs text-muted">{x.hint}</span>
+              </span>
+              <span className="text-muted text-xl" aria-hidden="true">›</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-xs text-muted text-center">Versión del {__APP_BUILD__}</p>
+        <button onClick={forceUpdate} className="min-h-10 px-3 text-xs font-semibold text-accent">Forzar actualización</button>
+      </div>
+    </div>
+  )
+}
+
+function PasswordCard() {
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
@@ -34,33 +104,15 @@ export default function Perfil() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <h1 className="text-[26px] font-bold tracking-tight">Perfil</h1>
-      <Card className="flex items-center gap-3">
-        <span className="w-11 h-11 rounded-full flex items-center justify-center text-white font-semibold" style={{ background: me?.color }}>{me?.display_name.charAt(0)}</span>
-        <span className="font-semibold">{me?.display_name}</span>
-      </Card>
-
-      <PersonalizeCard />
-      <PushCard />
-      <FamilyCard />
-      <AuthenticatorsCard />
-
-      <Card>
-        <form onSubmit={changePassword} className="flex flex-col gap-4">
-          <Field label="Nueva contraseña" type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} />
-          <ErrorText>{error}</ErrorText>
-          {msg && <p className="text-sm text-accent">{msg}</p>}
-          <Button type="submit">Cambiar contraseña</Button>
-        </form>
-      </Card>
-      <Button variant="ghost" onClick={() => supabase.auth.signOut()}>Cerrar sesión</Button>
-      <Button variant="ghost" onClick={() => supabase.auth.signOut({ scope: 'global' })}>Cerrar sesión en todos los dispositivos</Button>
-      <div className="flex flex-col items-center gap-1">
-        <p className="text-xs text-muted text-center">Versión del {__APP_BUILD__}</p>
-        <button onClick={forceUpdate} className="min-h-10 px-3 text-xs font-semibold text-accent">Forzar actualización</button>
-      </div>
-    </div>
+    <Card>
+      <form onSubmit={changePassword} className="flex flex-col gap-4">
+        <h2 className="font-bold text-[15px]">Cambiar contraseña</h2>
+        <Field label="Nueva contraseña (mínimo 12 caracteres)" type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} />
+        <ErrorText>{error}</ErrorText>
+        {msg && <p className="text-sm text-accent">{msg}</p>}
+        <Button type="submit">Cambiar contraseña</Button>
+      </form>
+    </Card>
   )
 }
 
@@ -137,7 +189,7 @@ function PushCard() {
 /** Personalizar: qué pestañas ve cada uno y en qué orden, y qué tarjetas salen en Hoy */
 function PersonalizeCard() {
   const { prefs, save } = usePrefs()
-  const [open, setOpen] = useState(false)
+  const open = true
   const tabsOrdered = [...prefs.tabs, ...ALL_TABS.filter(t => !prefs.tabs.includes(t))]
   const secOrdered = [...prefs.home_sections, ...ALL_SECTIONS.filter(t => !prefs.home_sections.includes(t))]
 
@@ -146,13 +198,7 @@ function PersonalizeCard() {
 
   return (
     <Card className="flex flex-col gap-3">
-      <button onClick={() => setOpen(o => !o)} aria-expanded={open} className="flex justify-between items-center text-left">
-        <span className="flex flex-col gap-0.5">
-          <span className="font-bold text-[15px]">Personalizar mi app</span>
-          <span className="text-sm text-muted">Pestañas que ves y orden de las tarjetas de Hoy. Solo cambia en tu cuenta.</span>
-        </span>
-        <span className="text-muted">{open ? '▾' : '▸'}</span>
-      </button>
+      <p className="text-sm text-muted">Solo cambia en tu cuenta: cada adulto tiene su propia configuración.</p>
       {open && (
         <>
           <section className="flex flex-col gap-1">

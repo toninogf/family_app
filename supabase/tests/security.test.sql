@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(71);
+select plan(73);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -28,6 +28,7 @@ insert into public.members (household_id, kind, display_name, color, email)
 values ('00000000-0000-0000-0000-0000000000b0', 'adult', 'Intruso', '#000000', 'intruso@example.com');
 insert into auth.users (id, email, aud, role) values ('00000000-0000-0000-0000-0000000000c1', 'intruso@example.com', 'authenticated', 'authenticated');
 
+select set_config('test.kid', (select id::text from public.members where kind = 'child' limit 1), true);
 select set_config('test.hh', (select household_id::text from public.members where email = 'toninogf@gmail.com'), true);
 
 select ok((select user_id is not null from public.members where email = 'toninogf@gmail.com'), 'Al registrarse, la cuenta se vincula a su miembro');
@@ -97,6 +98,9 @@ select ok(not public.test_fails('insert into public.calendar_tokens default valu
 select is((select count(*) from public.school_menu), 1::bigint, 'Con 2FA: ve el menú del colegio');
 select ok(public.test_fails($$ update public.school_menu set first_course = 'Otra cosa' $$) or (select first_course from public.school_menu limit 1) = 'Espaguetis',
   'El menú no se puede cambiar desde la app');
+-- Eliminar niños: nunca un adulto
+select ok(public.test_fails(format('select public.remove_child(%L)', (select id from public.members where email = 'riukaab@gmail.com'))),
+  'No se puede eliminar a un adulto');
 -- Gimnasio y preferencias (privado de cada uno)
 select ok(not public.test_fails($$ insert into public.gym_body (weight_kg) values (80) $$), 'Toni puede apuntar su peso');
 select is((select count(*) from public.gym_exercises), 29::bigint, 'Toni ve solo sus 29 ejercicios iniciales');
@@ -166,6 +170,7 @@ select is((select count(*) from public.homes), 0::bigint, 'Otro hogar: no ve vue
 select is((select count(*) from public.sale_listing), 0::bigint, 'Otro hogar: no ve vuestro anuncio');
 select is((select count(*) from public.event_categories), 1::bigint, 'Otro hogar: solo ve sus propias categorías');
 select is((select count(*) from public.gym_body), 0::bigint, 'Otro hogar: no ve datos del gimnasio');
+select ok(public.test_fails(format('select public.remove_child(%L)', current_setting('test.kid'))), 'Otro hogar: no puede eliminar vuestros niños');
 reset role;
 
 select * from finish();
