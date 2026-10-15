@@ -10,9 +10,12 @@ import Casa from './pages/Casa'
 import Ninos from './pages/Ninos'
 import Gym from './pages/Gym'
 import { PrefsProvider } from './lib/prefs'
+import AccessBanner from './components/AccessBanner'
 
 export default function App() {
   return (
+    <>
+    <AccessBanner />
     <AuthGate>
       <HouseholdProvider>
         <PrefsProvider>
@@ -33,5 +36,6 @@ export default function App() {
       </PrefsProvider>
       </HouseholdProvider>
     </AuthGate>
+    </>
   )
 }

@@ -32,7 +32,7 @@ export default defineConfig({
       },
       workbox: {
         // Nunca cachear llamadas a Supabase: los datos siempre frescos y privados
-        navigateFallbackDenylist: [/^\/auth/],
+        navigateFallbackDenylist: [/^\/auth/, /^\/renovar/],
         runtimeCaching: [],
         importScripts: ['push-handler.js'],
         cleanupOutdatedCaches: true,
