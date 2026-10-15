@@ -238,14 +238,14 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
 
       {rest && (
         <div className="fixed left-0 right-0 bottom-[calc(max(env(safe-area-inset-bottom),8px)+72px)] z-20 px-4">
-          <div className="max-w-xl mx-auto bg-ink text-bg rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg">
-            <span className="text-[13px] opacity-80">Descanso</span>
+          <div className="max-w-xl mx-auto bg-ink text-bg rounded-2xl px-3 py-3 flex items-center gap-2 shadow-lg">
+            <span className="text-[12px] opacity-80 whitespace-nowrap">Descanso</span>
             <span className="text-[22px] font-bold tabular-nums flex-1">
               {Math.floor(Math.max(0, rest.until - now) / 60000)}:{String(Math.floor((Math.max(0, rest.until - now) % 60000) / 1000)).padStart(2, '0')}
             </span>
-            <button onClick={() => setRest(r => (r ? { ...r, until: r.until + 30000 } : r))} className="min-h-10 px-3 rounded-lg bg-bg/15 font-semibold text-sm">+30 s</button>
-            <button onClick={toggleSound} aria-label={sound ? 'Silenciar pitidos' : 'Activar pitidos'} className="min-h-10 w-10 rounded-lg bg-bg/15 text-base">{sound ? '🔔' : '🔕'}</button>
-            <button onClick={() => setRest(null)} className="min-h-10 px-3 rounded-lg bg-bg/15 font-semibold text-sm">Saltar</button>
+            <button onClick={() => setRest(r => (r ? { ...r, until: r.until + 30000 } : r))} className="min-h-10 px-2 rounded-lg bg-bg/15 font-semibold text-[12px] whitespace-nowrap shrink-0">+30 s</button>
+            <button onClick={toggleSound} aria-label={sound ? 'Silenciar pitidos' : 'Activar pitidos'} className="min-h-10 w-9 rounded-lg bg-bg/15 text-base shrink-0">{sound ? '🔔' : '🔕'}</button>
+            <button onClick={() => setRest(null)} className="min-h-10 px-2 rounded-lg bg-bg/15 font-semibold text-[12px] whitespace-nowrap shrink-0">Saltar</button>
           </div>
         </div>
       )}
