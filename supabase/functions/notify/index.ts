@@ -1,6 +1,6 @@
 // Avisos push: agenda del día (cada mañana), resumen semanal (domingo) y aviso de prueba desde la app.
 // - mode "test": requiere sesión del usuario con 2FA (Authorization: Bearer <jwt>)
-// - mode "daily" | "weekly": solo con la cabecera x-cron-secret (la llama pg_cron)
+// - mode "daily" | "weekly" | "rest" (fin de descanso del gimnasio): solo con la cabecera x-cron-secret (la llama pg_cron)
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
@@ -32,11 +32,12 @@ Deno.serve(async (req: Request) => {
   const body = await req.json().catch(() => ({}))
   const mode = body?.mode as string
 
-  async function send(subs: Sub[], payload: { title: string; body: string; url: string; tag?: string }) {
+  type Payload = { title: string; body: string; url: string; tag?: string; kind?: string; vibrate?: number[]; renotify?: boolean; requireInteraction?: boolean }
+  async function send(subs: Sub[], payload: Payload, opts: { TTL: number; urgency?: 'high' | 'normal' } = { TTL: 60 * 60 * 6 }) {
     let sent = 0
     for (const s of subs) {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 60 * 60 * 6 })
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), opts)
         sent++
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode
@@ -64,6 +65,23 @@ Deno.serve(async (req: Request) => {
 
   // ---------- Programados ----------
   if (req.headers.get('x-cron-secret') !== cfg.cron) return json({ error: 'No autorizado' }, 401)
+
+  // ---------- Fin de descanso del gimnasio (pg_cron cada 5 s, solo si hay alguno vencido) ----------
+  if (mode === 'rest') {
+    // Borrar y devolver a la vez: cada descanso se avisa una sola vez
+    const { data: due } = await db.from('gym_timers').delete().lte('fire_at', new Date().toISOString()).select('member_id, fire_at')
+    let sent = 0
+    for (const t of (due ?? []) as { member_id: string; fire_at: string }[]) {
+      if (Date.now() - new Date(t.fire_at).getTime() > 5 * 60 * 1000) continue // muy antiguo: ya no tiene sentido
+      const { data: subs } = await db.from('push_subscriptions').select('*').eq('member_id', t.member_id)
+      sent += await send((subs ?? []) as Sub[], {
+        title: '⏱️ Descanso terminado', body: 'A por la siguiente serie 💪', url: '/gym', tag: 'gym-rest', kind: 'gym-rest',
+        vibrate: [700, 300, 700, 300, 700, 300, 700, 300, 700], renotify: true, requireInteraction: true
+      }, { TTL: 120, urgency: 'high' })
+    }
+    return json({ sent })
+  }
+
   if (mode !== 'daily' && mode !== 'weekly') return json({ error: 'Modo no válido' }, 400)
 
   const { data: allSubs } = await db.from('push_subscriptions').select('*').eq(mode, true)

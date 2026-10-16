@@ -24,6 +24,15 @@ registerSW({
   }
 })
 
+// Fin de descanso del gimnasio llegado por push con la app a la vista: lo atiende el entreno;
+// si no está abierto, al menos vibra
+navigator.serviceWorker?.addEventListener('message', e => {
+  if ((e.data as { type?: string } | null)?.type !== 'gym-rest') return
+  const ev = new Event('gym-rest', { cancelable: true })
+  window.dispatchEvent(ev)
+  if (!ev.defaultPrevented) for (let i = 0; i < 5; i++) setTimeout(() => { try { navigator.vibrate?.(700) } catch { /* nada */ } }, i * 950)
+})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

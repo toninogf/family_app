@@ -4,6 +4,8 @@ import { MUSCLES, fmtKg, fmtNum, minutesBetween, parseNum, volumeOf, type Exerci
 import { fold } from '../../data/places'
 import { Card } from '../../components/ui'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
+import { supabase } from '../../lib/supabase'
+import { pushStatus } from '../../lib/push'
 
 export default function Entrenar({ g, gymDays }: { g: Gym; gymDays: number[] }) {
   const [viewing, setViewing] = useState<string | null>(null)
@@ -126,6 +128,12 @@ function beeps(times = 5) {
   }
 }
 
+// Aviso en el servidor: si la app pasa a segundo plano, llega una notificación al acabar el descanso
+const serverRest = {
+  start: (seconds: number) => { void supabase.rpc('gym_rest_start', { p_seconds: Math.max(5, Math.min(1800, Math.round(seconds))) }) },
+  cancel: () => { void supabase.rpc('gym_rest_cancel') }
+}
+
 const soundPref = () => { try { return localStorage.getItem('gym-sonido') !== 'off' } catch { return true } }
 
 function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; live: boolean; onClose: () => void; onFinished: () => void }) {
@@ -137,6 +145,8 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
   const [confirming, setConfirming] = useState(false)
   const [sound, setSound] = useState(soundPref)
   const [alarm, setAlarm] = useState(false)
+  const [pushOn, setPushOn] = useState(true)
+  const lastAlarm = useRef(0)
   const pulseTimers = useRef<number[]>([])
   const stopPulses = () => {
     pulseTimers.current.forEach(t => clearTimeout(t))
@@ -161,17 +171,54 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
     return () => { document.removeEventListener('visibilitychange', onVisible); void lock?.release().catch(() => {}) }
   }, [live])
 
+  function ring() {
+    lastAlarm.current = Date.now()
+    stopPulses()
+    pulseTimers.current = vibratePulses()
+    if (sound) beeps(PULSES)
+    setRest(null)
+    setAlarm(true)
+  }
+
   // Aviso al terminar el descanso: 5 vibraciones largas, 5 pitidos y la barra parpadea
   useEffect(() => {
     if (rest && now >= rest.until) {
-      stopPulses()
-      pulseTimers.current = vibratePulses()
-      if (sound) beeps(PULSES)
-      setRest(null)
-      setAlarm(true)
+      ring()
+      serverRest.cancel() // ya ha avisado la app: no hace falta la notificación
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now, rest, sound])
+
+  // Al volver a la app (o reabrirla) se recupera el descanso en curso
+  useEffect(() => {
+    if (!live) return
+    const load = async () => {
+      const { data } = await supabase.from('gym_timers').select('fire_at').maybeSingle()
+      const until = data ? new Date(data.fire_at as string).getTime() : 0
+      if (until > Date.now()) setRest(r => (r && Math.abs(r.until - until) < 2000 ? r : { until, total: Math.round((until - Date.now()) / 1000) }))
+    }
+    void load()
+    const onVisible = () => { if (document.visibilityState === 'visible') void load() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [live])
+
+  // Si el aviso llega del servidor con la app a la vista, suena aquí (salvo que ya haya sonado)
+  useEffect(() => {
+    const onPush = (e: Event) => {
+      e.preventDefault()
+      if (Date.now() - lastAlarm.current > 20000) ring()
+    }
+    window.addEventListener('gym-rest', onPush)
+    return () => window.removeEventListener('gym-rest', onPush)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sound])
+
+  // ¿Están activados los avisos en este móvil? Sin ellos no puede sonar con la app cerrada
+  useEffect(() => {
+    if (!live) return
+    pushStatus().then(st => setPushOn(st.state === 'on')).catch(() => {})
+  }, [live])
 
   // El aviso en pantalla se oculta solo a los 6 segundos
   useEffect(() => {
@@ -206,6 +253,7 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
     await g.updateSet(x.id, { done: !x.done })
     if (!x.done && live && x.rest_seconds > 0 && g.exerciseById(x.exercise_id)?.kind !== 'cardio') {
       setRest({ until: Date.now() + x.rest_seconds * 1000, total: x.rest_seconds })
+      serverRest.start(x.rest_seconds)
     }
   }
 
@@ -225,6 +273,12 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
         <ExerciseBlock key={ex.id} ex={ex} sets={xs} g={g} sessionId={s.id} onToggle={toggleDone} />
       ))}
 
+      {live && !pushOn && (
+        <p className="text-xs text-muted bg-card rounded-xl px-3 py-2">
+          🔔 Para que el descanso te avise con la app en segundo plano o la pantalla apagada, activa los avisos en <b>Perfil → Avisos</b>.
+        </p>
+      )}
+
       <button onClick={() => setPicker(true)} className="min-h-12 rounded-xl border border-dashed border-line text-accent font-semibold">+ Añadir ejercicio</button>
 
       {live ? (
@@ -233,7 +287,7 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
         <ConfirmDelete label="Eliminar este entreno" confirming={confirming} setConfirming={setConfirming} onConfirm={async () => { await g.deleteSession(s.id); onClose() }} />
       )}
       {live && (
-        <ConfirmDelete label="Descartar entreno" confirming={confirming} setConfirming={setConfirming} onConfirm={() => g.deleteSession(s.id)} />
+        <ConfirmDelete label="Descartar entreno" confirming={confirming} setConfirming={setConfirming} onConfirm={() => { serverRest.cancel(); return g.deleteSession(s.id) }} />
       )}
 
       {rest && (
@@ -243,9 +297,9 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
             <span className="text-[22px] font-bold tabular-nums flex-1">
               {Math.floor(Math.max(0, rest.until - now) / 60000)}:{String(Math.floor((Math.max(0, rest.until - now) % 60000) / 1000)).padStart(2, '0')}
             </span>
-            <button onClick={() => setRest(r => (r ? { ...r, until: r.until + 30000 } : r))} className="min-h-10 px-2 rounded-lg bg-bg/15 font-semibold text-[12px] whitespace-nowrap shrink-0">+30 s</button>
+            <button onClick={() => { if (!rest) return; const until = rest.until + 30000; setRest({ ...rest, until }); serverRest.start((until - Date.now()) / 1000) }} className="min-h-10 px-2 rounded-lg bg-bg/15 font-semibold text-[12px] whitespace-nowrap shrink-0">+30 s</button>
             <button onClick={toggleSound} aria-label={sound ? 'Silenciar pitidos' : 'Activar pitidos'} className="min-h-10 w-9 rounded-lg bg-bg/15 text-base shrink-0">{sound ? '🔔' : '🔕'}</button>
-            <button onClick={() => setRest(null)} className="min-h-10 px-2 rounded-lg bg-bg/15 font-semibold text-[12px] whitespace-nowrap shrink-0">Saltar</button>
+            <button onClick={() => { setRest(null); serverRest.cancel() }} className="min-h-10 px-2 rounded-lg bg-bg/15 font-semibold text-[12px] whitespace-nowrap shrink-0">Saltar</button>
           </div>
         </div>
       )}
@@ -266,7 +320,7 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
         <Sheet title="Terminar entreno" onClose={() => setFinishing(false)}>
           <p className="text-sm text-muted -mt-3">{doneCount} series hechas en {mins} min. Las series sin marcar no se guardan.</p>
           <TextArea label="Notas (opcional)" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} placeholder="Cómo te has sentido, molestias, qué subir la próxima vez…" />
-          <button onClick={async () => { setFinishing(false); await g.finishSession(s.id, notes); onFinished() }}
+          <button onClick={async () => { setFinishing(false); setRest(null); serverRest.cancel(); await g.finishSession(s.id, notes); onFinished() }}
             className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Guardar y terminar</button>
         </Sheet>
       )}

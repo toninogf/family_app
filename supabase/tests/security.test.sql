@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(73);
+select plan(80);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -59,6 +59,7 @@ select ok(public.test_fails('select count(*) from public.school_menu'), 'Anónim
 select ok(public.test_fails('select count(*) from public.homes'), 'Anónimo: no puede leer los pisos');
 select ok(public.test_fails('select count(*) from public.event_categories'), 'Anónimo: no puede leer las categorías');
 select ok(public.test_fails('select count(*) from public.buyer_visits'), 'Anónimo: no puede leer las visitas de compradores');
+select ok(public.test_fails('select public.gym_rest_start(60)'), 'Anónimo: no puede programar un descanso');
 reset role;
 
 -- ---------- Toni con contraseña pero SIN 2FA (aal1) ----------
@@ -71,6 +72,7 @@ select is((select count(*) from public.tasks), 0::bigint, 'Sin 2FA: no ve tareas
 select is((select count(*) from public.money_balances), 0::bigint, 'Sin 2FA: no ve saldos');
 select ok(public.test_fails(format('insert into public.expenses (household_id, amount_cents, description) values (%L, 500, %L)', current_setting('test.hh'), 'x')),
   'Sin 2FA: no puede crear gastos');
+select ok(public.test_fails('select public.gym_rest_start(60)'), 'Sin 2FA: no puede programar un descanso');
 reset role;
 
 -- ---------- Toni con 2FA (aal2) ----------
@@ -109,6 +111,8 @@ select set_config('test.toni_session', (select id::text from public.gym_sessions
 select ok(not public.test_fails($$ insert into public.member_preferences (member_id, household_id, gym_share, gym_days, gym_start, gym_end)
   values (gen_random_uuid(), gen_random_uuid(), true, '{1,3}', '19:00', '20:00') $$), 'Toni guarda sus preferencias (se corrigen dueño y hogar)');
 select is((select count(*) from public.events where title = 'Gimnasio'), 1::bigint, 'Si comparte, sale «Gimnasio» en la Agenda familiar');
+select ok(not public.test_fails('select public.gym_rest_start(90)'), 'Toni programa el aviso de fin de descanso');
+select ok(public.test_fails('insert into public.gym_timers (member_id, fire_at) values (gen_random_uuid(), now())'), 'Los descansos no se escriben directamente');
 -- Compra: mover artículos entre listas
 select ok(not public.test_fails($$ update public.shopping_items set list_id = (select id from public.shopping_lists where name = 'Farmacia') where name = 'Leche' $$),
   'Se puede mover un artículo a otra lista de la familia');
@@ -154,6 +158,8 @@ select is((select count(*) from public.gym_exercises), 29::bigint, 'Rebeca solo 
 select ok(public.test_fails(format('insert into public.gym_sets (session_id, exercise_id) values (%L, %L)', current_setting('test.toni_session'),
   (select id from public.gym_exercises limit 1))), 'Rebeca no puede escribir en un entreno de Toni');
 select is((select count(*) from public.member_preferences), 0::bigint, 'Rebeca no ve las preferencias de Toni');
+select is((select count(*) from public.gym_timers), 0::bigint, 'Rebeca no ve el descanso de Toni');
+select ok(not public.test_fails('select public.gym_rest_cancel()') and (select count(*) from public.gym_timers) = 0, 'Rebeca solo cancela lo suyo');
 update public.home_ratings set score = 1;
 select is((select score from public.home_ratings limit 1), 4::smallint, 'Rebeca no puede cambiar la nota de Toni');
 reset role;
@@ -172,6 +178,7 @@ select is((select count(*) from public.event_categories), 1::bigint, 'Otro hogar
 select is((select count(*) from public.gym_body), 0::bigint, 'Otro hogar: no ve datos del gimnasio');
 select ok(public.test_fails(format('select public.remove_child(%L)', current_setting('test.kid'))), 'Otro hogar: no puede eliminar vuestros niños');
 reset role;
+select is((select count(*) from public.gym_timers), 1::bigint, 'El descanso de Toni sigue programado (nadie más lo ha tocado)');
 
 select * from finish();
 rollback;
