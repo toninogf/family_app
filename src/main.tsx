@@ -10,13 +10,18 @@ registerSW({
   immediate: true,
   onRegisteredSW(_url, registration) {
     if (!registration) return
+    // Si Cloudflare Access ha caducado, la descarga de la versión nueva se redirige al login y falla:
+    // solo entonces (y con conexión) se avisa para renovar. Si la comprobación va bien, el aviso se quita.
+    let fails = 0
     const check = () => {
-      registration.update().catch(() => {})
-      // Si Cloudflare Access ha caducado, la comprobación de versión se redirige al login y la app
-      // se quedaría en una versión vieja sin avisar: lo detectamos y mostramos un aviso para renovar.
-      fetch('/sw.js', { cache: 'no-store', redirect: 'manual', credentials: 'include' })
-        .then(r => { if (r.type === 'opaqueredirect' || r.status === 0 || r.status === 401 || r.status === 403) window.dispatchEvent(new Event('access-expired')) })
-        .catch(() => {})
+      registration.update()
+        .then(() => { fails = 0; window.dispatchEvent(new Event('access-ok')) })
+        .catch(() => {
+          if (!navigator.onLine) return
+          fails++
+          if (fails >= 2) window.dispatchEvent(new Event('access-expired'))
+          else setTimeout(check, 4000) // un segundo intento por si fue un fallo puntual
+        })
     }
     check()
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check() })
