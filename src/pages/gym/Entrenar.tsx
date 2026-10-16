@@ -5,7 +5,7 @@ import { fold } from '../../data/places'
 import { Card } from '../../components/ui'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
 import { supabase } from '../../lib/supabase'
-import { pushStatus } from '../../lib/push'
+import { gymPushOn, pushStatus } from '../../lib/push'
 
 export default function Entrenar({ g, gymDays }: { g: Gym; gymDays: number[] }) {
   const [viewing, setViewing] = useState<string | null>(null)
@@ -131,7 +131,7 @@ function beeps(times = 5) {
 // Aviso en el servidor: si la app pasa a segundo plano, llega una notificación al acabar el descanso
 // Ojo: las peticiones de Supabase no salen hasta que se pide su resultado (.then), por eso no basta con «void»
 const serverRest = {
-  start: (seconds: number) => { supabase.rpc('gym_rest_start', { p_seconds: Math.max(5, Math.min(1800, Math.round(seconds))) }).then(() => {}, () => {}) },
+  start: (seconds: number) => { if (!gymPushOn()) return; supabase.rpc('gym_rest_start', { p_seconds: Math.max(5, Math.min(1800, Math.round(seconds))) }).then(() => {}, () => {}) },
   cancel: () => { supabase.rpc('gym_rest_cancel').then(() => {}, () => {}) }
 }
 
@@ -218,7 +218,7 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
   // ¿Están activados los avisos en este móvil? Sin ellos no puede sonar con la app cerrada
   useEffect(() => {
     if (!live) return
-    pushStatus().then(st => setPushOn(st.state === 'on')).catch(() => {})
+    pushStatus().then(st => setPushOn(st.state === 'on' || !gymPushOn())).catch(() => {})
   }, [live])
 
   // El aviso en pantalla se oculta solo a los 6 segundos

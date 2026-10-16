@@ -60,6 +60,10 @@ export async function updatePushPrefs(prefs: PushPrefs) {
   await supabase.from('push_subscriptions').update(prefs).eq('endpoint', sub.endpoint)
 }
 
+/** Aviso de fin de descanso del gimnasio en este dispositivo (activado salvo que se apague) */
+export function gymPushOn() { try { return localStorage.getItem('gym-push') !== 'off' } catch { return true } }
+export function setGymPushOn(v: boolean) { try { localStorage.setItem('gym-push', v ? 'on' : 'off') } catch { /* nada */ } }
+
 export async function sendTestPush(): Promise<string | null> {
   const { data, error } = await supabase.functions.invoke('notify', { body: { mode: 'test' } })
   if (error) return 'No se pudo enviar el aviso de prueba.'

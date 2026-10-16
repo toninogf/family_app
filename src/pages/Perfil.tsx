@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { useHousehold } from '../lib/household'
-import { disablePush, enablePush, pushStatus, sendTestPush, updatePushPrefs, type PushStatus } from '../lib/push'
+import { disablePush, enablePush, pushStatus, sendTestPush, updatePushPrefs, type PushStatus, gymPushOn, setGymPushOn } from '../lib/push'
 import { Button, Card, ErrorText, Field } from '../components/ui'
 import FamilyPanel, { Avatar } from '../components/FamilyPanel'
 import AuthenticatorsCard from '../components/AuthenticatorsCard'
@@ -120,6 +120,7 @@ function PushCard() {
   const [status, setStatus] = useState<PushStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
+  const [gym, setGym] = useState(gymPushOn)
 
   const refresh = () => pushStatus().then(setStatus).catch(() => setStatus({ state: 'unsupported', reason: 'no-support' }))
   useEffect(() => { refresh() }, [])
@@ -153,7 +154,7 @@ function PushCard() {
     <Card className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <h2 className="font-bold text-[15px]">Avisos en este dispositivo</h2>
-        <p className="text-sm text-muted">La agenda del día cada mañana y un resumen el domingo por la tarde.</p>
+        <p className="text-sm text-muted">La agenda del día cada mañana, un resumen el domingo por la tarde y el fin de descanso en el gimnasio.</p>
       </div>
 
       {status === null ? <p className="text-sm text-muted">Comprobando…</p>
@@ -175,6 +176,13 @@ function PushCard() {
                 <input type="checkbox" checked={status.prefs[k]} onChange={() => toggle(k)} className="w-5 h-5 accent-[var(--app-accent)]" />
               </label>
             ))}
+            <label className="flex items-center justify-between min-h-12">
+              <span className="flex flex-col">
+                <span className="text-[15px]">Fin de descanso del gimnasio</span>
+                <span className="text-xs text-muted">Avisa aunque la app esté en segundo plano</span>
+              </span>
+              <input type="checkbox" checked={gym} onChange={() => { setGymPushOn(!gym); setGym(!gym) }} className="w-5 h-5 accent-[var(--app-accent)]" />
+            </label>
             <div className="flex gap-2 pt-1">
               <button onClick={test} className="min-h-11 px-4 rounded-xl border border-line bg-card text-accent text-sm font-semibold">Enviar prueba</button>
               <button onClick={turnOff} disabled={busy} className="min-h-11 px-4 text-sm text-muted">Desactivar</button>
