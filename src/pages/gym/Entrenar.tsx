@@ -129,9 +129,10 @@ function beeps(times = 5) {
 }
 
 // Aviso en el servidor: si la app pasa a segundo plano, llega una notificación al acabar el descanso
+// Ojo: las peticiones de Supabase no salen hasta que se pide su resultado (.then), por eso no basta con «void»
 const serverRest = {
-  start: (seconds: number) => { void supabase.rpc('gym_rest_start', { p_seconds: Math.max(5, Math.min(1800, Math.round(seconds))) }) },
-  cancel: () => { void supabase.rpc('gym_rest_cancel') }
+  start: (seconds: number) => { supabase.rpc('gym_rest_start', { p_seconds: Math.max(5, Math.min(1800, Math.round(seconds))) }).then(() => {}, () => {}) },
+  cancel: () => { supabase.rpc('gym_rest_cancel').then(() => {}, () => {}) }
 }
 
 const soundPref = () => { try { return localStorage.getItem('gym-sonido') !== 'off' } catch { return true } }
