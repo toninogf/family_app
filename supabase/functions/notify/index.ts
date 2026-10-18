@@ -142,7 +142,18 @@ Deno.serve(async (req: Request) => {
       .filter(a => !a.cancelled)
       .sort((a, b) => a.start.localeCompare(b.start))
 
+    // Flexibles («Sin fecha» y «cada X días»): hace falta su última vez, sea cuando sea
+    const flexIds = (tasks ?? []).filter(t => t.repeat === 'anytime' || t.repeat === 'interval').map(t => t.id)
+    const { data: flexComps } = flexIds.length
+      ? await db.from('task_completions').select('task_id, occurrence_date').in('task_id', flexIds)
+      : { data: [] as { task_id: string; occurrence_date: string }[] }
+    const lastOf = (id: string) => (flexComps ?? []).filter(c => c.task_id === id).map(c => c.occurrence_date as string).sort().pop()
+
     const tasksToday = (tasks ?? []).filter(t => {
+      // «Sin fecha»: solo si vence hoy o mañana, o ya ha vencido, y no está hecha
+      if (t.repeat === 'anytime') return !!t.due_date && t.due_date <= addDays(today, 1) && !lastOf(t.id)
+      // «Cada X días»: cuando vuelve a tocar (o si se ha pasado)
+      if (t.repeat === 'interval') { const last = lastOf(t.id); return (last ? addDays(last, t.interval_days ?? 1) : t.start_date) <= today }
       if (today < t.start_date) return false
       if (t.repeat === 'none') return t.start_date === today
       if (t.repeat === 'daily') return true

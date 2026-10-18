@@ -9,8 +9,8 @@ import { useIconCategories, type IconCategories } from '../lib/categories'
 import IconCategoriesSheet from '../components/IconCategoriesSheet'
 import { useHousehold } from '../lib/household'
 import type { Member } from '../lib/supabase'
-import { addDays, parseISO, relativeDay, today } from '../lib/dates'
-import { occurrencesBetween, repeatLabel, useTasks, type Occurrence, type Repeat, type Task, type TaskInput } from '../lib/home'
+import { addDays, parseISO, relativeDay, shortDate, today } from '../lib/dates'
+import { anytimeTasks, lastDone, occurrencesBetween, repeatLabel, useTasks, type Occurrence, type Repeat, type Task, type TaskInput } from '../lib/home'
 import { Card } from '../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
 
@@ -76,6 +76,7 @@ function Tareas() {
   const overdue = occ.filter(o => o.date < t && visible(o))
   const todays = occ.filter(o => o.date === t && visible(o))
   const upcoming = occ.filter(o => o.date > t && visible(o))
+  const anytime = useMemo(() => anytimeTasks(tasks, completions, t), [tasks, completions, t]).filter(visible)
   const byDay = useMemo(() => {
     const m = new Map<string, Occurrence[]>()
     for (const o of upcoming) m.set(o.date, [...(m.get(o.date) ?? []), o])
@@ -121,6 +122,7 @@ function Tareas() {
         <>
           {overdue.length > 0 && <TaskGroup title="Pendientes de otros días" items={overdue} members={members} me={me} cats={cats} onToggle={toggle} showDate />}
           <TaskGroup title="Hoy" items={todays} members={members} me={me} cats={cats} onToggle={toggle} empty="Nada para hoy." />
+          {anytime.length > 0 && <TaskGroup title="Sin fecha" items={anytime} members={members} me={me} cats={cats} onToggle={toggle} onOpen={task => setSheet({ open: true, task })} />}
           {byDay.map(([day, items]) => (
             <TaskGroup key={day} title={relativeDay(day)} items={items} members={members} me={me} cats={cats} onToggle={toggle} />
           ))}
@@ -135,6 +137,7 @@ function Tareas() {
           adults={adults}
           cats={cats}
           defaultCategory={cat !== 'all' && cat !== 'none' ? cat : null}
+          lastDoneDate={sheet.task ? lastDone(sheet.task, completions)?.occurrence_date : undefined}
           onClose={() => setSheet({ open: false })}
           onSave={async input => { const err = await save(me.household_id, input, sheet.task?.id); if (!err) setSheet({ open: false }); return err?.message }}
           onToggleActive={sheet.task ? async () => { await setActive(sheet.task!.id, !sheet.task!.active); setSheet({ open: false }) } : undefined}
@@ -149,8 +152,20 @@ export function assigneeName(id: string | null, members: Member[]) {
   return id ? members.find(m => m.id === id)?.display_name ?? '¿?' : 'Cualquiera'
 }
 
-export function TaskGroup({ title, items, members, me, cats, onToggle, empty, showDate }: {
+/** Texto bajo la tarea: cuándo tocaba, quién la hizo o su frecuencia */
+function taskSubtitle(o: Occurrence, showDate?: boolean) {
+  const t = today()
+  if (o.task.repeat === 'anytime') {
+    if (!o.date) return 'Sin fecha'
+    return o.date < t ? `Vencida · era para ${relativeDay(o.date).toLowerCase()}` : o.date === t ? 'Vence hoy' : `Antes del ${shortDate(o.date)}`
+  }
+  const when = o.task.repeat === 'interval' && !o.done && o.date < t ? `Tocaba ${relativeDay(o.date).toLowerCase()} · ` : showDate ? `${relativeDay(o.date)} · ` : ''
+  return when + (o.task.repeat !== 'none' ? repeatLabel(o.task) : 'Una vez')
+}
+
+export function TaskGroup({ title, items, members, me, cats, onToggle, empty, showDate, onOpen }: {
   title: string; items: Occurrence[]; members: Member[]; me: Member | null; cats?: IconCategories; onToggle: (o: Occurrence) => void; empty?: string; showDate?: boolean
+  onOpen?: (t: Task) => void
 }) {
   if (!items.length && !empty) return null
   return (
@@ -162,17 +177,20 @@ export function TaskGroup({ title, items, members, me, cats, onToggle, empty, sh
             {items.map((o, idx) => {
               const assignee = o.task.assignee_id ? members.find(m => m.id === o.task.assignee_id) : null
               const doneBy = o.done?.done_by && o.done.done_by !== me?.id ? members.find(m => m.id === o.done!.done_by)?.display_name : null
+              const late = !o.done && !!o.date && o.date < today() && (o.task.repeat === 'anytime' || o.task.repeat === 'interval')
               return (
                 <li key={`${o.task.id}-${o.date}`} className={idx < items.length - 1 ? 'border-b border-line' : ''}>
                   <label className="flex items-center gap-3 min-h-13 py-2">
                     <input type="checkbox" checked={!!o.done} onChange={() => onToggle(o)} className="w-5 h-5 accent-[var(--app-accent)]" />
                     <span className="flex-1 flex flex-col">
                       <span className={`text-[15px] ${o.done ? 'line-through text-muted' : ''}`}>{cats?.byId(o.task.category_id)?.icon ? `${cats.byId(o.task.category_id)!.icon} ` : ''}{o.task.title}</span>
-                      <span className="text-xs text-muted">
-                        {showDate ? `${relativeDay(o.date)} · ` : ''}
-                        {doneBy ? `Hecha por ${doneBy}` : o.task.repeat !== 'none' ? repeatLabel(o.task) : 'Una vez'}
+                      <span className={`text-xs ${late ? 'text-danger font-semibold' : 'text-muted'}`}>
+                        {doneBy ? `Hecha por ${doneBy}` : taskSubtitle(o, showDate)}
                       </span>
                     </span>
+                    {onOpen && (
+                      <button type="button" onClick={e => { e.preventDefault(); onOpen(o.task) }} aria-label={`Editar ${o.task.title}`} className="w-8 h-10 text-muted text-lg shrink-0">⋯</button>
+                    )}
                     {assignee ? (
                       <span className="text-xs font-semibold px-2 py-1 rounded-lg flex items-center gap-1.5 bg-bg">
                         <span className="w-2 h-2 rounded-full" style={{ background: assignee.color }} aria-hidden="true" />{assignee.display_name}
@@ -189,8 +207,8 @@ export function TaskGroup({ title, items, members, me, cats, onToggle, empty, sh
   )
 }
 
-function TaskSheet({ task, adults, cats, defaultCategory, onClose, onSave, onToggleActive, onDelete }: {
-  task?: Task; adults: Member[]; cats: IconCategories; defaultCategory: string | null; onClose: () => void
+function TaskSheet({ task, adults, cats, defaultCategory, lastDoneDate, onClose, onSave, onToggleActive, onDelete }: {
+  task?: Task; adults: Member[]; cats: IconCategories; defaultCategory: string | null; lastDoneDate?: string; onClose: () => void
   onSave: (input: TaskInput) => Promise<string | undefined>; onToggleActive?: () => Promise<void>; onDelete?: () => Promise<void>
 }) {
   const [title, setTitle] = useState(task?.title ?? '')
@@ -200,6 +218,8 @@ function TaskSheet({ task, adults, cats, defaultCategory, onClose, onSave, onTog
   const [weekdays, setWeekdays] = useState<number[]>(task?.weekdays?.length ? task.weekdays : [])
   const [startDate, setStartDate] = useState(task?.start_date ?? today())
   const [monthDay, setMonthDay] = useState(String(task?.month_day ?? parseISO(today()).getDate()))
+  const [dueDate, setDueDate] = useState(task?.due_date ?? '')
+  const [every, setEvery] = useState(String(task?.interval_days ?? 7))
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -210,8 +230,22 @@ function TaskSheet({ task, adults, cats, defaultCategory, onClose, onSave, onTog
     if (repeat === 'weekly' && !weekdays.length) { setError('Elige al menos un día'); return }
     const md = parseInt(monthDay, 10)
     if (repeat === 'monthly' && !(md >= 1 && md <= 31)) { setError('Día del mes entre 1 y 31'); return }
+    const n = parseInt(every, 10)
+    if (repeat === 'interval' && !(n >= 1 && n <= 365)) { setError('Cada cuántos días: entre 1 y 365'); return }
     setBusy(true); setError('')
-    const err = await onSave({ title: title.trim(), category_id: categoryId, assignee_id: assignee, repeat, weekdays, month_day: repeat === 'monthly' ? md : null, start_date: startDate })
+    const err = await onSave({
+      title: title.trim(), category_id: categoryId, assignee_id: assignee, repeat, weekdays, month_day: repeat === 'monthly' ? md : null,
+      start_date: repeat === 'anytime' ? (task?.start_date ?? today()) : startDate,
+      due_date: repeat === 'anytime' && dueDate ? dueDate : null, interval_days: repeat === 'interval' ? n : null
+    })
+    setBusy(false)
+    if (err) setError(err)
+  }
+
+  /** Pasa una tarea «Sin fecha» a un día concreto */
+  async function planFor(day: string) {
+    setBusy(true); setError('')
+    const err = await onSave({ title: title.trim() || task!.title, category_id: categoryId, assignee_id: assignee, repeat: 'none', weekdays: [], month_day: null, start_date: day, due_date: null, interval_days: null })
     setBusy(false)
     if (err) setError(err)
   }
@@ -225,14 +259,39 @@ function TaskSheet({ task, adults, cats, defaultCategory, onClose, onSave, onTog
         <Choice label="¿Quién se encarga?" value={assignee} onChange={setAssignee}
           options={[{ value: null, label: 'Cualquiera' }, ...adults.map(a => ({ value: a.id as string | null, label: a.display_name, color: a.color }))]} />
         <Choice<Repeat> label="¿Cuándo?" value={repeat} onChange={setRepeat}
-          options={[{ value: 'none', label: 'Una vez' }, { value: 'daily', label: 'Cada día' }, { value: 'weekly', label: 'Cada semana' }, { value: 'monthly', label: 'Cada mes' }]} />
+          options={[{ value: 'none', label: 'Una vez' }, { value: 'daily', label: 'Cada día' }, { value: 'weekly', label: 'Cada semana' }, { value: 'monthly', label: 'Cada mes' },
+            { value: 'anytime', label: 'Sin fecha' }, { value: 'interval', label: 'Cada X días' }]} />
         {repeat === 'weekly' && <WeekdayPicker value={weekdays} onChange={setWeekdays} />}
         {repeat === 'monthly' && <TextField label="Día del mes" inputMode="numeric" value={monthDay} onChange={e => setMonthDay(e.target.value)} />}
-        <TextField label={repeat === 'none' ? 'Fecha' : 'A partir de'} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+        {repeat === 'anytime' ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-end gap-2">
+              <div className="flex-1"><TextField label="Fecha límite (opcional)" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></div>
+              {dueDate && <button type="button" onClick={() => setDueDate('')} className="min-h-12 px-3 text-sm text-muted">Quitar</button>}
+            </div>
+            <p className="text-xs text-muted">Sale en «Sin fecha» hasta que la hagáis. En Hoy solo aparece cuando vence hoy o mañana, o si ya ha vencido.</p>
+          </div>
+        ) : (
+          <>
+            {repeat === 'interval' && (
+              <div className="flex flex-col gap-1.5">
+                <TextField label="¿Cada cuántos días?" inputMode="numeric" value={every} onChange={e => setEvery(e.target.value.replace(/\D/g, ''))} />
+                <p className="text-xs text-muted">Vuelve a tocar {every || 'X'} días después de la última vez que se hizo{lastDoneDate ? ` (última: ${relativeDay(lastDoneDate).toLowerCase()})` : ''}.</p>
+              </div>
+            )}
+            <TextField label={repeat === 'none' ? 'Fecha' : repeat === 'interval' ? (lastDoneDate ? 'Empezó el' : 'Primera vez') : 'A partir de'} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+          </>
+        )}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" disabled={busy} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">
           {busy ? 'Guardando…' : task ? 'Guardar cambios' : 'Añadir tarea'}
         </button>
+        {task?.repeat === 'anytime' && repeat === 'anytime' && (
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={() => planFor(today())} className="flex-1 py-3 rounded-xl border border-line bg-card font-semibold text-sm">📌 Hacerla hoy</button>
+            <button type="button" disabled={busy} onClick={() => planFor(addDays(today(), 1))} className="flex-1 py-3 rounded-xl border border-line bg-card font-semibold text-sm">Mañana</button>
+          </div>
+        )}
         {task && onToggleActive && (
           <button type="button" onClick={onToggleActive} className="py-3 rounded-xl border border-line bg-card font-semibold">
             {task.active ? '⏸️ Pausar tarea (deja de salir hasta que la reanudes)' : '▶️ Reanudar tarea'}

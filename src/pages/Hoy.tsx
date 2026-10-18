@@ -9,7 +9,7 @@ import { mudanzaSummary } from '../lib/mudanza'
 import { gymSummary } from '../lib/gym'
 import { usePrefs, type SectionKey } from '../lib/prefs'
 import MenuCard from '../components/MenuCard'
-import { occurrencesBetween, useTasks } from '../lib/home'
+import { anytimeDueSoon, occurrencesBetween, useTasks } from '../lib/home'
 import { agendaFor, useEvents } from '../lib/kids'
 import { useIconCategories } from '../lib/categories'
 import { Card } from '../components/ui'
@@ -52,6 +52,7 @@ export default function Hoy() {
   const occ = useMemo(() => occurrencesBetween(tk.tasks, tk.completions, t, t, true), [tk.tasks, tk.completions, t])
   const overdue = occ.filter(o => o.date < t)
   const todays = occ.filter(o => o.date === t)
+  const dueSoon = useMemo(() => anytimeDueSoon(tk.tasks, tk.completions, t), [tk.tasks, tk.completions, t])
 
   const sections: Record<SectionKey, ReactNode> = {
     saldo: (
@@ -104,6 +105,7 @@ export default function Hoy() {
         <>
           {overdue.length > 0 && <TaskGroup title="Tareas pendientes" items={overdue} members={members} me={me} onToggle={tk.toggle} showDate />}
           <TaskGroup title="Tareas de hoy" items={todays} members={members} me={me} onToggle={tk.toggle} empty="Nada para hoy." />
+          {dueSoon.length > 0 && <TaskGroup title="Sin fecha · vencen ya" items={dueSoon} members={members} me={me} onToggle={tk.toggle} />}
         </>
       )}
     </>

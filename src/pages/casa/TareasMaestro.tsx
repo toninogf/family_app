@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Member } from '../../lib/supabase'
 import { addDays, today, WEEKDAY_SHORT } from '../../lib/dates'
-import { occurrencesBetween, repeatLabel, useTasks, type Repeat, type Task } from '../../lib/home'
+import { isFlexible, occurrencesBetween, repeatLabel, useTasks, type Repeat, type Task } from '../../lib/home'
 import type { IconCategories } from '../../lib/categories'
 import { fold } from '../../data/places'
 import { Card } from '../../components/ui'
@@ -47,8 +47,10 @@ export default function TareasMaestro({ members, cats, who, cat, onOpen }: {
     const people = [...adults.map(a => ({ id: a.id as string | null, name: a.display_name, color: a.color })), { id: null, name: 'Cualquiera', color: '#5B6662' }]
     return people.map(p => {
       const mine = past.filter(o => o.task.assignee_id === p.id)
-      const done = mine.filter(o => o.done).length
-      return { ...p, week: next.filter(o => o.task.assignee_id === p.id).length, done, total: mine.length }
+      // Las flexibles cuentan cada vez que se hicieron en el último mes
+      const flexDone = completions.filter(c => c.occurrence_date >= monthAgo && c.occurrence_date < t && tasks.some(x => x.id === c.task_id && isFlexible(x) && x.assignee_id === p.id)).length
+      const done = mine.filter(o => o.done).length + flexDone
+      return { ...p, week: next.filter(o => o.task.assignee_id === p.id).length, done, total: mine.length + flexDone }
     })
   }, [tasks, completions, t, monthAgo, adults])
 
@@ -70,7 +72,7 @@ export default function TareasMaestro({ members, cats, who, cat, onOpen }: {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar tarea…" aria-label="Buscar"
           className="w-full min-h-11 px-4 rounded-xl border border-line bg-card text-[16px]" />
         <ChipRow<'all' | Repeat> value={freq} onChange={setFreq}
-          options={[['all', 'Cualquier frecuencia'], ['daily', 'Diarias'], ['weekly', 'Semanales'], ['monthly', 'Mensuales'], ['none', 'Una vez']]} />
+          options={[['all', 'Cualquier frecuencia'], ['daily', 'Diarias'], ['weekly', 'Semanales'], ['monthly', 'Mensuales'], ['none', 'Una vez'], ['anytime', 'Sin fecha'], ['interval', 'Cada X días']]} />
         <ChipRow<Estado> value={estado} onChange={setEstado} options={[['activas', 'Activas'], ['pausadas', 'Pausadas'], ['todas', 'Todas']]} />
         <div className="flex gap-1">
           <button onClick={() => setDay(0)} aria-pressed={day === 0} className={`h-9 px-2.5 rounded-lg text-[12px] font-semibold ${day === 0 ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>Día</button>
