@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(80);
+select plan(82);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -112,6 +112,10 @@ select ok(not public.test_fails($$ insert into public.member_preferences (member
   values (gen_random_uuid(), gen_random_uuid(), true, '{1,3}', '19:00', '20:00') $$), 'Toni guarda sus preferencias (se corrigen dueño y hogar)');
 select is((select count(*) from public.events where title = 'Gimnasio'), 1::bigint, 'Si comparte, sale «Gimnasio» en la Agenda familiar');
 select ok(not public.test_fails('select public.gym_rest_start(90)'), 'Toni programa el aviso de fin de descanso');
+select ok(not public.test_fails(format('insert into public.tasks (household_id, title, repeat, due_date) values (%L, %L, %L, current_date + 3)', current_setting('test.hh'), 'Llamar al fontanero', 'anytime')),
+  'Se puede crear una tarea «Sin fecha» con fecha límite');
+select ok(public.test_fails(format('insert into public.tasks (household_id, title, repeat) values (%L, %L, %L)', current_setting('test.hh'), 'Sábanas', 'interval')),
+  'Una tarea «cada X días» necesita el número de días');
 select ok(public.test_fails('insert into public.gym_timers (member_id, fire_at) values (gen_random_uuid(), now())'), 'Los descansos no se escriben directamente');
 -- Compra: mover artículos entre listas
 select ok(not public.test_fails($$ update public.shopping_items set list_id = (select id from public.shopping_lists where name = 'Farmacia') where name = 'Leche' $$),
