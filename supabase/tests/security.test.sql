@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(82);
+select plan(86);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -116,6 +116,10 @@ select ok(not public.test_fails(format('insert into public.tasks (household_id, 
   'Se puede crear una tarea «Sin fecha» con fecha límite');
 select ok(public.test_fails(format('insert into public.tasks (household_id, title, repeat) values (%L, %L, %L)', current_setting('test.hh'), 'Sábanas', 'interval')),
   'Una tarea «cada X días» necesita el número de días');
+insert into public.tasks (household_id, title, private) values (current_setting('test.hh')::uuid, 'Privada Toni', true);
+select set_config('test.private_task', (select id::text from public.tasks where title = 'Privada Toni'), true);
+select is((select assignee_id from public.tasks where title = 'Privada Toni'), (select id from public.members where email = 'toninogf@gmail.com'),
+  'Una tarea «Solo para mí» se asigna siempre a quien la crea');
 select ok(public.test_fails('insert into public.gym_timers (member_id, fire_at) values (gen_random_uuid(), now())'), 'Los descansos no se escriben directamente');
 -- Compra: mover artículos entre listas
 select ok(not public.test_fails($$ update public.shopping_items set list_id = (select id from public.shopping_lists where name = 'Farmacia') where name = 'Leche' $$),
@@ -163,6 +167,11 @@ select ok(public.test_fails(format('insert into public.gym_sets (session_id, exe
   (select id from public.gym_exercises limit 1))), 'Rebeca no puede escribir en un entreno de Toni');
 select is((select count(*) from public.member_preferences), 0::bigint, 'Rebeca no ve las preferencias de Toni');
 select is((select count(*) from public.gym_timers), 0::bigint, 'Rebeca no ve el descanso de Toni');
+select is((select count(*) from public.tasks where title = 'Privada Toni'), 0::bigint, 'Rebeca no ve las tareas privadas de Toni');
+select ok(public.test_fails(format('insert into public.task_completions (task_id, occurrence_date) values (%L, current_date)', current_setting('test.private_task'))),
+  'Rebeca no puede marcar como hecha una tarea privada de Toni');
+select ok(public.test_fails($$ update public.tasks set private = true where title = 'Tarea familia' $$),
+  'Nadie puede hacer privada una tarea compartida que no creó');
 select ok(not public.test_fails('select public.gym_rest_cancel()') and (select count(*) from public.gym_timers) = 0, 'Rebeca solo cancela lo suyo');
 update public.home_ratings set score = 1;
 select is((select score from public.home_ratings limit 1), 4::smallint, 'Rebeca no puede cambiar la nota de Toni');

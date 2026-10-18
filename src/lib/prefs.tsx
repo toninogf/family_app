@@ -2,12 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { supabase } from './supabase'
 import { useHousehold } from './household'
 
-export type TabKey = 'compra' | 'casa' | 'agenda' | 'dinero' | 'gym'
+/** «casa» es la pestaña de Tareas (se mantiene la clave para no perder lo que cada uno tenía guardado) */
+export type TabKey = 'compra' | 'casa' | 'mudanza' | 'agenda' | 'dinero' | 'gym'
 export type SectionKey = 'saldo' | 'agenda' | 'comedor' | 'tareas' | 'mudanza' | 'gym' | 'compra'
 
-export const ALL_TABS: TabKey[] = ['compra', 'casa', 'agenda', 'dinero', 'gym']
+export const ALL_TABS: TabKey[] = ['compra', 'casa', 'mudanza', 'agenda', 'dinero', 'gym']
 export const ALL_SECTIONS: SectionKey[] = ['saldo', 'agenda', 'comedor', 'tareas', 'mudanza', 'gym', 'compra']
-export const TAB_LABEL: Record<TabKey, string> = { compra: 'Compra', casa: 'Casa', agenda: 'Agenda', dinero: 'Dinero', gym: 'Gimnasio' }
+export const TAB_LABEL: Record<TabKey, string> = { compra: 'Compra', casa: 'Tareas', mudanza: 'Mudanza', agenda: 'Agenda', dinero: 'Dinero', gym: 'Gimnasio' }
 export const SECTION_LABEL: Record<SectionKey, string> = {
   saldo: 'Saldos y gasto del mes', agenda: 'Agenda de hoy', comedor: 'Comedor de hoy', tareas: 'Tareas',
   mudanza: 'Mudanza', gym: 'Entreno de hoy', compra: 'Compra'
