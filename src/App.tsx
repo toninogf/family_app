@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AuthGate from './auth/AuthGate'
 import { HouseholdProvider } from './lib/household'
 import BottomNav from './components/BottomNav'
@@ -6,7 +6,8 @@ import Hoy from './pages/Hoy'
 import Perfil from './pages/Perfil'
 import Compra from './pages/Compra'
 import Dinero from './pages/Dinero'
-import Casa from './pages/Casa'
+import Tareas from './pages/Casa'
+import Mudanza from './pages/Mudanza'
 import Ninos from './pages/Ninos'
 import Gym from './pages/Gym'
 import { PrefsProvider } from './lib/prefs'
@@ -23,7 +24,9 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Hoy />} />
             <Route path="/compra" element={<Compra />} />
-            <Route path="/casa" element={<Casa />} />
+            <Route path="/tareas" element={<Tareas />} />
+            <Route path="/mudanza" element={<Mudanza />} />
+            <Route path="/casa" element={<CasaRedirect />} />
             <Route path="/agenda" element={<Ninos />} />
             <Route path="/gym" element={<Gym />} />
             <Route path="/ninos" element={<Ninos />} />
@@ -38,4 +41,10 @@ export default function App() {
     </AuthGate>
     </>
   )
+}
+
+/** Enlaces antiguos a «Casa»: las tareas están en /tareas y la venta/compra en /mudanza */
+function CasaRedirect() {
+  const vista = new URLSearchParams(useLocation().search).get('vista')
+  return <Navigate replace to={vista === 'vendemos' || vista === 'buscamos' ? `/mudanza?vista=${vista}` : '/tareas'} />
 }

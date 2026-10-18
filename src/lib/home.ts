@@ -17,9 +17,12 @@ export type Task = {
   category_id: string | null
   due_date: string | null
   interval_days: number | null
+  /** «Solo para mí»: solo la ve quien la creó */
+  private: boolean
+  created_by: string | null
 }
 export type Completion = { id: string; task_id: string; occurrence_date: string; done_by: string | null }
-export type TaskInput = Omit<Task, 'id' | 'active'>
+export type TaskInput = Omit<Task, 'id' | 'active' | 'created_by'>
 export type Occurrence = { task: Task; date: string; done: Completion | undefined }
 
 export function occursOn(t: Task, date: string) {
@@ -110,7 +113,7 @@ export function useTasks(from: string, to: string, includePaused = false) {
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
-    const cols = 'id, title, assignee_id, repeat, weekdays, month_day, start_date, active, category_id, due_date, interval_days'
+    const cols = 'id, title, assignee_id, repeat, weekdays, month_day, start_date, active, category_id, due_date, interval_days, private, created_by'
     const [t, c] = await Promise.all([
       includePaused
         ? supabase.from('tasks').select(cols).order('created_at')

@@ -117,19 +117,19 @@ export default function Hoy() {
           <h2 className="text-base font-bold">Mudanza</h2>
           <div className="bg-card rounded-2xl flex flex-col">
             {mud.nextSale && (
-              <Link to="/casa?vista=vendemos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
+              <Link to="/mudanza?vista=vendemos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
                 <span className="text-[13px] text-muted">Próxima visita de compradores</span>
                 <span className="text-[15px] font-semibold">{relativeDay(mud.nextSale.visit_date)} · {hhmm(mud.nextSale.start_time)}{mud.nextSale.contact_name ? ` · ${mud.nextSale.contact_name}` : ''}</span>
               </Link>
             )}
             {mud.nextHome && (
-              <Link to="/casa?vista=buscamos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
+              <Link to="/mudanza?vista=buscamos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
                 <span className="text-[13px] text-muted">Próxima visita a un piso</span>
                 <span className="text-[15px] font-semibold">{relativeDay(mud.nextHome.visit_date)} · {hhmm(mud.nextHome.start_time)} · {mud.nextHome.title}</span>
               </Link>
             )}
             {mud.openOffers > 0 && (
-              <Link to="/casa?vista=vendemos" className="p-4 flex flex-col gap-0.5">
+              <Link to="/mudanza?vista=vendemos" className="p-4 flex flex-col gap-0.5">
                 <span className="text-[13px] text-muted">{mud.openOffers === 1 ? 'Una oferta abierta' : `${mud.openOffers} ofertas abiertas`}</span>
                 <span className={`text-[15px] font-semibold ${mud.nearestDeadline && mud.nearestDeadline <= today() ? 'text-danger' : ''}`}>
                   {mud.nearestDeadline ? `Plazo más cercano: ${relativeDay(mud.nearestDeadline).toLowerCase()}` : 'Sin plazo de respuesta'}

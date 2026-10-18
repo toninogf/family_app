@@ -96,7 +96,7 @@ export default function TareasMaestro({ members, cats, who, cat, onOpen }: {
                   <li key={task.id} className={i < g.items.length - 1 ? 'border-b border-line' : ''}>
                     <button onClick={() => onOpen(task)} className="w-full text-left flex items-center gap-3 min-h-14 py-2">
                       <span className="flex-1 flex flex-col">
-                        <span className={`text-[15px] font-semibold ${task.active ? '' : 'text-muted'}`}>{task.title}</span>
+                        <span className={`text-[15px] font-semibold ${task.active ? '' : 'text-muted'}`}>{task.private ? '🔒 ' : ''}{task.title}</span>
                         <span className="text-xs text-muted">{repeatLabel(task)}{task.active ? '' : ' · Pausada'}</span>
                       </span>
                       <span className="text-xs font-semibold px-2 py-1 rounded-lg flex items-center gap-1.5 bg-bg shrink-0">

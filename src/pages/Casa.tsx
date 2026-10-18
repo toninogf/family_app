@@ -1,8 +1,4 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { useMudanza } from '../lib/mudanza'
-import Vendemos from './casa/Vendemos'
-import Buscamos from './casa/Buscamos'
 import TareasMaestro from './casa/TareasMaestro'
 import { ChipRow } from './agenda/Maestro'
 import { useIconCategories, type IconCategories } from '../lib/categories'
@@ -14,42 +10,13 @@ import { anytimeTasks, lastDone, occurrencesBetween, repeatLabel, useTasks, type
 import { Card } from '../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextField, WeekdayPicker } from '../components/Sheet'
 
-type Vista = 'tareas' | 'vendemos' | 'buscamos'
-
-export default function Casa() {
-  const [params, setParams] = useSearchParams()
-  const raw = params.get('vista')
-  const vista: Vista = raw === 'vendemos' || raw === 'buscamos' ? raw : 'tareas'
+/** Pestaña «Tareas» (antes «Casa») */
+export default function TareasPage() {
   return (
     <div className="flex flex-col gap-4 pb-16">
-      <h1 className="text-[26px] font-bold tracking-tight">Casa</h1>
-      <div role="tablist" aria-label="Sección" className="grid grid-cols-3 p-1 rounded-xl bg-card border border-line">
-        {([['tareas', 'Tareas'], ['vendemos', 'Vendemos'], ['buscamos', 'Buscamos']] as const).map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={vista === k} onClick={() => setParams(k === 'tareas' ? {} : { vista: k }, { replace: true })}
-            className={`min-h-10 rounded-lg text-[14px] font-semibold ${vista === k ? 'bg-accent text-white dark:text-bg' : 'text-muted'}`}>{l}</button>
-        ))}
-      </div>
-      {vista === 'tareas' ? <Tareas /> : <MudanzaView vista={vista} />}
+      <h1 className="text-[26px] font-bold tracking-tight">Tareas</h1>
+      <Tareas />
     </div>
-  )
-}
-
-function MudanzaView({ vista }: { vista: 'vendemos' | 'buscamos' }) {
-  const { me, members } = useHousehold()
-  const m = useMudanza()
-  if (!me) return <p className="text-muted text-sm">Cargando…</p>
-  return (
-    <>
-      {m.error && (
-        <Card className="flex justify-between items-center gap-3">
-          <p role="alert" className="text-danger text-sm">{m.error}</p>
-          <button onClick={m.clearError} className="text-sm text-muted min-h-10 px-2">Cerrar</button>
-        </Card>
-      )}
-      {vista === 'vendemos'
-        ? <Vendemos m={m} members={members} householdId={me.household_id} />
-        : <Buscamos m={m} members={members} me={me} householdId={me.household_id} />}
-    </>
   )
 }
 
@@ -138,6 +105,7 @@ function Tareas() {
           cats={cats}
           defaultCategory={cat !== 'all' && cat !== 'none' ? cat : null}
           lastDoneDate={sheet.task ? lastDone(sheet.task, completions)?.occurrence_date : undefined}
+          meId={me.id}
           onClose={() => setSheet({ open: false })}
           onSave={async input => { const err = await save(me.household_id, input, sheet.task?.id); if (!err) setSheet({ open: false }); return err?.message }}
           onToggleActive={sheet.task ? async () => { await setActive(sheet.task!.id, !sheet.task!.active); setSheet({ open: false }) } : undefined}
@@ -183,7 +151,7 @@ export function TaskGroup({ title, items, members, me, cats, onToggle, empty, sh
                   <label className="flex items-center gap-3 min-h-13 py-2">
                     <input type="checkbox" checked={!!o.done} onChange={() => onToggle(o)} className="w-5 h-5 accent-[var(--app-accent)]" />
                     <span className="flex-1 flex flex-col">
-                      <span className={`text-[15px] ${o.done ? 'line-through text-muted' : ''}`}>{cats?.byId(o.task.category_id)?.icon ? `${cats.byId(o.task.category_id)!.icon} ` : ''}{o.task.title}</span>
+                      <span className={`text-[15px] ${o.done ? 'line-through text-muted' : ''}`}>{o.task.private ? '🔒 ' : ''}{cats?.byId(o.task.category_id)?.icon ? `${cats.byId(o.task.category_id)!.icon} ` : ''}{o.task.title}</span>
                       <span className={`text-xs ${late ? 'text-danger font-semibold' : 'text-muted'}`}>
                         {doneBy ? `Hecha por ${doneBy}` : taskSubtitle(o, showDate)}
                       </span>
@@ -207,8 +175,8 @@ export function TaskGroup({ title, items, members, me, cats, onToggle, empty, sh
   )
 }
 
-function TaskSheet({ task, adults, cats, defaultCategory, lastDoneDate, onClose, onSave, onToggleActive, onDelete }: {
-  task?: Task; adults: Member[]; cats: IconCategories; defaultCategory: string | null; lastDoneDate?: string; onClose: () => void
+function TaskSheet({ task, adults, cats, defaultCategory, lastDoneDate, meId, onClose, onSave, onToggleActive, onDelete }: {
+  task?: Task; adults: Member[]; cats: IconCategories; defaultCategory: string | null; lastDoneDate?: string; meId: string; onClose: () => void
   onSave: (input: TaskInput) => Promise<string | undefined>; onToggleActive?: () => Promise<void>; onDelete?: () => Promise<void>
 }) {
   const [title, setTitle] = useState(task?.title ?? '')
@@ -219,6 +187,9 @@ function TaskSheet({ task, adults, cats, defaultCategory, lastDoneDate, onClose,
   const [startDate, setStartDate] = useState(task?.start_date ?? today())
   const [monthDay, setMonthDay] = useState(String(task?.month_day ?? parseISO(today()).getDate()))
   const [dueDate, setDueDate] = useState(task?.due_date ?? '')
+  const [isPrivate, setIsPrivate] = useState(task?.private ?? false)
+  // Solo quien creó la tarea puede hacerla privada
+  const canPrivate = !task || task.created_by === meId
   const [every, setEvery] = useState(String(task?.interval_days ?? 7))
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -234,7 +205,7 @@ function TaskSheet({ task, adults, cats, defaultCategory, lastDoneDate, onClose,
     if (repeat === 'interval' && !(n >= 1 && n <= 365)) { setError('Cada cuántos días: entre 1 y 365'); return }
     setBusy(true); setError('')
     const err = await onSave({
-      title: title.trim(), category_id: categoryId, assignee_id: assignee, repeat, weekdays, month_day: repeat === 'monthly' ? md : null,
+      title: title.trim(), category_id: categoryId, assignee_id: isPrivate ? meId : assignee, private: isPrivate, repeat, weekdays, month_day: repeat === 'monthly' ? md : null,
       start_date: repeat === 'anytime' ? (task?.start_date ?? today()) : startDate,
       due_date: repeat === 'anytime' && dueDate ? dueDate : null, interval_days: repeat === 'interval' ? n : null
     })
@@ -245,7 +216,7 @@ function TaskSheet({ task, adults, cats, defaultCategory, lastDoneDate, onClose,
   /** Pasa una tarea «Sin fecha» a un día concreto */
   async function planFor(day: string) {
     setBusy(true); setError('')
-    const err = await onSave({ title: title.trim() || task!.title, category_id: categoryId, assignee_id: assignee, repeat: 'none', weekdays: [], month_day: null, start_date: day, due_date: null, interval_days: null })
+    const err = await onSave({ title: title.trim() || task!.title, category_id: categoryId, assignee_id: isPrivate ? meId : assignee, private: isPrivate, repeat: 'none', weekdays: [], month_day: null, start_date: day, due_date: null, interval_days: null })
     setBusy(false)
     if (err) setError(err)
   }
@@ -256,8 +227,17 @@ function TaskSheet({ task, adults, cats, defaultCategory, lastDoneDate, onClose,
         <TextField label="Tarea" autoFocus={!task} value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Sacar la basura" />
         <Choice<string | null> label="Categoría" value={categoryId} onChange={setCategoryId}
           options={[...cats.categories.filter(c => !c.archived || c.id === categoryId).map(c => ({ value: c.id as string | null, label: `${c.icon} ${c.name}` })), { value: null, label: 'Sin categoría' }]} />
-        <Choice label="¿Quién se encarga?" value={assignee} onChange={setAssignee}
-          options={[{ value: null, label: 'Cualquiera' }, ...adults.map(a => ({ value: a.id as string | null, label: a.display_name, color: a.color }))]} />
+        {canPrivate && (
+          <div className="flex flex-col gap-1.5">
+            <Choice<'shared' | 'private'> label="¿Quién la ve?" value={isPrivate ? 'private' : 'shared'} onChange={v => setIsPrivate(v === 'private')}
+              options={[{ value: 'shared', label: '👪 Compartida' }, { value: 'private', label: '🔒 Solo para mí' }]} />
+            {isPrivate && <p className="text-xs text-muted">Solo la verás tú, en la app y en tus avisos. Se te asigna a ti.</p>}
+          </div>
+        )}
+        {!isPrivate && (
+          <Choice label="¿Quién se encarga?" value={assignee} onChange={setAssignee}
+            options={[{ value: null, label: 'Cualquiera' }, ...adults.map(a => ({ value: a.id as string | null, label: a.display_name, color: a.color }))]} />
+        )}
         <Choice<Repeat> label="¿Cuándo?" value={repeat} onChange={setRepeat}
           options={[{ value: 'none', label: 'Una vez' }, { value: 'daily', label: 'Cada día' }, { value: 'weekly', label: 'Cada semana' }, { value: 'monthly', label: 'Cada mes' },
             { value: 'anytime', label: 'Sin fecha' }, { value: 'interval', label: 'Cada X días' }]} />
