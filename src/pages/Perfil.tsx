@@ -83,9 +83,24 @@ export default function Perfil() {
 
       <div className="flex flex-col items-center gap-1">
         <p className="text-xs text-muted text-center">Versión del {__APP_BUILD__}</p>
+        <UpdateDiag />
         <button onClick={forceUpdate} className="min-h-10 px-3 text-xs font-semibold text-accent">Forzar actualización</button>
       </div>
     </div>
+  )
+}
+
+/** Resultado de la última comprobación de versión nueva (para diagnosticar si no actualiza) */
+function UpdateDiag() {
+  const [d] = useState<{ at: string; ok: boolean; error?: string; probe?: string } | null>(() => {
+    try { return JSON.parse(localStorage.getItem('update-diag') ?? 'null') } catch { return null }
+  })
+  if (!d) return null
+  const when = new Date(d.at).toLocaleString('es-ES', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return (
+    <p className={`text-[11px] text-center px-4 ${d.ok ? 'text-muted' : 'text-danger'}`}>
+      {d.ok ? `Comprobación de versión correcta (${when})` : `Comprobación de versión fallida (${when}): ${d.error} · sw.js: ${d.probe}`}
+    </p>
   )
 }
 

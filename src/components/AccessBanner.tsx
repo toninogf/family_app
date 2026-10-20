@@ -5,12 +5,17 @@ export default function AccessBanner() {
   const [expired, setExpired] = useState(false)
 
   useEffect(() => {
-    const on = () => setExpired(true)
+    // Si se ha renovado o cerrado el aviso hace poco, no se vuelve a mostrar en 12 horas
+    const quiet = () => { try { return Date.now() - Number(localStorage.getItem('access-banner-quiet') ?? 0) < 12 * 3600 * 1000 } catch { return false } }
+    const on = () => { if (!quiet()) setExpired(true) }
     const off = () => setExpired(false)
     window.addEventListener('access-expired', on)
     window.addEventListener('access-ok', off)
     // Tras renovar, se limpia la dirección
-    if (window.location.pathname.startsWith('/renovar')) window.history.replaceState(null, '', '/')
+    if (window.location.pathname.startsWith('/renovar')) {
+      try { localStorage.setItem('access-banner-quiet', String(Date.now())) } catch { /* nada */ }
+      window.history.replaceState(null, '', '/')
+    }
     return () => { window.removeEventListener('access-expired', on); window.removeEventListener('access-ok', off) }
   }, [])
 
@@ -21,7 +26,7 @@ export default function AccessBanner() {
         <span className="text-[13px] flex-1">Tu acceso de Cloudflare ha caducado y la app no puede actualizarse.</span>
         <button onClick={() => { window.location.href = `/renovar?t=${Date.now()}` }}
           className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-sm font-semibold shrink-0">Renovar acceso</button>
-        <button onClick={() => setExpired(false)} aria-label="Ocultar aviso" className="min-h-10 w-8 text-lg opacity-70 shrink-0">✕</button>
+        <button onClick={() => { try { localStorage.setItem('access-banner-quiet', String(Date.now())) } catch { /* nada */ } setExpired(false) }} aria-label="Ocultar aviso" className="min-h-10 w-8 text-lg opacity-70 shrink-0">✕</button>
       </div>
     </div>
   )
