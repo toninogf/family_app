@@ -209,7 +209,7 @@ Deno.serve(async (req: Request) => {
           const roles = [a.drop === s.member_id ? 'llevas tú' : '', a.pick === s.member_id ? 'recoges tú' : ''].filter(Boolean).join(' y ')
           return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`
         })
-        if (todays.some(a => a.origin === 'venta')) items.push('Prepara la casa antes de la visita (en Casa → Vendemos tienes la lista)')
+        if (todays.some(a => a.origin === 'venta')) items.push('Prepara la casa antes de la visita (en Mudanza → Vendemos tienes la lista)')
         const mine = forMember(tasksToday, s.member_id)
         const late = forMember(overdueTasks, s.member_id)
         const taskLine = [mine.length ? `Tareas: ${listOf(mine)}` : '', late.length ? `${late.length} atrasada${late.length === 1 ? '' : 's'} (${listOf(late, 3)})` : '']
