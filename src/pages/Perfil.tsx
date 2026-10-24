@@ -22,7 +22,7 @@ type Section = 'cuenta' | 'familia' | 'avisos' | 'personalizar' | 'sesion'
 const SECTIONS: { key: Section; icon: string; title: string; hint: string }[] = [
   { key: 'cuenta', icon: '👤', title: 'Mi cuenta', hint: 'Contraseña y autenticadores' },
   { key: 'familia', icon: '👪', title: 'Familia', hint: 'Nombres, colores y niños' },
-  { key: 'avisos', icon: '🔔', title: 'Avisos', hint: 'Agenda de la mañana y resumen semanal' },
+  { key: 'avisos', icon: '🔔', title: 'Avisos', hint: 'Mañana, tarde, domingo y gimnasio' },
   { key: 'personalizar', icon: '🎨', title: 'Personalizar mi app', hint: 'Pestañas y tarjetas de Hoy' },
   { key: 'sesion', icon: '🔒', title: 'Sesión y seguridad', hint: 'Cerrar sesión en este u otros dispositivos' }
 ]
@@ -152,7 +152,7 @@ function PushCard() {
     setBusy(true); await disablePush(); setBusy(false); await refresh()
   }
 
-  async function toggle(key: 'daily' | 'weekly') {
+  async function toggle(key: 'daily' | 'weekly' | 'evening') {
     if (status?.state !== 'on') return
     const prefs = { ...status.prefs, [key]: !status.prefs[key] }
     setStatus({ state: 'on', prefs })
@@ -169,7 +169,7 @@ function PushCard() {
     <Card className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <h2 className="font-bold text-[15px]">Avisos en este dispositivo</h2>
-        <p className="text-sm text-muted">La agenda del día cada mañana, un resumen el domingo por la tarde y el fin de descanso en el gimnasio.</p>
+        <p className="text-sm text-muted">El resumen de cada mañana, las tareas que quedan a las 17:00, el resumen del domingo y el fin de descanso en el gimnasio.</p>
       </div>
 
       {status === null ? <p className="text-sm text-muted">Comprobando…</p>
@@ -185,7 +185,7 @@ function PushCard() {
           <Button onClick={turnOn} disabled={busy}>{busy ? 'Activando…' : 'Activar avisos'}</Button>
         ) : (
           <div className="flex flex-col gap-1">
-            {([['daily', 'Agenda del día (por la mañana)'], ['weekly', 'Resumen semanal (domingo)']] as const).map(([k, label]) => (
+            {([['daily', 'Resumen de la mañana (agenda, tareas, compra…)'], ['evening', 'Tareas pendientes a las 17:00'], ['weekly', 'Resumen semanal (domingo)']] as const).map(([k, label]) => (
               <label key={k} className="flex items-center justify-between min-h-12">
                 <span className="text-[15px]">{label}</span>
                 <input type="checkbox" checked={status.prefs[k]} onChange={() => toggle(k)} className="w-5 h-5 accent-[var(--app-accent)]" />

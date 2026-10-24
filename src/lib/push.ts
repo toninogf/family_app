@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 // Clave pública VAPID (la privada está en el Vault de Supabase)
 const VAPID_PUBLIC = 'BP7mZL2RaVVcjnxvORFi3tK8BmtdSBtQhmU39PhfYF8Ki_8MGCXDRuFNc84me-E7Dkj8fhbR5QFDC4AWQuHLS1E'
 
-export type PushPrefs = { daily: boolean; weekly: boolean }
+export type PushPrefs = { daily: boolean; weekly: boolean; evening: boolean }
 export type PushStatus =
   | { state: 'unsupported'; reason: 'ios-browser' | 'no-support' }
   | { state: 'denied' }
@@ -27,7 +27,7 @@ export async function pushStatus(): Promise<PushStatus> {
   const reg = await navigator.serviceWorker.ready
   const sub = await reg.pushManager.getSubscription()
   if (!sub) return { state: 'off' }
-  const { data } = await supabase.from('push_subscriptions').select('daily, weekly').eq('endpoint', sub.endpoint).maybeSingle()
+  const { data } = await supabase.from('push_subscriptions').select('daily, weekly, evening').eq('endpoint', sub.endpoint).maybeSingle()
   if (!data) return { state: 'off' }
   return { state: 'on', prefs: data as PushPrefs }
 }

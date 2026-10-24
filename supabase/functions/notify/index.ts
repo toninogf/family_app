@@ -1,6 +1,6 @@
 // Avisos push: agenda del día (cada mañana), resumen semanal (domingo) y aviso de prueba desde la app.
 // - mode "test": requiere sesión del usuario con 2FA (Authorization: Bearer <jwt>)
-// - mode "daily" | "weekly" | "rest" (fin de descanso del gimnasio): solo con la cabecera x-cron-secret (la llama pg_cron)
+// - mode "daily" | "weekly" | "evening" (17:00) | "rest" (fin de descanso del gimnasio): solo con la cabecera x-cron-secret (la llama pg_cron)
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
@@ -82,7 +82,12 @@ Deno.serve(async (req: Request) => {
     return json({ sent })
   }
 
-  if (mode !== 'daily' && mode !== 'weekly') return json({ error: 'Modo no válido' }, 400)
+  if (mode !== 'daily' && mode !== 'weekly' && mode !== 'evening') return json({ error: 'Modo no válido' }, 400)
+  // Recordatorio de la tarde: el cron llama a las 15 y 16 UTC; solo se envía cuando en Madrid son las 17
+  if (mode === 'evening') {
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }).format(new Date()))
+    if (hour !== 17 && !body?.force) return json({ skipped: `hora ${hour}` })
+  }
 
   const { data: allSubs } = await db.from('push_subscriptions').select('*').eq(mode, true)
   const subs = (allSubs ?? []) as Sub[]
@@ -92,8 +97,8 @@ Deno.serve(async (req: Request) => {
   let total = 0
 
   for (const hh of households) {
-    const from = mode === 'daily' ? today : addDays(today, 1)
-    const to = mode === 'daily' ? today : addDays(today, 7)
+    const from = mode === 'weekly' ? addDays(today, 1) : today
+    const to = mode === 'weekly' ? addDays(today, 7) : today
     const [{ data: members }, { data: events }, { data: exceptions }, { data: tasks }, { data: completions }] = await Promise.all([
       db.from('members').select('id, household_id, display_name, kind, user_id').eq('household_id', hh),
       db.from('events').select('*').eq('household_id', hh).eq('paused', false).lte('start_date', to),
@@ -162,6 +167,27 @@ Deno.serve(async (req: Request) => {
       return day === Math.min(t.month_day ?? 1, last)
     }).filter(t => !(completions ?? []).some(c => c.task_id === t.id))
 
+    // Puntuales de días anteriores sin hacer (las mismas que «Pendientes de otros días» en la app)
+    const oldOnes = (tasks ?? []).filter(t => t.repeat === 'none' && t.start_date < today && t.start_date >= addDays(today, -60))
+    const { data: oldComps } = oldOnes.length
+      ? await db.from('task_completions').select('task_id, occurrence_date').in('task_id', oldOnes.map(t => t.id))
+      : { data: [] as { task_id: string; occurrence_date: string }[] }
+    const overdueTasks = oldOnes.filter(t => !(oldComps ?? []).some(c => c.task_id === t.id && c.occurrence_date === t.start_date))
+    // Cada uno ve las suyas y las de «Cualquiera»; las privadas, solo su dueño
+    const forMember = (list: typeof tasksToday, memberId: string) =>
+      list.filter(t => (!t.private || t.created_by === memberId) && (!t.assignee_id || t.assignee_id === memberId)).map(t => t.title as string)
+    const listOf = (names: string[], max = 4) => names.slice(0, max).join(', ') + (names.length > max ? '…' : '')
+
+    // Compra pendiente por lista
+    const [{ data: sLists }, { data: sItems }] = await Promise.all([
+      db.from('shopping_lists').select('id, name, position').eq('household_id', hh).order('position'),
+      db.from('shopping_items').select('list_id, name, created_at').eq('household_id', hh).eq('archived', false).eq('checked', false).order('created_at')
+    ])
+    const shoppingLines = (sLists ?? []).map(l => {
+      const names = (sItems ?? []).filter(i => i.list_id === l.id).map(i => i.name as string)
+      return names.length ? `🛒 ${l.name}: ${names.length} pendiente${names.length === 1 ? '' : 's'} (${listOf(names, 3)})` : ''
+    }).filter(Boolean)
+
     let money = ''
     if (mode === 'weekly') {
       const { data: bal } = await db.from('money_balances').select('party_a, party_b, owed_cents').eq('household_id', hh)
@@ -184,19 +210,33 @@ Deno.serve(async (req: Request) => {
           return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`
         })
         if (todays.some(a => a.origin === 'venta')) items.push('Prepara la casa antes de la visita (en Casa → Vendemos tienes la lista)')
-        const mine = tasksToday.filter(t => !t.assignee_id || t.assignee_id === s.member_id).map(t => t.title)
+        const mine = forMember(tasksToday, s.member_id)
+        const late = forMember(overdueTasks, s.member_id)
+        const taskLine = [mine.length ? `Tareas: ${listOf(mine)}` : '', late.length ? `${late.length} atrasada${late.length === 1 ? '' : 's'} (${listOf(late, 3)})` : '']
+          .filter(Boolean).join(' · ')
         const mt = menuOf(today)
         const comedor = mt && !mt.holiday && mt.first_course ? `Comedor: ${shortDish(mt.first_course)} y ${shortDish(mt.second_course ?? '')}` : ''
         const cena = mt && !mt.holiday ? dinnerTip(mt.first_type, mt.second_type) : ''
         const p = prefsOf(s.member_id)
         const gymLine = p?.gym_days?.includes(isoWeekday(today)) ? '💪 Hoy toca gimnasio' : ''
         const blocks: Record<string, string[]> = {
-          agenda: items, mudanza: offerLines, tareas: mine.length ? [`Tareas: ${mine.join(', ')}`] : [],
-          comedor: [comedor, cena].filter(Boolean), gym: gymLine ? [gymLine] : []
+          agenda: items, mudanza: offerLines, tareas: taskLine ? [taskLine] : [],
+          comedor: [comedor, cena].filter(Boolean), gym: gymLine ? [gymLine] : [], compra: shoppingLines
         }
         const lines = (p?.home_sections ?? DEFAULT_ORDER).flatMap(k => blocks[k] ?? []).filter(Boolean)
         if (!lines.length) continue
         total += await send([s], { title: 'Hoy', body: lines.join('\n'), url: '/', tag: `daily-${today}` })
+      } else if (mode === 'evening') {
+        // Solo si queda algo de hoy (o atrasado) por hacer
+        const doneToday = new Set((completions ?? []).map(c => c.task_id))
+        const left = forMember(tasksToday.filter(t => !doneToday.has(t.id)), s.member_id)
+        const late = forMember(overdueTasks, s.member_id)
+        if (!left.length && !late.length) continue
+        const lines = [
+          left.length ? `Te quedan ${left.length} tarea${left.length === 1 ? '' : 's'} de hoy: ${listOf(left)}` : '',
+          late.length ? `Y ${late.length} atrasada${late.length === 1 ? '' : 's'}: ${listOf(late, 3)}` : ''
+        ].filter(Boolean)
+        total += await send([s], { title: 'Tareas pendientes', body: lines.join('\n'), url: '/tareas', tag: `evening-${today}` })
       } else {
         const days = Array.from({ length: 7 }, (_, i) => addDays(today, i + 1))
         const all = days.flatMap(d => agenda(d))
