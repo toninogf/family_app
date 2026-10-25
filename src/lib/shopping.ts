@@ -234,3 +234,16 @@ export async function countPending(): Promise<{ listName: string; count: number 
     .eq('list_id', first.id).eq('archived', false).eq('checked', false)
   return { listName: first.name, count: count ?? 0 }
 }
+
+export type ListPending = { id: string; name: string; count: number; names: string[] }
+/** Pendientes de cada lista (en su orden), para la tarjeta de Hoy */
+export async function pendingByList(): Promise<ListPending[]> {
+  const [{ data: lists }, { data: items }] = await Promise.all([
+    supabase.from('shopping_lists').select('id, name').order('position'),
+    supabase.from('shopping_items').select('list_id, name').eq('archived', false).eq('checked', false).order('created_at')
+  ])
+  return (lists ?? []).map(l => {
+    const names = (items ?? []).filter(i => i.list_id === l.id).map(i => i.name as string)
+    return { id: l.id as string, name: l.name as string, count: names.length, names }
+  })
+}

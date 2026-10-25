@@ -21,8 +21,22 @@ export type Prefs = {
   gym_days: number[]
   gym_start: string | null
   gym_end: string | null
+  /** Listas de la compra que se ven en Hoy y en el aviso (null = todas) */
+  home_lists: string[] | null
+  /** Horario de los avisos (hora «HH:MM»; null en la mañana = ese día no hay resumen) */
+  morning_weekday: string | null
+  morning_weekend: string | null
+  evening_time: string
+  evening_days: number[]
+  weekly_day: number
+  weekly_time: string
 }
-const DEFAULTS: Prefs = { tabs: [...ALL_TABS], home_sections: [...ALL_SECTIONS], gym_share: false, gym_days: [], gym_start: null, gym_end: null }
+const DEFAULTS: Prefs = {
+  tabs: [...ALL_TABS], home_sections: [...ALL_SECTIONS], gym_share: false, gym_days: [], gym_start: null, gym_end: null, home_lists: null,
+  morning_weekday: '08:00', morning_weekend: '08:00', evening_time: '17:00', evening_days: [1, 2, 3, 4, 5, 6, 7], weekly_day: 7, weekly_time: '20:00'
+}
+const COLS = 'tabs, home_sections, gym_share, gym_days, gym_start, gym_end, home_lists, morning_weekday, morning_weekend, evening_time, evening_days, weekly_day, weekly_time'
+const hm = (t: unknown) => (typeof t === 'string' ? t.slice(0, 5) : t) as string | null
 
 type Ctx = { prefs: Prefs; loaded: boolean; save: (patch: Partial<Prefs>) => Promise<string | undefined> }
 const PrefsContext = createContext<Ctx>({ prefs: DEFAULTS, loaded: false, save: async () => undefined })
@@ -35,9 +49,13 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     if (!me) return
-    const { data } = await supabase.from('member_preferences')
-      .select('tabs, home_sections, gym_share, gym_days, gym_start, gym_end').eq('member_id', me.id).maybeSingle()
-    setPrefs(data ? { ...DEFAULTS, ...(data as Partial<Prefs>) } : DEFAULTS)
+    const { data } = await supabase.from('member_preferences').select(COLS).eq('member_id', me.id).maybeSingle()
+    const d = data as Partial<Prefs> | null
+    setPrefs(d ? {
+      ...DEFAULTS, ...d,
+      morning_weekday: hm(d.morning_weekday) ?? null, morning_weekend: hm(d.morning_weekend) ?? null,
+      evening_time: hm(d.evening_time) ?? DEFAULTS.evening_time, weekly_time: hm(d.weekly_time) ?? DEFAULTS.weekly_time
+    } : DEFAULTS)
     setLoaded(true)
   }, [me])
 

@@ -5,6 +5,8 @@ import { disablePush, enablePush, pushStatus, sendTestPush, updatePushPrefs, typ
 import { Button, Card, ErrorText, Field } from '../components/ui'
 import FamilyPanel, { Avatar } from '../components/FamilyPanel'
 import AuthenticatorsCard from '../components/AuthenticatorsCard'
+import { WeekdayPicker } from '../components/Sheet'
+import { useShoppingLists } from '../lib/shopping'
 import { ALL_SECTIONS, ALL_TABS, SECTION_LABEL, TAB_LABEL, moveIn, usePrefs, type SectionKey, type TabKey } from '../lib/prefs'
 
 /** Borra la copia guardada de la app y vuelve a descargarla (pasando por Cloudflare Access si hace falta) */
@@ -42,7 +44,7 @@ export default function Perfil() {
         </div>
         {section === 'cuenta' && <><PasswordCard /><AuthenticatorsCard /></>}
         {section === 'familia' && <FamilyPanel />}
-        {section === 'avisos' && <PushCard />}
+        {section === 'avisos' && <><PushCard /><ScheduleCard /></>}
         {section === 'personalizar' && <PersonalizeCard />}
         {section === 'sesion' && (
           <Card className="flex flex-col gap-2">
@@ -169,7 +171,7 @@ function PushCard() {
     <Card className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <h2 className="font-bold text-[15px]">Avisos en este dispositivo</h2>
-        <p className="text-sm text-muted">El resumen de cada mañana, las tareas que quedan a las 17:00, el resumen del domingo y el fin de descanso en el gimnasio.</p>
+        <p className="text-sm text-muted">Activa o desactiva cada aviso en este dispositivo. La hora y los días se eligen más abajo.</p>
       </div>
 
       {status === null ? <p className="text-sm text-muted">Comprobando…</p>
@@ -185,7 +187,7 @@ function PushCard() {
           <Button onClick={turnOn} disabled={busy}>{busy ? 'Activando…' : 'Activar avisos'}</Button>
         ) : (
           <div className="flex flex-col gap-1">
-            {([['daily', 'Resumen de la mañana (agenda, tareas, compra…)'], ['evening', 'Tareas pendientes a las 17:00'], ['weekly', 'Resumen semanal (domingo)']] as const).map(([k, label]) => (
+            {([['daily', 'Resumen de la mañana (agenda, tareas, compra…)'], ['evening', 'Tareas pendientes de la tarde'], ['weekly', 'Resumen semanal']] as const).map(([k, label]) => (
               <label key={k} className="flex items-center justify-between min-h-12">
                 <span className="text-[15px]">{label}</span>
                 <input type="checkbox" checked={status.prefs[k]} onChange={() => toggle(k)} className="w-5 h-5 accent-[var(--app-accent)]" />
@@ -235,8 +237,94 @@ function PersonalizeCard() {
             <OrderList items={secOrdered} label={s => SECTION_LABEL[s]} on={s => prefs.home_sections.includes(s)} onToggle={toggleSec}
               onMove={(s, d) => prefs.home_sections.includes(s) && save({ home_sections: moveIn(prefs.home_sections, s, d) })} />
           </section>
+          <HomeListsPicker />
         </>
       )}
+    </Card>
+  )
+}
+
+/** Qué listas de la compra salen en Hoy y en el aviso de la mañana */
+function HomeListsPicker() {
+  const { prefs, save } = usePrefs()
+  const { lists } = useShoppingLists()
+  if (lists.length < 2) return null
+  const on = (id: string) => !prefs.home_lists || prefs.home_lists.includes(id)
+  const toggle = (id: string) => {
+    const current = prefs.home_lists ?? lists.map(l => l.id)
+    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
+    // Si están todas, se guarda «todas» para que las listas nuevas también salgan
+    save({ home_lists: lists.every(l => next.includes(l.id)) ? null : next })
+  }
+  return (
+    <section className="flex flex-col gap-1">
+      <h3 className="text-sm font-bold text-muted">Listas de la compra en Hoy</h3>
+      <p className="text-xs text-muted">Solo salen las que tengan algo pendiente. También se usan en el aviso de la mañana.</p>
+      <ul className="flex flex-col">
+        {lists.map(l => (
+          <li key={l.id}>
+            <label className="flex items-center justify-between min-h-12">
+              <span className="text-[15px]">{l.name}</span>
+              <input type="checkbox" checked={on(l.id)} onChange={() => toggle(l.id)} className="w-5 h-5 accent-[var(--app-accent)]" />
+            </label>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+const TIMES = Array.from({ length: 18 * 4 }, (_, i) => {
+  const m = 6 * 60 + i * 15 // de 06:00 a 23:45
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+})
+
+function TimeSelect({ label, value, onChange, allowOff }: { label: string; value: string | null; onChange: (v: string | null) => void; allowOff?: boolean }) {
+  return (
+    <label className="flex items-center justify-between gap-3 min-h-12">
+      <span className="text-[15px]">{label}</span>
+      <select value={value ?? 'off'} onChange={e => onChange(e.target.value === 'off' ? null : e.target.value)}
+        className="min-h-11 px-3 rounded-xl border border-line bg-card text-[15px]">
+        {allowOff && <option value="off">No enviar</option>}
+        {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+    </label>
+  )
+}
+
+/** Horario de los avisos: es de cada persona y vale para todos sus dispositivos */
+function ScheduleCard() {
+  const { prefs, save } = usePrefs()
+  const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+  return (
+    <Card className="flex flex-col gap-4">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="font-bold text-[15px]">Horario de los avisos</h2>
+        <p className="text-sm text-muted">Es tuyo y vale en todos tus dispositivos. Pueden llegar hasta unos minutos después de la hora elegida.</p>
+      </div>
+      <section className="flex flex-col">
+        <h3 className="text-sm font-bold text-muted">☀️ Resumen de la mañana</h3>
+        <TimeSelect label="Entre semana (L–V)" value={prefs.morning_weekday} onChange={v => save({ morning_weekday: v })} allowOff />
+        <TimeSelect label="Fin de semana (S–D)" value={prefs.morning_weekend} onChange={v => save({ morning_weekend: v })} allowOff />
+      </section>
+      <section className="flex flex-col gap-1 border-t border-line pt-3">
+        <h3 className="text-sm font-bold text-muted">✅ Tareas pendientes</h3>
+        <TimeSelect label="Hora" value={prefs.evening_time} onChange={v => v && save({ evening_time: v })} />
+        <WeekdayPicker value={prefs.evening_days} onChange={v => save({ evening_days: v })} label="Qué días" />
+        {!prefs.evening_days.length && <p className="text-xs text-muted">Sin días marcados no llegará nunca.</p>}
+      </section>
+      <section className="flex flex-col border-t border-line pt-3">
+        <h3 className="text-sm font-bold text-muted">📅 Resumen semanal</h3>
+        <label className="flex items-center justify-between gap-3 min-h-12">
+          <span className="text-[15px]">Día</span>
+          <select value={prefs.weekly_day} onChange={e => save({ weekly_day: Number(e.target.value) })}
+            className="min-h-11 px-3 rounded-xl border border-line bg-card text-[15px]">
+            {DAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}
+          </select>
+        </label>
+        <TimeSelect label="Hora" value={prefs.weekly_time} onChange={v => v && save({ weekly_time: v })} />
+      </section>
+      <p className="text-xs text-muted">El aviso de fin de descanso del gimnasio no tiene horario: llega en el momento.</p>
     </Card>
   )
 }

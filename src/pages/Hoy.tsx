@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
-import { countPending } from '../lib/shopping'
+import { pendingByList, type ListPending } from '../lib/shopping'
 import { formatEur, moneySummary, partyName, todayISO, type Debt } from '../lib/money'
 import { hhmm, isoWeekday, relativeDay, today } from '../lib/dates'
 import { useSchoolMenu } from '../lib/menu'
@@ -28,7 +28,7 @@ function greeting() {
 
 export default function Hoy() {
   const { members, me, loading, error } = useHousehold()
-  const [shopping, setShopping] = useState<{ listName: string; count: number } | null>(null)
+  const [shopping, setShopping] = useState<ListPending[] | null>(null)
   const { prefs } = usePrefs()
   const [gym, setGym] = useState<Awaited<ReturnType<typeof gymSummary>> | null>(null)
   const [mud, setMud] = useState<Awaited<ReturnType<typeof mudanzaSummary>> | null>(null)
@@ -41,7 +41,7 @@ export default function Hoy() {
   const schoolDay = isoWeekday(t) <= 5
 
   useEffect(() => {
-    countPending().then(setShopping)
+    pendingByList().then(setShopping).catch(() => setShopping([]))
     moneySummary(todayISO().slice(0, 7)).then(setMoney)
     mudanzaSummary(today()).then(setMud).catch(() => setMud(null))
     gymSummary().then(setGym).catch(() => setGym(null))
@@ -143,15 +143,38 @@ export default function Hoy() {
   ),
     compra: (
     <>
-      <Link to="/compra" className="bg-card rounded-2xl p-4 flex justify-between items-center">
-        <span className="flex flex-col gap-0.5">
-          <span className="text-[15px] font-semibold">Compra{shopping ? ` · ${shopping.listName}` : ''}</span>
-          <span className="text-[13px] text-muted">
-            {shopping == null ? 'Cargando…' : shopping.count === 0 ? 'Nada pendiente' : `${shopping.count} ${shopping.count === 1 ? 'artículo pendiente' : 'artículos pendientes'}`}
-          </span>
-        </span>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-      </Link>
+      {(() => {
+        // Solo las listas elegidas en Personalizar (todas si no se ha elegido) y con algo pendiente
+        const chosen = (shopping ?? []).filter(l => !prefs.home_lists || prefs.home_lists.includes(l.id))
+        const pending = chosen.filter(l => l.count > 0)
+        if (shopping == null || !pending.length) {
+          return (
+            <Link to="/compra" className="bg-card rounded-2xl p-4 flex justify-between items-center">
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[15px] font-semibold">🛒 Compra</span>
+                <span className="text-[13px] text-muted">{shopping == null ? 'Cargando…' : 'Nada pendiente'}</span>
+              </span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+            </Link>
+          )
+        }
+        return (
+          <section className="flex flex-col gap-1.5">
+            <h2 className="text-base font-bold">🛒 Compra</h2>
+            <div className="bg-card rounded-2xl">
+              {pending.map((l, i) => (
+                <Link key={l.id} to={`/compra?lista=${l.id}`} className={`p-4 flex justify-between items-center gap-3 ${i < pending.length - 1 ? 'border-b border-line' : ''}`}>
+                  <span className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-[15px] font-semibold">{l.name} · {l.count}</span>
+                    <span className="text-[13px] text-muted truncate">{l.names.slice(0, 4).join(', ')}{l.count > 4 ? '…' : ''}</span>
+                  </span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )
+      })()}
     </>
   ),
     gym: (

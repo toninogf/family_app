@@ -1,6 +1,7 @@
 // Avisos push: agenda del día (cada mañana), resumen semanal (domingo) y aviso de prueba desde la app.
 // - mode "test": requiere sesión del usuario con 2FA (Authorization: Bearer <jwt>)
-// - mode "daily" | "weekly" | "evening" (17:00) | "rest" (fin de descanso del gimnasio): solo con la cabecera x-cron-secret (la llama pg_cron)
+// - mode "scheduled" (cada 15 min, según el horario de cada persona) | "daily" | "weekly" | "evening" (envío manual) | "rest" (fin de descanso):
+//   solo con la cabecera x-cron-secret (la llama pg_cron)
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
@@ -82,23 +83,62 @@ Deno.serve(async (req: Request) => {
     return json({ sent })
   }
 
-  if (mode !== 'daily' && mode !== 'weekly' && mode !== 'evening') return json({ error: 'Modo no válido' }, 400)
-  // Recordatorio de la tarde: el cron llama a las 15 y 16 UTC; solo se envía cuando en Madrid son las 17
-  if (mode === 'evening') {
-    const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', hour12: false }).format(new Date()))
-    if (hour !== 17 && !body?.force) return json({ skipped: `hora ${hour}` })
+  // ---------- Avisos con horario (cron cada 15 min) o envío manual de uno concreto ----------
+  type Kind = 'daily' | 'evening' | 'weekly'
+  const MANUAL: Kind[] = ['daily', 'evening', 'weekly']
+  if (mode !== 'scheduled' && !MANUAL.includes(mode as Kind)) return json({ error: 'Modo no válido' }, 400)
+
+  const now = new Date()
+  const today = madridDate(now)
+  const [h0, m0] = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(now).split(':').map(Number)
+  const slot = `${String(h0 % 24).padStart(2, '0')}:${String(Math.floor(m0 / 15) * 15).padStart(2, '0')}`
+  const dow = isoWeekday(today)
+
+  type Pref = {
+    member_id: string; household_id: string; home_sections: string[] | null; gym_days: number[] | null; home_lists: string[] | null
+    morning_weekday: string | null; morning_weekend: string | null; evening_time: string | null; evening_days: number[] | null
+    weekly_day: number | null; weekly_time: string | null
+  }
+  const { data: prefRows } = await db.from('member_preferences')
+    .select('member_id, household_id, home_sections, gym_days, home_lists, morning_weekday, morning_weekend, evening_time, evening_days, weekly_day, weekly_time')
+  const prefsOf = (id: string) => ((prefRows ?? []) as Pref[]).find(p => p.member_id === id)
+  const t5 = (t: string | null | undefined) => (t ? t.slice(0, 5) : null)
+
+  /** Qué avisos le tocan ahora a cada persona según su horario (sin preferencias guardadas: los de siempre) */
+  function dueKinds(memberId: string): Kind[] {
+    if (mode !== 'scheduled') return [mode as Kind]
+    const p = prefsOf(memberId)
+    const out: Kind[] = []
+    const morning = p ? t5(dow >= 6 ? p.morning_weekend : p.morning_weekday) : '08:00'
+    if (morning === slot) out.push('daily')
+    if ((t5(p?.evening_time) ?? '17:00') === slot && (p?.evening_days ?? [1, 2, 3, 4, 5, 6, 7]).includes(dow)) out.push('evening')
+    if ((p?.weekly_day ?? 7) === dow && (t5(p?.weekly_time) ?? '20:00') === slot) out.push('weekly')
+    return out
   }
 
-  const { data: allSubs } = await db.from('push_subscriptions').select('*').eq(mode, true)
-  const subs = (allSubs ?? []) as Sub[]
-  if (!subs.length) return json({ sent: 0 })
+  const { data: allSubs } = await db.from('push_subscriptions').select('*')
+  const subsAll = (allSubs ?? []) as (Sub & { evening: boolean })[]
+  // Por persona, qué toca enviar (y en qué dispositivos lo tiene activado)
+  const plan = new Map<string, Kind[]>()
+  for (const memberId of new Set(subsAll.map(s => s.member_id))) {
+    const kinds = dueKinds(memberId).filter(k => subsAll.some(s => s.member_id === memberId && s[k]))
+    const confirmed: Kind[] = []
+    for (const k of kinds) {
+      if (mode !== 'scheduled') { confirmed.push(k); continue }
+      // Una sola vez por persona, aviso y día, aunque el cron se repita o tarde
+      const { error } = await db.from('notify_log').insert({ member_id: memberId, kind: k, day: today })
+      if (!error) confirmed.push(k)
+    }
+    if (confirmed.length) plan.set(memberId, confirmed)
+  }
+  if (!plan.size) return json({ sent: 0, slot })
+  const subs = subsAll.filter(s => plan.has(s.member_id))
   const households = [...new Set(subs.map(s => s.household_id))]
-  const today = madridDate()
   let total = 0
 
   for (const hh of households) {
-    const from = mode === 'weekly' ? addDays(today, 1) : today
-    const to = mode === 'weekly' ? addDays(today, 7) : today
+    const from = today
+    const to = addDays(today, 7)
     const [{ data: members }, { data: events }, { data: exceptions }, { data: tasks }, { data: completions }] = await Promise.all([
       db.from('members').select('id, household_id, display_name, kind, user_id').eq('household_id', hh),
       db.from('events').select('*').eq('household_id', hh).eq('paused', false).lte('start_date', to),
@@ -125,10 +165,7 @@ Deno.serve(async (req: Request) => {
         return `Nuestra oferta por ${title ?? 'el piso'}: esperamos respuesta ${when(o.response_deadline)}`
       })
     ]
-    // Preferencias de cada uno: qué tarjetas quiere y en qué orden (las mismas que en Hoy)
-    const { data: prefsRows } = await db.from('member_preferences').select('member_id, home_sections, gym_days').eq('household_id', hh)
     const DEFAULT_ORDER = ['saldo', 'agenda', 'comedor', 'tareas', 'mudanza', 'gym', 'compra']
-    const prefsOf = (memberId: string) => (prefsRows ?? []).find(p => p.member_id === memberId) as { home_sections: string[]; gym_days: number[] } | undefined
     const ms = (members ?? []) as Member[]
     const name = (id: string | null) => ms.find(m => m.id === id)?.display_name ?? ''
 
@@ -178,18 +215,22 @@ Deno.serve(async (req: Request) => {
       list.filter(t => (!t.private || t.created_by === memberId) && (!t.assignee_id || t.assignee_id === memberId)).map(t => t.title as string)
     const listOf = (names: string[], max = 4) => names.slice(0, max).join(', ') + (names.length > max ? '…' : '')
 
-    // Compra pendiente por lista
+    // Compra pendiente por lista (cada uno, las listas que ha elegido ver en Hoy)
     const [{ data: sLists }, { data: sItems }] = await Promise.all([
       db.from('shopping_lists').select('id, name, position').eq('household_id', hh).order('position'),
       db.from('shopping_items').select('list_id, name, created_at').eq('household_id', hh).eq('archived', false).eq('checked', false).order('created_at')
     ])
-    const shoppingLines = (sLists ?? []).map(l => {
-      const names = (sItems ?? []).filter(i => i.list_id === l.id).map(i => i.name as string)
-      return names.length ? `🛒 ${l.name}: ${names.length} pendiente${names.length === 1 ? '' : 's'} (${listOf(names, 3)})` : ''
-    }).filter(Boolean)
+    const shoppingFor = (memberId: string) => {
+      const chosen = prefsOf(memberId)?.home_lists
+      return (sLists ?? []).filter(l => !chosen || chosen.includes(l.id)).map(l => {
+        const names = (sItems ?? []).filter(i => i.list_id === l.id).map(i => i.name as string)
+        return names.length ? `🛒 ${l.name}: ${names.length} pendiente${names.length === 1 ? '' : 's'} (${listOf(names, 3)})` : ''
+      }).filter(Boolean)
+    }
 
-    let money = ''
-    if (mode === 'weekly') {
+    let money: string | null = null
+    async function moneyLine() {
+      if (money != null) return money
       const { data: bal } = await db.from('money_balances').select('party_a, party_b, owed_cents').eq('household_id', hh)
       const debts = (bal ?? []).filter(b => Number(b.owed_cents) !== 0).map(b => {
         const owed = Number(b.owed_cents)
@@ -198,59 +239,61 @@ Deno.serve(async (req: Request) => {
         return `${n(debtor).replace(/^la/, 'La')} debe ${eur(Math.abs(owed))} a ${n(creditor)}`
       })
       money = debts.length ? debts.join('. ') + '.' : 'Saldos al día.'
+      return money
     }
 
     for (const s of subs.filter(s => s.household_id === hh)) {
-      if (mode === 'daily') {
-        const todays = agenda(today)
-        const items = todays.map(a => {
-          if (a.origin === 'venta') return `${hhmm(a.start)} 🏠 ${a.title}${a.drop === s.member_id ? ' · atiendes tú' : ''}`
-          if (a.origin === 'compra') return `${hhmm(a.start)} 🏠 ${a.title}${!a.drop ? ' · vais los dos' : a.drop === s.member_id ? ' · vas tú' : ''}`
-          const roles = [a.drop === s.member_id ? 'llevas tú' : '', a.pick === s.member_id ? 'recoges tú' : ''].filter(Boolean).join(' y ')
-          return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`
-        })
-        if (todays.some(a => a.origin === 'venta')) items.push('Prepara la casa antes de la visita (en Mudanza → Vendemos tienes la lista)')
-        const mine = forMember(tasksToday, s.member_id)
-        const late = forMember(overdueTasks, s.member_id)
-        const taskLine = [mine.length ? `Tareas: ${listOf(mine)}` : '', late.length ? `${late.length} atrasada${late.length === 1 ? '' : 's'} (${listOf(late, 3)})` : '']
-          .filter(Boolean).join(' · ')
-        const mt = menuOf(today)
-        const comedor = mt && !mt.holiday && mt.first_course ? `Comedor: ${shortDish(mt.first_course)} y ${shortDish(mt.second_course ?? '')}` : ''
-        const cena = mt && !mt.holiday ? dinnerTip(mt.first_type, mt.second_type) : ''
-        const p = prefsOf(s.member_id)
-        const gymLine = p?.gym_days?.includes(isoWeekday(today)) ? '💪 Hoy toca gimnasio' : ''
-        const blocks: Record<string, string[]> = {
-          agenda: items, mudanza: offerLines, tareas: taskLine ? [taskLine] : [],
-          comedor: [comedor, cena].filter(Boolean), gym: gymLine ? [gymLine] : [], compra: shoppingLines
+      for (const kind of (plan.get(s.member_id) ?? []).filter(k => s[k])) {
+        if (kind === 'daily') {
+          const todays = agenda(today)
+          const items = todays.map(a => {
+            if (a.origin === 'venta') return `${hhmm(a.start)} 🏠 ${a.title}${a.drop === s.member_id ? ' · atiendes tú' : ''}`
+            if (a.origin === 'compra') return `${hhmm(a.start)} 🏠 ${a.title}${!a.drop ? ' · vais los dos' : a.drop === s.member_id ? ' · vas tú' : ''}`
+            const roles = [a.drop === s.member_id ? 'llevas tú' : '', a.pick === s.member_id ? 'recoges tú' : ''].filter(Boolean).join(' y ')
+            return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`
+          })
+          if (todays.some(a => a.origin === 'venta')) items.push('Prepara la casa antes de la visita (en Mudanza → Vendemos tienes la lista)')
+          const mine = forMember(tasksToday, s.member_id)
+          const late = forMember(overdueTasks, s.member_id)
+          const taskLine = [mine.length ? `Tareas: ${listOf(mine)}` : '', late.length ? `${late.length} atrasada${late.length === 1 ? '' : 's'} (${listOf(late, 3)})` : '']
+            .filter(Boolean).join(' · ')
+          const mt = menuOf(today)
+          const comedor = mt && !mt.holiday && mt.first_course ? `Comedor: ${shortDish(mt.first_course)} y ${shortDish(mt.second_course ?? '')}` : ''
+          const cena = mt && !mt.holiday ? dinnerTip(mt.first_type, mt.second_type) : ''
+          const p = prefsOf(s.member_id)
+          const gymLine = p?.gym_days?.includes(isoWeekday(today)) ? '💪 Hoy toca gimnasio' : ''
+          const blocks: Record<string, string[]> = {
+            agenda: items, mudanza: offerLines, tareas: taskLine ? [taskLine] : [],
+            comedor: [comedor, cena].filter(Boolean), gym: gymLine ? [gymLine] : [], compra: shoppingFor(s.member_id)
+          }
+          const lines = (p?.home_sections ?? DEFAULT_ORDER).flatMap(k => blocks[k] ?? []).filter(Boolean)
+          if (!lines.length) continue
+          total += await send([s], { title: 'Hoy', body: lines.join('\n'), url: '/', tag: `daily-${today}` })
+        } else if (kind === 'evening') {
+          // Solo si queda algo de hoy (o atrasado) por hacer
+          const left = forMember(tasksToday, s.member_id)
+          const late = forMember(overdueTasks, s.member_id)
+          if (!left.length && !late.length) continue
+          const lines = [
+            left.length ? `Te quedan ${left.length} tarea${left.length === 1 ? '' : 's'} de hoy: ${listOf(left)}` : '',
+            late.length ? `Y ${late.length} atrasada${late.length === 1 ? '' : 's'}: ${listOf(late, 3)}` : ''
+          ].filter(Boolean)
+          total += await send([s], { title: 'Tareas pendientes', body: lines.join('\n'), url: '/tareas', tag: `evening-${today}` })
+        } else {
+          const days = Array.from({ length: 7 }, (_, i) => addDays(today, i + 1))
+          const all = days.flatMap(d => agenda(d))
+          const mineDrive = all.filter(a => a.drop === s.member_id || a.pick === s.member_id).length
+          const bodyText = [
+            `La semana que viene: ${all.length} actividad${all.length === 1 ? '' : 'es'}${mineDrive ? `, en ${mineDrive} llevas o recoges tú` : ''}.`,
+            await moneyLine(),
+            menuMissing(days.filter(d => isoWeekday(d) <= 5), menuOf)
+          ].filter(Boolean).join('\n')
+          total += await send([s], { title: 'Resumen de la semana', body: bodyText, url: '/agenda', tag: `weekly-${today}` })
         }
-        const lines = (p?.home_sections ?? DEFAULT_ORDER).flatMap(k => blocks[k] ?? []).filter(Boolean)
-        if (!lines.length) continue
-        total += await send([s], { title: 'Hoy', body: lines.join('\n'), url: '/', tag: `daily-${today}` })
-      } else if (mode === 'evening') {
-        // Solo si queda algo de hoy (o atrasado) por hacer
-        const doneToday = new Set((completions ?? []).map(c => c.task_id))
-        const left = forMember(tasksToday.filter(t => !doneToday.has(t.id)), s.member_id)
-        const late = forMember(overdueTasks, s.member_id)
-        if (!left.length && !late.length) continue
-        const lines = [
-          left.length ? `Te quedan ${left.length} tarea${left.length === 1 ? '' : 's'} de hoy: ${listOf(left)}` : '',
-          late.length ? `Y ${late.length} atrasada${late.length === 1 ? '' : 's'}: ${listOf(late, 3)}` : ''
-        ].filter(Boolean)
-        total += await send([s], { title: 'Tareas pendientes', body: lines.join('\n'), url: '/tareas', tag: `evening-${today}` })
-      } else {
-        const days = Array.from({ length: 7 }, (_, i) => addDays(today, i + 1))
-        const all = days.flatMap(d => agenda(d))
-        const mineDrive = all.filter(a => a.drop === s.member_id || a.pick === s.member_id).length
-        const bodyText = [
-          `La semana que viene: ${all.length} actividad${all.length === 1 ? '' : 'es'}${mineDrive ? `, en ${mineDrive} llevas o recoges tú` : ''}.`,
-          money,
-          menuMissing(days.filter(d => isoWeekday(d) <= 5), menuOf)
-        ].filter(Boolean).join('\n')
-        total += await send([s], { title: 'Resumen de la semana', body: bodyText, url: '/agenda', tag: `weekly-${today}` })
       }
     }
   }
-  return json({ sent: total })
+  return json({ sent: total, slot })
 })
 
 // ---- Menú del comedor ----

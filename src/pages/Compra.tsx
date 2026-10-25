@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import { CATEGORIES, useShoppingItems, useShoppingLists, type ShoppingItem, type ShoppingList } from '../lib/shopping'
 import { Card } from '../components/ui'
@@ -25,12 +25,16 @@ export default function Compra() {
   const [editing, setEditing] = useState<string | null>(null)
   const [showChecked, setShowChecked] = useState(true)
 
+  const [params, setParams] = useSearchParams()
   useEffect(() => {
     if (!lists.length) return
+    // Desde Hoy se puede abrir una lista concreta (?lista=…)
+    const wanted = params.get('lista')
+    if (wanted && lists.some(l => l.id === wanted)) { setListId(wanted); setParams({}, { replace: true }); return }
     if (listId && lists.some(l => l.id === listId)) return
     const last = readLastList()
     setListId(lists.find(l => l.id === last)?.id ?? lists[0].id)
-  }, [lists, listId])
+  }, [lists, listId, params, setParams])
 
   const current = lists.find(l => l.id === listId)
   const { items, frequent, loading, error, addItem, toggle, updateItem, moveItem, remove, clearChecked, clearError } = useShoppingItems(listId)
