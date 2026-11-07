@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase, type Member } from '../../lib/supabase'
 import { aiPrompt, filledLabels, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
+import { locateHome } from '../../lib/geo'
+
+// El mapa (Leaflet) solo se descarga al abrirlo
+const HomesMap = lazy(() => import('./HomesMap'))
 import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
@@ -35,6 +39,7 @@ const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.'))
 
 export default function Buscamos({ m, members, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
   const [filter, setFilter] = useState<Filter>('activos')
+  const [view, setView] = useState<'lista' | 'mapa'>('lista')
   const [openId, setOpenId] = useState<string | null>(null)
   const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared }>({ open: false })
   // Anuncio compartido desde la app de un portal (menú «Compartir» del móvil): abre un piso nuevo ya relleno
@@ -117,6 +122,12 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </section>
       )}
 
+      <div className="grid grid-cols-2 p-1 rounded-xl bg-card border border-line" role="tablist" aria-label="Vista">
+        {([['lista', '☰ Lista'], ['mapa', '🗺️ Mapa']] as const).map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
+            className={`min-h-9 rounded-lg text-[13px] font-semibold ${view === k ? 'bg-ink text-bg' : 'text-muted'}`}>{l}</button>
+        ))}
+      </div>
       <label className="flex items-center gap-2 min-w-0">
         <span className="text-[13px] font-semibold text-muted shrink-0">Estado</span>
         <select value={filter} onChange={e => setFilter(e.target.value as Filter)} aria-label="Filtrar por estado"
@@ -166,6 +177,10 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
 
       {m.loading ? <p className="text-sm text-muted">Cargando…</p> : list.length === 0 ? (
         <Card><p className="text-sm text-muted">{m.homes.length ? 'Nada en esta lista.' : 'Guarda aquí los pisos que os interesen con «+ Piso»: enlace del anuncio, precio y metros.'}</p></Card>
+      ) : view === 'mapa' ? (
+        <Suspense fallback={<p className="text-sm text-muted">Cargando mapa…</p>}>
+          <HomesMap homes={list} m={m} onOpen={setOpenId} />
+        </Suspense>
       ) : (
         <div className="flex flex-col gap-2.5">
           {list.map(h => <HomeCard key={h.id} h={h} m={m} onOpen={() => setOpenId(h.id)} />)}
@@ -208,13 +223,18 @@ function HomeCard({ h, m, onOpen }: { h: Home; m: Mudanza; onOpen: () => void })
     <div className={`bg-card rounded-2xl flex flex-col overflow-hidden ${h.status === 'descartado' ? 'opacity-60' : ''}`}>
     <button onClick={onOpen} className="p-4 text-left flex flex-col gap-2">
       <span className="flex justify-between items-start gap-2">
-        <span className="text-[16px] font-bold leading-snug">{h.title}</span>
+        <span className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-[16px] font-bold leading-snug">{h.title}</span>
+          <span className={`text-[13px] font-semibold ${h.municipality ? 'text-accent' : 'text-muted'}`}>
+            📍 {h.municipality ?? 'Sin localidad'}{h.zone ? <span className="font-normal text-muted"> · {h.zone}</span> : null}
+          </span>
+        </span>
         <StatusBadge s={h.status} />
       </span>
       <span className="text-[14px]">
         <b>{price(h.price_cents)}</b>
         <span className="text-muted">
-          {[h.size_m2 && `${Number(h.size_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, [h.zone, h.municipality].filter(Boolean).join(', ')].filter(Boolean).map(x => ` · ${x}`).join('')}
+          {[h.size_m2 && `${Number(h.size_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`].filter(Boolean).map(x => ` · ${x}`).join('')}
         </span>
       </span>
       {checks.length > 0 && (
@@ -780,6 +800,12 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       setOcr(`Guardando ${shots.length} captura${shots.length === 1 ? '' : 's'}…`)
       for (const f of shots) await m.addPhoto(householdId, homeId, f, 'anuncio')
       setOcr(null)
+    }
+    // Situarlo en el mapa en segundo plano (si es nuevo o ha cambiado la dirección)
+    if (!err && homeId) {
+      const id = homeId
+      void locateHome(id, { address: data.address, zone: data.zone, municipality: data.municipality, province: data.province, maps_url: data.maps_url,
+        geo_query: home?.geo_query ?? null, lat: home?.lat ?? null }).then(changed => { if (changed) void m.reload() })
     }
     setBusy(false)
     if (err) setError(err); else if (home) onClose(); else onCreated()
