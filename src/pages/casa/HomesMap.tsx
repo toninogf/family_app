@@ -5,7 +5,7 @@ import { HOME_STATUS, priceShort, type Home, type HomeStatus, type Mudanza } fro
 import { geoQuery, locateHome } from '../../lib/geo'
 
 const COLORS: Record<HomeStatus, string> = {
-  interesa: '#5B6662', visita_pedida: '#C77A12', visitado: '#2F5FC4', favorito: '#2D4BB3', oferta: '#2E8B57', descartado: '#9AA19D'
+  interesa: '#5B6662', llamar: '#B3261E', visita_pedida: '#C77A12', visitado: '#2F5FC4', favorito: '#2D4BB3', oferta: '#2E8B57', descartado: '#9AA19D'
 }
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 

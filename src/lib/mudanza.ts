@@ -42,7 +42,7 @@ export type BuyerOffer = {
 }
 
 export type Criteria = { household_id: string; max_price_cents: number | null; min_rooms: number | null; min_m2: number | null; zones: string[]; municipalities: string[]; must_haves: string[] }
-export type HomeStatus = 'interesa' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta'
+export type HomeStatus = 'interesa' | 'llamar' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta'
 export type Home = {
   id: string
   title: string
@@ -131,10 +131,10 @@ export const FEATURES: Record<string, string> = {
   reformado: 'Reformado', cerca_cole: 'Cerca del cole', transporte: 'Transporte cerca'
 }
 export const HOME_STATUS: Record<HomeStatus, string> = {
-  interesa: 'Me interesa', visita_pedida: 'Visita pedida', visitado: 'Visitado',
+  interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',
   favorito: 'Favorito', descartado: 'Descartado', oferta: 'Oferta hecha'
 }
-export const HOME_STATUS_ORDER: HomeStatus[] = ['favorito', 'oferta', 'visitado', 'visita_pedida', 'interesa', 'descartado']
+export const HOME_STATUS_ORDER: HomeStatus[] = ['favorito', 'oferta', 'visitado', 'visita_pedida', 'llamar', 'interesa', 'descartado']
 export const VISIT_CHECKLIST: { key: string; label: string; hint?: string }[] = [
   { key: 'luz', label: 'Luz y orientación', hint: 'Mira a qué hora da el sol en el salón' },
   { key: 'ruido', label: 'Ruido', hint: 'Calle, vecinos, bares, ascensor' },

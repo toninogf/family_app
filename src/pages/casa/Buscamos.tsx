@@ -31,7 +31,7 @@ const ALL_MUNICIPALITIES = PROVINCES.flatMap(p => MUNICIPALITIES[p.code].map(x =
 
 /** «En marcha» (todo menos descartados), «Todos» o un estado concreto */
 type Filter = 'activos' | 'todos' | HomeStatus
-const STATUS_FILTERS: HomeStatus[] = ['interesa', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado']
+const STATUS_FILTERS: HomeStatus[] = ['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado']
 
 /** Número para WhatsApp: con prefijo de España si no lo trae */
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.length === 9 ? `34${d}` : d.replace(/^00/, '') }
@@ -227,8 +227,10 @@ function Chip({ children, tone }: { children: ReactNode; tone?: 'ok' | 'bad' | '
 }
 
 function StatusBadge({ s }: { s: HomeStatus }) {
-  const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' ? 'bg-bg text-muted' : 'bg-accent-soft text-accent'
-  return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : ''}{HOME_STATUS[s]}</span>
+  // «Llamar para visita» es una tarea pendiente: se resalta para que no se olvide
+  const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' ? 'bg-bg text-muted'
+    : s === 'llamar' ? 'bg-danger text-white dark:text-bg' : 'bg-accent-soft text-accent'
+  return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</span>
 }
 
 function HomeCard({ h, m, onOpen, picked, onPick }: { h: Home; m: Mudanza; onOpen: () => void; picked: boolean; onPick: () => void }) {
@@ -332,7 +334,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       </div>
 
       <Choice<HomeStatus> label="Estado" value={h.status} onChange={s => (s === 'descartado' ? setDiscarding(true) : setStatus(s, { discard_reason: null }))}
-        options={(['interesa', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(s => ({ value: s, label: HOME_STATUS[s] }))} />
+        options={(['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(s => ({ value: s, label: HOME_STATUS[s] }))} />
       {discarding && (
         <div className="flex flex-col gap-2 bg-card rounded-2xl p-4">
           <TextField label="¿Por qué lo descartáis?" value={reason} onChange={e => setReason(e.target.value)} maxLength={200} placeholder="Ej. demasiado ruido, reforma cara" autoFocus />
@@ -544,8 +546,8 @@ function HomeVisitSheet({ home, visit, adults, m, onClose }: { home: Home; visit
     }, visit?.id)
     if (err) { setError(err); return }
     // El piso avanza de estado solo
-    if (status === 'done' && (home.status === 'interesa' || home.status === 'visita_pedida')) await m.write('homes', { status: 'visitado' }, home.id)
-    else if (status === 'scheduled' && home.status === 'interesa') await m.write('homes', { status: 'visita_pedida' }, home.id)
+    if (status === 'done' && (home.status === 'interesa' || home.status === 'llamar' || home.status === 'visita_pedida')) await m.write('homes', { status: 'visitado' }, home.id)
+    else if (status === 'scheduled' && (home.status === 'interesa' || home.status === 'llamar')) await m.write('homes', { status: 'visita_pedida' }, home.id)
     onClose()
   }
 
