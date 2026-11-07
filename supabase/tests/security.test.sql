@@ -146,9 +146,9 @@ select ok(public.test_fails($$ delete from public.event_categories where key = '
 -- Mudanza
 select ok(not public.test_fails($$ insert into public.buyer_visits (visit_date, start_time, contact_name) values ('2026-10-20', '17:30', 'Comprador') $$),
   'Toni puede apuntar una visita de compradores');
-select is((select count(*) from public.events where origin = 'venta'), 1::bigint, 'La visita de compradores aparece en la Agenda');
+select is((select count(*) from public.events where origin = 'venta' and title not like '%Firma de arras%'), 1::bigint, 'La visita de compradores aparece en la Agenda');
 select ok(not public.test_fails($$ update public.buyer_visits set status = 'cancelled' $$), 'Toni puede cancelar la visita');
-select is((select count(*) from public.events where origin = 'venta'), 0::bigint, 'Al cancelar la visita desaparece de la Agenda');
+select is((select count(*) from public.events where origin = 'venta' and title not like '%Firma de arras%'), 0::bigint, 'Al cancelar la visita desaparece de la Agenda');
 select ok(not public.test_fails($$ insert into public.homes (title, price_cents) values ('Piso centro', 30000000) $$), 'Toni puede guardar un piso');
 select ok(not public.test_fails($$ insert into public.home_ratings (home_id, member_id, score) select id, gen_random_uuid(), 4 from public.homes $$),
   'Toni puede poner su nota a un piso');
