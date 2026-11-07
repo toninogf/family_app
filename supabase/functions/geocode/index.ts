@@ -1,4 +1,4 @@
-// Busca las coordenadas de un piso (calle, zona y localidad) con OpenStreetMap (Nominatim) para el mapa de Buscamos.
+// Busca las coordenadas de un piso (calle, zona y localidad) con OpenStreetMap (vía Photon) para el mapa de Buscamos.
 // Solo usuarios con 2FA. Se prueba de lo más preciso a lo menos: calle → zona → localidad.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -12,15 +12,20 @@ const cors = {
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 const clean = (s: unknown) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, 120) : '')
 
-async function search(params: Record<string, string>) {
-  const q = new URLSearchParams({ format: 'jsonv2', limit: '1', countrycodes: 'es', 'accept-language': 'es', ...params })
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?${q}`, {
+// Photon (komoot, datos de OpenStreetMap): el Nominatim público bloquea a los servidores en la nube
+const MADRID_BBOX = '-4.6,39.85,-3.05,41.17'
+type Hit = { lat: number; lng: number; type: string }
+async function search(q: string, province: string): Promise<Hit | null> {
+  const params = new URLSearchParams({ q, limit: '1' })
+  if (/madrid/i.test(province)) params.set('bbox', MADRID_BBOX)
+  const r = await fetch(`https://photon.komoot.io/api/?${params}`, {
     headers: { 'User-Agent': 'family-app/1.0 (app familiar privada; mapa de pisos)' },
     signal: AbortSignal.timeout(8000)
   })
   if (!r.ok) return null
-  const [hit] = await r.json() as { lat: string; lon: string }[]
-  return hit ? { lat: Number(hit.lat), lng: Number(hit.lon) } : null
+  const data = await r.json() as { features?: { geometry: { coordinates: [number, number] }; properties: { type?: string; countrycode?: string } }[] }
+  const f = data.features?.find(x => !x.properties.countrycode || x.properties.countrycode === 'ES')
+  return f ? { lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], type: f.properties.type ?? '' } : null
 }
 
 Deno.serve(async (req: Request) => {
@@ -39,17 +44,16 @@ Deno.serve(async (req: Request) => {
   if (!town && !address && !zone) return json({ error: 'Sin datos de ubicación' }, 400)
   try {
     if (address) {
-      const street = address.replace(/,?\s*\d+.*$/, '').trim() // sin número ni piso: más fácil de encontrar
-      const hit = await search({ street: address, city: town, county: province }) ?? (street !== address ? await search({ street, city: town, county: province }) : null)
-      if (hit) return json({ ...hit, precision: 'calle' })
+      const hit = await search([address, town, province].filter(Boolean).join(', '), province)
+      if (hit && ['house', 'street'].includes(hit.type)) return json({ lat: hit.lat, lng: hit.lng, precision: 'calle' })
     }
     if (zone) {
-      const hit = await search({ q: [zone, town, province].filter(Boolean).join(', ') })
-      if (hit) return json({ ...hit, precision: 'zona' })
+      const hit = await search([zone, town, province].filter(Boolean).join(', '), province)
+      if (hit && !['city', 'county', 'state', 'country'].includes(hit.type)) return json({ lat: hit.lat, lng: hit.lng, precision: 'zona' })
     }
     if (town) {
-      const hit = await search({ city: town, county: province })
-      if (hit) return json({ ...hit, precision: 'localidad' })
+      const hit = await search(`${town}, ${province}`, province)
+      if (hit) return json({ lat: hit.lat, lng: hit.lng, precision: 'localidad' })
     }
     return json({ notFound: true })
   } catch (e) {

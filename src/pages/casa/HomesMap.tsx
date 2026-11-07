@@ -24,9 +24,10 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
   useEffect(() => {
     if (!box.current || map.current) return
     map.current = L.map(box.current, { zoomControl: true, attributionControl: true }).setView([40.42, -3.7], 9)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd',
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>'
+    // Mapa de OpenStreetMap: exige saber desde qué web se pide (la app no envía «referer» por defecto)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin',
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map.current)
     layer.current = L.layerGroup().addTo(map.current)
     return () => { map.current?.remove(); map.current = null }
