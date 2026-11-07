@@ -31,7 +31,7 @@ const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return
 const nameOf = (id: string | null, members: Member[]) => (id ? members.find(x => x.id === id)?.display_name ?? '' : '')
 const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')))
 
-export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
+export default function Buscamos({ m, members, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
   const [filter, setFilter] = useState<Filter>('activos')
   const [openId, setOpenId] = useState<string | null>(null)
   const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared }>({ open: false })
@@ -165,14 +165,14 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
         <Card><p className="text-sm text-muted">{m.homes.length ? 'Nada en esta lista.' : 'Guarda aquí los pisos que os interesen con «+ Piso»: enlace del anuncio, precio y metros.'}</p></Card>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {list.map(h => <HomeCard key={h.id} h={h} m={m} me={me} members={members} onOpen={() => setOpenId(h.id)} />)}
+          {list.map(h => <HomeCard key={h.id} h={h} m={m} onOpen={() => setOpenId(h.id)} />)}
         </div>
       )}
 
       <Fab label="Piso" onClick={() => setEditHome({ open: true })} />
 
       {open && !editHome.open && (
-        <HomeSheet h={open} m={m} me={me} members={members} householdId={householdId}
+        <HomeSheet h={open} m={m} members={members} householdId={householdId}
           onEdit={() => setEditHome({ open: true, home: open })} onClose={() => setOpenId(null)} />
       )}
       {editHome.open && (
@@ -195,7 +195,7 @@ function StatusBadge({ s }: { s: HomeStatus }) {
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : ''}{HOME_STATUS[s]}</span>
 }
 
-function HomeCard({ h, m, me, members, onOpen }: { h: Home; m: Mudanza; me: Member; members: Member[]; onOpen: () => void }) {
+function HomeCard({ h, m, onOpen }: { h: Home; m: Mudanza; onOpen: () => void }) {
   const checks = mustHaveCheck(h, m.criteria)
   const pm2 = perM2(h)
   const next = m.homeVisits.find(v => v.home_id === h.id && v.status === 'scheduled' && v.visit_date >= today())
@@ -243,8 +243,8 @@ function HomeCard({ h, m, me, members, onOpen }: { h: Home; m: Mudanza; me: Memb
   )
 }
 
-function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
-  h: Home; m: Mudanza; me: Member; members: Member[]; householdId: string; onEdit: () => void; onClose: () => void
+function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
+  h: Home; m: Mudanza; members: Member[]; householdId: string; onEdit: () => void; onClose: () => void
 }) {
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: HomeVisit }>({ open: false })
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: HomeOffer }>({ open: false })
