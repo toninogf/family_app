@@ -24,7 +24,9 @@ const municipalitiesOf = (province: string | null) => {
 }
 const ALL_MUNICIPALITIES = PROVINCES.flatMap(p => MUNICIPALITIES[p.code].map(x => x.name))
 
-type Filter = 'activos' | 'favoritos' | 'descartados' | 'todos'
+/** «En marcha» (todo menos descartados), «Todos» o un estado concreto */
+type Filter = 'activos' | 'todos' | HomeStatus
+const STATUS_FILTERS: HomeStatus[] = ['interesa', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado']
 
 /** Número para WhatsApp: con prefijo de España si no lo trae */
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.length === 9 ? `34${d}` : d.replace(/^00/, '') }
@@ -55,9 +57,8 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   const list = useMemo(() => {
     const f = m.homes.filter(h =>
       filter === 'todos' ? true
-        : filter === 'descartados' ? h.status === 'descartado'
-          : filter === 'favoritos' ? h.status === 'favorito' || h.status === 'oferta'
-            : h.status !== 'descartado')
+        : filter === 'activos' ? h.status !== 'descartado'
+          : h.status === filter)
     const lo = minP.trim() ? parsePrice(minP) : null
     const hi = maxP.trim() ? parsePrice(maxP) : null
     const g = f.filter(h =>
@@ -117,11 +118,16 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
       )}
 
       <div className="flex justify-between items-center gap-2">
-        <div className="flex gap-1.5 flex-wrap">
-          {([['activos', 'En marcha'], ['favoritos', 'Favoritos'], ['descartados', 'Descartados'], ['todos', 'Todos']] as const).map(([k, l]) => (
-            <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k}
-              className={`min-h-9 px-3 rounded-full text-[13px] font-semibold ${filter === k ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>{l}</button>
-          ))}
+        <div className="flex gap-1.5 overflow-x-auto -mx-5 px-5 pb-1">
+          {([['activos', 'En marcha'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
+            const n = k === 'todos' ? m.homes.length : k === 'activos' ? m.homes.filter(h => h.status !== 'descartado').length : m.homes.filter(h => h.status === k).length
+            return (
+              <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k}
+                className={`shrink-0 min-h-9 px-3 rounded-full text-[13px] font-semibold whitespace-nowrap ${filter === k ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>
+                {l} <span className={filter === k ? 'opacity-70' : 'text-muted'}>{n}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
       <div className="flex gap-2 -mt-2">
