@@ -166,7 +166,10 @@ const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'PARC
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
-  for (const line of raw.replace(/[*`_]/g, '').split(/\r?\n/)) {
+  // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|A[NÑ]O|RESUMEN'
+  const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
+  for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
     if (!m) continue
     const key = fold(m[1]).toUpperCase().replace(/\s+/g, '').replace('BAÑOS', 'BANOS')
@@ -198,7 +201,7 @@ export function parseAiBlock(raw: string): ListingData | null {
   const fee = n('COMUNIDAD'); if (fee) out.community_eur = fee
   const ibi = n('IBI'); if (ibi) out.ibi_eur = ibi
   const notes = [
-    values.PARCELA && n('PARCELA') ? `Parcela: ${values.PARCELA.match(/\d[\d.,]*/)?.[0]} m²` : '',
+    n('PARCELA') ? `Parcela: ${n('PARCELA')!.toLocaleString('es-ES')} m²` : '',
     values.AÑO || values.ANO ? `Año: ${values.AÑO ?? values.ANO}` : '',
     values.RESUMEN ?? ''
   ].filter(Boolean)
