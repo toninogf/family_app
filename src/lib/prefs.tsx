@@ -6,8 +6,9 @@ import { useHousehold } from './household'
 export type TabKey = 'compra' | 'casa' | 'mudanza' | 'agenda' | 'dinero' | 'gym'
 export type SectionKey = 'saldo' | 'agenda' | 'comedor' | 'tareas' | 'mudanza' | 'gym' | 'compra'
 
-export const ALL_TABS: TabKey[] = ['compra', 'casa', 'mudanza', 'agenda', 'dinero', 'gym']
-export const ALL_SECTIONS: SectionKey[] = ['saldo', 'agenda', 'comedor', 'tareas', 'mudanza', 'gym', 'compra']
+// Orden por defecto (el de Toni); cada uno puede cambiarlo en Perfil → Personalizar
+export const ALL_TABS: TabKey[] = ['agenda', 'compra', 'casa', 'mudanza', 'gym', 'dinero']
+export const ALL_SECTIONS: SectionKey[] = ['saldo', 'agenda', 'tareas', 'compra', 'mudanza', 'gym', 'comedor']
 export const TAB_LABEL: Record<TabKey, string> = { compra: 'Compra', casa: 'Tareas', mudanza: 'Mudanza', agenda: 'Agenda', dinero: 'Dinero', gym: 'Gimnasio' }
 export const SECTION_LABEL: Record<SectionKey, string> = {
   saldo: 'Saldos y gasto del mes', agenda: 'Agenda de hoy', comedor: 'Comedor de hoy', tareas: 'Tareas',

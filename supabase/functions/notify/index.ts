@@ -165,7 +165,7 @@ Deno.serve(async (req: Request) => {
         return `Nuestra oferta por ${title ?? 'el piso'}: esperamos respuesta ${when(o.response_deadline)}`
       })
     ]
-    const DEFAULT_ORDER = ['saldo', 'agenda', 'comedor', 'tareas', 'mudanza', 'gym', 'compra']
+    const DEFAULT_ORDER = ['saldo', 'agenda', 'tareas', 'compra', 'mudanza', 'gym', 'comedor']
     const ms = (members ?? []) as Member[]
     const name = (id: string | null) => ms.find(m => m.id === id)?.display_name ?? ''
 
