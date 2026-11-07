@@ -226,7 +226,7 @@ function HomeCard({ h, m, onOpen }: { h: Home; m: Mudanza; onOpen: () => void })
         <span className="flex flex-col gap-0.5 min-w-0">
           <span className="text-[16px] font-bold leading-snug">{h.title}</span>
           <span className={`text-[13px] font-semibold ${h.municipality ? 'text-accent' : 'text-muted'}`}>
-            📍 {h.municipality ?? 'Sin localidad'}{h.zone ? <span className="font-normal text-muted"> · {h.zone}</span> : null}
+            📍 {h.zone ? <span className="font-normal text-muted">{h.zone} · </span> : null}{h.municipality ?? 'Sin localidad'}
           </span>
         </span>
         <StatusBadge s={h.status} />

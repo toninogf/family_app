@@ -134,7 +134,7 @@ export function parseListing(raw: string): ListingData {
   const type = text.match(/\b(piso|ático|atico|chalet(?: adosado| pareado| independiente)?|casa(?: o chalet independiente| adosada| pareada)?|dúplex|duplex|estudio|apartamento|loft)\b/i)
   if (type) {
     const t = type[1].replace(/^casa o chalet independiente$/i, 'Chalet independiente')
-    const where = out.zone ?? out.address ?? out.municipality
+    const where = [out.zone ?? out.address, out.municipality].filter(Boolean).join(' · ')
     out.title = `${t.charAt(0).toUpperCase()}${t.slice(1)}${out.rooms ? ` ${out.rooms} hab.` : ''}${where ? ` · ${where}` : ''}`.slice(0, 80)
   }
   return out
@@ -238,7 +238,7 @@ export function parseAiBlock(raw: string): ListingData | null {
   const mail = values.EMAIL?.match(/[\w.+-]+@[\w-]+\.[\w.-]+/); if (mail) out.email = mail[0]
   if (values.REFERENCIA) out.ref = values.REFERENCIA.slice(0, 60)
   if (values.TIPO) {
-    const where = out.zone ?? out.address ?? out.municipality
+    const where = [out.zone ?? out.address, out.municipality].filter(Boolean).join(' · ')
     const t = values.TIPO.charAt(0).toUpperCase() + values.TIPO.slice(1)
     out.title = `${t}${out.rooms ? ` ${out.rooms} hab.` : ''}${where ? ` · ${where}` : ''}`.slice(0, 80)
   }
