@@ -8,6 +8,7 @@ import Compra from './pages/Compra'
 import Dinero from './pages/Dinero'
 import Tareas from './pages/Casa'
 import Mudanza from './pages/Mudanza'
+import Compartir from './pages/Compartir'
 import Ninos from './pages/Ninos'
 import Gym from './pages/Gym'
 import { PrefsProvider } from './lib/prefs'
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/compra" element={<Compra />} />
             <Route path="/tareas" element={<Tareas />} />
             <Route path="/mudanza" element={<Mudanza />} />
+            <Route path="/compartir" element={<Compartir />} />
             <Route path="/casa" element={<CasaRedirect />} />
             <Route path="/agenda" element={<Ninos />} />
             <Route path="/gym" element={<Gym />} />

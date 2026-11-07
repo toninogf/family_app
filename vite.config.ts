@@ -28,7 +28,9 @@ export default defineConfig({
         theme_color: '#2D4BB3',
         icons: [
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
-        ]
+        ],
+        // Aparece en el menú «Compartir» de Android: un anuncio de Idealista, Fotocasa… abre un piso nuevo en Buscamos
+        share_target: { action: '/compartir', method: 'GET', params: { title: 'title', text: 'text', url: 'url' } }
       },
       workbox: {
         // Nunca cachear llamadas a Supabase: los datos siempre frescos y privados

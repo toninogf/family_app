@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import type { Member } from '../../lib/supabase'
+import { useLocation } from 'react-router-dom'
+import { supabase, type Member } from '../../lib/supabase'
+import { filledLabels, parseListing, type ListingData } from '../../lib/listingParse'
 import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
@@ -29,7 +31,14 @@ const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.'))
 export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
   const [filter, setFilter] = useState<Filter>('activos')
   const [openId, setOpenId] = useState<string | null>(null)
-  const [editHome, setEditHome] = useState<{ open: boolean; home?: Home }>({ open: false })
+  const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared }>({ open: false })
+  // Anuncio compartido desde la app de un portal (menú «Compartir» del móvil): abre un piso nuevo ya relleno
+  const location = useLocation()
+  useEffect(() => {
+    const share = (location.state as { share?: Shared } | null)?.share
+    if (share) { setEditHome({ open: true, initial: share }); window.history.replaceState({}, '') }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [criteriaOpen, setCriteriaOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
   const [town, setTown] = useState<string>('all')
@@ -170,7 +179,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
           onEdit={() => setEditHome({ open: true, home: open })} onClose={() => setOpenId(null)} />
       )}
       {editHome.open && (
-        <HomeEditSheet home={editHome.home} m={m} onClose={() => setEditHome({ open: false })}
+        <HomeEditSheet home={editHome.home} initial={editHome.initial} m={m} onClose={() => setEditHome({ open: false })}
           onCreated={() => setEditHome({ open: false })} />
       )}
       {criteriaOpen && <CriteriaSheet m={m} householdId={householdId} onClose={() => setCriteriaOpen(false)} />}
@@ -617,9 +626,15 @@ function HomeOfferSheet({ home, offer, m, onClose }: { home: Home; offer?: HomeO
   )
 }
 
-function HomeEditSheet({ home, m, onClose, onCreated }: { home?: Home; m: Mudanza; onClose: () => void; onCreated: () => void }) {
+type Shared = { url?: string | null; text?: string | null }
+
+function HomeEditSheet({ home, initial, m, onClose, onCreated }: { home?: Home; initial?: Shared; m: Mudanza; onClose: () => void; onCreated: () => void }) {
   const [title, setTitle] = useState(home?.title ?? '')
-  const [url, setUrl] = useState(home?.url ?? '')
+  const [url, setUrl] = useState(home?.url ?? initial?.url ?? '')
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasted, setPasted] = useState('')
+  const [reading, setReading] = useState(false)
+  const [importNote, setImportNote] = useState<{ ok: boolean; text: string } | null>(null)
   const [amount, setAmount] = useState(priceInput(home?.price_cents))
   const [m2, setM2] = useState(home?.size_m2 != null ? String(Number(home.size_m2)).replace('.', ',') : '')
   const [rooms, setRooms] = useState(home?.rooms?.toString() ?? '')
@@ -639,6 +654,60 @@ function HomeEditSheet({ home, m, onClose, onCreated }: { home?: Home; m: Mudanz
   const [notes, setNotes] = useState(home?.notes ?? '')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  /** Rellena la ficha con lo que se haya sacado del anuncio (solo los datos encontrados) */
+  function apply(d: ListingData) {
+    if (d.title) setTitle(t => t.trim() ? t : d.title!)
+    if (d.price_eur) setAmount(priceInput(Math.round(d.price_eur * 100)))
+    if (d.size_m2) setM2(String(d.size_m2).replace('.', ','))
+    if (d.rooms != null) setRooms(String(d.rooms))
+    if (d.baths != null) setBaths(String(d.baths))
+    if (d.floor) setFloor(d.floor)
+    if (d.municipality) { setProvince('Madrid'); setMunicipality(d.municipality) }
+    if (d.zone) setZone(d.zone.slice(0, 60))
+    if (d.address) setAddress(d.address.slice(0, 120))
+    if (d.features?.length) setFeatures(f => [...new Set([...f, ...d.features!])])
+    if (d.energy) setEnergy(d.energy)
+    if (d.community_eur) setFee(priceInput(Math.round(d.community_eur * 100)))
+    if (d.ibi_eur) setIbi(priceInput(Math.round(d.ibi_eur * 100)))
+    return filledLabels(d)
+  }
+
+  function fromText(text: string, intro = 'Rellenado') {
+    const got = apply(parseListing(text))
+    setImportNote(got.length
+      ? { ok: true, text: `${intro}: ${got.join(', ')}. Revísalo antes de guardar.` }
+      : { ok: false, text: 'No he encontrado datos en ese texto. Prueba a copiar el bloque de precio y características del anuncio.' })
+    return got
+  }
+
+  /** Intenta leer el anuncio desde el servidor; muchos portales (Idealista sobre todo) solo dejan ver la vista previa */
+  async function readLink(link = url) {
+    const full = link.trim() && (/^https?:\/\//i.test(link.trim()) ? link.trim() : `https://${link.trim()}`)
+    if (!full) return
+    setReading(true); setImportNote(null)
+    const { data, error } = await supabase.functions.invoke('listing-preview', { body: { url: full } })
+    setReading(false)
+    const res = data as { blocked?: boolean; error?: string; title?: string; description?: string; text?: string } | null
+    if (error || !res || res.blocked || res.error) {
+      setImportNote({ ok: false, text: res?.error && !res.blocked ? res.error : 'El portal no ha dejado leer el anuncio. Copia el texto del anuncio y pégalo abajo.' })
+      setPasteOpen(true)
+      return
+    }
+    const got = fromText([res.title, res.description, res.text].filter(Boolean).join('\n'), 'Leído del anuncio')
+    if (got.length && !got.includes('precio')) {
+      setImportNote({ ok: true, text: `Leído del anuncio: ${got.join(', ')}. El portal no deja ver el resto: para el precio y la ficha completa, pega el texto del anuncio.` })
+      setPasteOpen(true)
+    }
+  }
+
+  // Si viene de «Compartir», se rellena solo
+  useEffect(() => {
+    if (!initial) return
+    if (initial.text) fromText(initial.text, 'Rellenado con lo compartido')
+    if (initial.url) void readLink(initial.url)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -665,15 +734,33 @@ function HomeEditSheet({ home, m, onClose, onCreated }: { home?: Home; m: Mudanz
   return (
     <Sheet title={home ? 'Editar piso' : 'Nuevo piso'} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1.5">
-          <TextField label="Enlace del anuncio" type="url" inputMode="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.idealista.com/inmueble/…" />
+        <div className="flex flex-col gap-2 rounded-2xl border border-line p-3">
+          <p className="text-sm font-bold">📥 Rellenar desde el anuncio</p>
+          <div className="flex items-end gap-2">
+            <div className="flex-1 min-w-0">
+              <TextField label="Enlace del anuncio" type="url" inputMode="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.idealista.com/inmueble/…" />
+            </div>
+            <button type="button" onClick={() => readLink()} disabled={!url.trim() || reading}
+              className="min-h-12 px-3 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold shrink-0 disabled:opacity-40">{reading ? 'Leyendo…' : 'Leer'}</button>
+          </div>
           {url.trim() && (() => {
             const full = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`
             const portal = portalName(full)
             return portal
-              ? <a href={full} target="_blank" rel="noopener noreferrer" className="text-xs text-accent font-semibold">✓ Anuncio de {portal} · comprobar ↗</a>
+              ? <a href={full} target="_blank" rel="noopener noreferrer" className="text-xs text-accent font-semibold">✓ Anuncio de {portal} · abrir ↗</a>
               : <span className="text-xs text-danger">Ese enlace no parece válido</span>
           })()}
+          {pasteOpen ? (
+            <div className="flex flex-col gap-2">
+              <TextArea label="Texto del anuncio" value={pasted} onChange={e => setPasted(e.target.value)} maxLength={20000}
+                placeholder="Pega aquí el precio, las características básicas, el edificio, el certificado…" />
+              <button type="button" onClick={() => fromText(pasted)} disabled={!pasted.trim()}
+                className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold disabled:opacity-40">Rellenar con este texto</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setPasteOpen(true)} className="self-start min-h-10 text-sm text-accent font-semibold">📋 Pegar el texto del anuncio</button>
+          )}
+          {importNote && <p role="status" className={`text-xs ${importNote.ok ? 'text-accent' : 'text-danger'}`}>{importNote.text}</p>}
         </div>
         <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />
         <div className="grid grid-cols-2 gap-3">
