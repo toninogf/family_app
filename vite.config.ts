@@ -20,14 +20,19 @@ export default defineConfig({
       manifest: {
         name: 'Family App',
         short_name: 'Familia',
-        description: 'Compra, casa, niños y gastos de la familia',
+        description: 'Compra, tareas, agenda, gastos y mudanza de la familia',
+        id: '/',
         lang: 'es',
         start_url: '/',
         display: 'standalone',
         background_color: '#F4F5F1',
         theme_color: '#2D4BB3',
+        // Android necesita iconos PNG para instalarla como app de verdad (WebAPK), que es lo que permite salir en «Compartir»
         icons: [
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
         ],
         // Aparece en el menú «Compartir» de Android: un anuncio de Idealista, Fotocasa… abre un piso nuevo en Buscamos
         share_target: { action: '/compartir', method: 'GET', params: { title: 'title', text: 'text', url: 'url' } }
