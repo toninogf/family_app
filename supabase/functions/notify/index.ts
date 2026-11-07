@@ -251,12 +251,13 @@ Deno.serve(async (req: Request) => {
         if (kind === 'daily') {
           const todays = agenda(today)
           const items = todays.map(a => {
+            if (a.origin === 'venta' && a.title.startsWith('🏠')) return `${hhmm(a.start)} ${a.title}` // paso de la venta (arras, firma…)
             if (a.origin === 'venta') return `${hhmm(a.start)} 🏠 ${a.title}${a.drop === s.member_id ? ' · atiendes tú' : ''}`
             if (a.origin === 'compra') return `${hhmm(a.start)} 🏠 ${a.title}${!a.drop ? ' · vais los dos' : a.drop === s.member_id ? ' · vas tú' : ''}`
             const roles = [a.drop === s.member_id ? 'llevas tú' : '', a.pick === s.member_id ? 'recoges tú' : ''].filter(Boolean).join(' y ')
             return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`
           })
-          if (todays.some(a => a.origin === 'venta')) items.push('Prepara la casa antes de la visita (en Mudanza → Vendemos tienes la lista)')
+          if (todays.some(a => a.origin === 'venta' && !a.title.startsWith('🏠'))) items.push('Prepara la casa antes de la visita (en Mudanza → Vendemos tienes la lista)')
           const mine = forMember(tasksToday, s.member_id)
           const late = forMember(overdueTasks, s.member_id)
           const taskLine = [mine.length ? `Tareas: ${listOf(mine)}` : '', late.length ? `${late.length} atrasada${late.length === 1 ? '' : 's'} (${listOf(late, 3)})` : '']
