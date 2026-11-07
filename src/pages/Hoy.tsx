@@ -112,7 +112,7 @@ export default function Hoy() {
   ),
     mudanza: (
     <>
-      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0) && (
+      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0 || mud.expiringDocs.length > 0) && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-bold">Mudanza</h2>
           <div className="bg-card rounded-2xl flex flex-col">
@@ -129,11 +129,21 @@ export default function Hoy() {
               </Link>
             )}
             {mud.openOffers > 0 && (
-              <Link to="/mudanza?vista=vendemos" className="p-4 flex flex-col gap-0.5">
+              <Link to="/mudanza?vista=vendemos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
                 <span className="text-[13px] text-muted">{mud.openOffers === 1 ? 'Una oferta abierta' : `${mud.openOffers} ofertas abiertas`}</span>
                 <span className={`text-[15px] font-semibold ${mud.nearestDeadline && mud.nearestDeadline <= today() ? 'text-danger' : ''}`}>
                   {mud.nearestDeadline ? `Plazo más cercano: ${relativeDay(mud.nearestDeadline).toLowerCase()}` : 'Sin plazo de respuesta'}
                 </span>
+              </Link>
+            )}
+            {mud.expiringDocs.length > 0 && (
+              <Link to="/mudanza?vista=vendemos" className="p-4 flex flex-col gap-0.5">
+                <span className="text-[13px] text-muted">Documentos de la venta</span>
+                {mud.expiringDocs.slice(0, 3).map(d => (
+                  <span key={d.title} className={`text-[15px] font-semibold ${d.expires_on < today() ? 'text-danger' : ''}`}>
+                    {d.title}: {d.expires_on < today() ? 'caducado' : `caduca ${relativeDay(d.expires_on).toLowerCase()}`}
+                  </span>
+                ))}
               </Link>
             )}
           </div>

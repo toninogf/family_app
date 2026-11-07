@@ -1,10 +1,32 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { compressImage } from './money'
+import { addDays } from './dates'
 
 // ---------- Tipos ----------
 export type Link = { label: string; url: string }
-export type Listing = { household_id: string; price_cents: number | null; published_on: string | null; links: Link[]; notes: string | null }
+export type SaleCost = { label: string; cents: number }
+export type Listing = {
+  household_id: string; price_cents: number | null; published_on: string | null; links: Link[]; notes: string | null
+  // Ficha del anuncio
+  title: string | null; property_type: string | null; address: string | null; zone: string | null; municipality: string | null; province: string | null
+  size_m2: number | null; useful_m2: number | null; plot_m2: number | null; rooms: number | null; baths: number | null; floor: string | null
+  features: string[]; energy: string | null; community_fee_cents: number | null; ibi_cents: number | null; year_built: number | null
+  description: string | null; listing_ref: string | null
+  // Cuentas
+  mortgage_cents: number | null; costs: SaleCost[]
+}
+export type SalePhoto = { id: string; path: string; kind: 'foto' | 'anuncio'; created_at: string }
+export type DocStatus = 'falta' | 'pedido' | 'ok' | 'no_aplica'
+export type SaleDoc = {
+  id: string; doc_key: string | null; title: string; status: DocStatus; expires_on: string | null
+  path: string | null; file_name: string | null; notes: string | null; position: number; updated_at: string
+}
+export type StepKind = 'reserva' | 'arras' | 'firma' | 'otro'
+export type SaleStep = {
+  id: string; kind: StepKind; title: string; step_date: string | null; step_time: string | null; location: string | null
+  amount_cents: number | null; notes: string | null; checklist: Record<string, boolean>; done: boolean; position: number
+}
 export type PricePoint = { id: string; price_cents: number; changed_on: string; changed_at: string }
 
 export type VisitStatus = 'scheduled' | 'done' | 'cancelled' | 'no_show'
@@ -190,7 +212,7 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
 }
 
 // ---------- Datos ----------
-const TABLES = ['sale_listing', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers']
+const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers']
 
 export function useMudanza() {
   const [listing, setListing] = useState<Listing | null>(null)
@@ -203,12 +225,15 @@ export function useMudanza() {
   const [ratings, setRatings] = useState<Rating[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
   const [homeOffers, setHomeOffers] = useState<HomeOffer[]>([])
+  const [salePhotos, setSalePhotos] = useState<SalePhoto[]>([])
+  const [saleDocs, setSaleDocs] = useState<SaleDoc[]>([])
+  const [saleSteps, setSaleSteps] = useState<SaleStep[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
-    const [l, p, v, o, c, h, hv, r, ph, ho] = await Promise.all([
-      supabase.from('sale_listing').select('household_id, price_cents, published_on, links, notes').maybeSingle(),
+    const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss] = await Promise.all([
+      supabase.from('sale_listing').select('*').maybeSingle(),
       supabase.from('sale_price_history').select('id, price_cents, changed_on, changed_at').order('changed_at'),
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
@@ -217,9 +242,12 @@ export function useMudanza() {
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
-      supabase.from('home_offers').select('id, home_id, offer_date, amount_cents, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false })
+      supabase.from('home_offers').select('id, home_id, offer_date, amount_cents, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
+      supabase.from('sale_photos').select('id, path, kind, created_at').order('created_at'),
+      supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, path, file_name, notes, position, updated_at').order('position').order('title'),
+      supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position')
     ])
-    const firstError = [l, p, v, o, c, h, hv, r, ph, ho].find(x => x.error)?.error
+    const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss].find(x => x.error)?.error
     if (firstError) setError(firstError.message)
     setListing((l.data as Listing | null) ?? null)
     setPrices((p.data ?? []) as PricePoint[])
@@ -231,6 +259,9 @@ export function useMudanza() {
     setRatings((r.data ?? []) as Rating[])
     setPhotos((ph.data ?? []) as Photo[])
     setHomeOffers((ho.data ?? []) as HomeOffer[])
+    setSalePhotos((sp.data ?? []) as SalePhoto[])
+    setSaleDocs((sd.data ?? []) as SaleDoc[])
+    setSaleSteps((ss.data ?? []) as SaleStep[])
     setLoading(false)
   }, [])
 
@@ -291,6 +322,51 @@ export function useMudanza() {
     }
   }
 
+  /** Foto o captura de nuestro anuncio (carpeta <hogar>/venta/) */
+  async function addSalePhoto(householdId: string, file: File, kind: 'foto' | 'anuncio' = 'foto') {
+    try {
+      const blob = await compressImage(file, kind === 'anuncio' ? 2400 : 1600)
+      const path = `${householdId}/venta/${crypto.randomUUID()}.jpg`
+      const { error } = await supabase.storage.from('house-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+      if (error) throw error
+      return await write('sale_photos', { path, kind })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo subir la foto'
+      setError(msg)
+      return msg
+    }
+  }
+  async function removeSalePhoto(p: SalePhoto) {
+    await supabase.storage.from('house-photos').remove([p.path])
+    await remove('sale_photos', p.id)
+  }
+
+  /** Sube el archivo de un documento (PDF o foto) y lo marca como «lo tenemos» */
+  async function uploadSaleDoc(householdId: string, doc: SaleDoc, file: File) {
+    try {
+      const isPdf = file.type === 'application/pdf'
+      const body: Blob = isPdf ? file : await compressImage(file, 2400)
+      const ext = isPdf ? 'pdf' : 'jpg'
+      const path = `${householdId}/${crypto.randomUUID()}.${ext}`
+      const { error } = await supabase.storage.from('sale-docs').upload(path, body, { contentType: isPdf ? 'application/pdf' : 'image/jpeg', upsert: false })
+      if (error) throw error
+      if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
+      return await write('sale_documents', { path, file_name: file.name.slice(0, 200), status: 'ok' }, doc.id)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo subir el documento'
+      setError(msg)
+      return msg
+    }
+  }
+  async function removeSaleDocFile(doc: SaleDoc) {
+    if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
+    return write('sale_documents', { path: null, file_name: null }, doc.id)
+  }
+  async function removeSaleDoc(doc: SaleDoc) {
+    if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
+    await remove('sale_documents', doc.id)
+  }
+
   async function removePhoto(p: Photo) {
     await supabase.storage.from('house-photos').remove([p.path])
     await remove('home_photos', p.id)
@@ -298,6 +374,7 @@ export function useMudanza() {
 
   return {
     listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, loading, error,
+    salePhotos, saleDocs, saleSteps, addSalePhoto, removeSalePhoto, uploadSaleDoc, removeSaleDocFile, removeSaleDoc,
     clearError: () => setError(''), reload: load, write, remove, removeHome, createHome, addPhoto, removePhoto
   }
 }
@@ -315,11 +392,13 @@ function friendly(msg: string) {
 
 /** Resumen ligero para la pantalla Hoy */
 export async function mudanzaSummary(fromDate: string) {
-  const [bv, hv, bo, ho] = await Promise.all([
+  const [bv, hv, bo, ho, sd] = await Promise.all([
     supabase.from('buyer_visits').select('visit_date, start_time, contact_name').eq('status', 'scheduled').gte('visit_date', fromDate).order('visit_date').order('start_time').limit(1),
     supabase.from('home_visits').select('visit_date, start_time, homes(title)').eq('status', 'scheduled').gte('visit_date', fromDate).order('visit_date').order('start_time').limit(1),
     supabase.from('buyer_offers').select('response_deadline').in('status', ['pending', 'countered']),
-    supabase.from('home_offers').select('response_deadline').in('status', ['pending', 'countered'])
+    supabase.from('home_offers').select('response_deadline').in('status', ['pending', 'countered']),
+    supabase.from('sale_documents').select('title, expires_on').neq('status', 'no_aplica').not('expires_on', 'is', null)
+      .lte('expires_on', addDays(fromDate, 15)).order('expires_on')
   ])
   const nextSale = bv.data?.[0] as { visit_date: string; start_time: string; contact_name: string | null } | undefined
   const nh = hv.data?.[0] as { visit_date: string; start_time: string; homes: { title: string } | { title: string }[] | null } | undefined
@@ -329,7 +408,8 @@ export async function mudanzaSummary(fromDate: string) {
     nextSale: nextSale ?? null,
     nextHome: nh ? { visit_date: nh.visit_date, start_time: nh.start_time, title: homeTitle! } : null,
     openOffers: (bo.data?.length ?? 0) + (ho.data?.length ?? 0),
-    nearestDeadline: deadlines.find(d => d >= fromDate) ?? null
+    nearestDeadline: deadlines.find(d => d >= fromDate) ?? null,
+    expiringDocs: (sd.data ?? []) as { title: string; expires_on: string }[]
   }
 }
 
@@ -347,3 +427,51 @@ export function portalName(url: string | null | undefined) {
     return null
   }
 }
+
+/** Enlace temporal para ver un documento de la venta */
+export async function saleDocUrl(path: string): Promise<string | null> {
+  const { data } = await supabase.storage.from('sale-docs').createSignedUrl(path, 60 * 10)
+  return data?.signedUrl ?? null
+}
+
+// ---------- Plantillas de Vendemos ----------
+/** Documentos que suelen hacer falta para vender; «months»: validez habitual (para avisar de la caducidad) */
+export const DOC_TEMPLATE: { key: string; title: string; hint: string; months?: number }[] = [
+  { key: 'nota_simple', title: 'Nota simple del Registro', hint: 'Titularidad y cargas. Se pide reciente (menos de 3 meses).', months: 3 },
+  { key: 'escritura', title: 'Escritura de propiedad', hint: 'La piden el notario y el banco del comprador.' },
+  { key: 'catastro', title: 'Referencia / certificado catastral', hint: 'Sede electrónica del Catastro.' },
+  { key: 'cee', title: 'Certificado energético', hint: 'Obligatorio para anunciar y firmar. Vale 10 años.', months: 120 },
+  { key: 'ibi', title: 'Último recibo del IBI', hint: 'Lo pide el notario.', months: 12 },
+  { key: 'comunidad', title: 'Certificado de la comunidad (al corriente)', hint: 'Obligatorio en la firma si hay comunidad. Reciente.', months: 1 },
+  { key: 'hipoteca', title: 'Certificado de deuda de la hipoteca', hint: 'Cuánto queda para cancelarla el día de la firma.', months: 1 },
+  { key: 'suministros', title: 'Facturas de luz, agua y gas', hint: 'Para el cambio de titular.' },
+  { key: 'ite', title: 'ITE / IEE y licencias de obras', hint: 'Si el edificio es antiguo o hay reformas.' },
+  { key: 'arras_modelo', title: 'Modelo de contrato de arras', hint: 'El que vayáis a firmar con el comprador.' }
+]
+
+/** Pasos de la venta con lo que conviene tener hecho en cada uno */
+export const STEP_TEMPLATE: { kind: StepKind; title: string; checklist: { key: string; label: string }[] }[] = [
+  { kind: 'reserva', title: 'Reserva', checklist: [
+    { key: 'oferta_escrito', label: 'Oferta aceptada por escrito' },
+    { key: 'importe', label: 'Importe y plazo de la reserva acordados' },
+    { key: 'cobro', label: 'Reserva cobrada (transferencia)' }
+  ] },
+  { kind: 'arras', title: 'Firma de arras', checklist: [
+    { key: 'nota_simple', label: 'Nota simple reciente' },
+    { key: 'contrato', label: 'Contrato de arras revisado' },
+    { key: 'financiacion', label: 'Financiación del comprador confirmada' },
+    { key: 'fecha_notaria', label: 'Fecha límite de firma en notaría' },
+    { key: 'cobro', label: 'Arras cobradas' }
+  ] },
+  { kind: 'firma', title: 'Firma ante notario', checklist: [
+    { key: 'deuda', label: 'Certificado de deuda de la hipoteca (15 días antes)' },
+    { key: 'comunidad', label: 'Certificado de la comunidad' },
+    { key: 'ibi', label: 'Último recibo del IBI' },
+    { key: 'cee', label: 'Certificado energético' },
+    { key: 'llaves', label: 'Llaves y mandos preparados' },
+    { key: 'suministros', label: 'Lecturas de luz, agua y gas; cambio de titular' }
+  ] }
+]
+
+/** Gastos habituales al vender (las cifras las pone cada uno; los impuestos, mejor confirmarlos con un gestor) */
+export const COST_TEMPLATE = ['Cancelación de la hipoteca (notaría y registro)', 'Plusvalía municipal', 'Certificados y nota simple', 'Mudanza']

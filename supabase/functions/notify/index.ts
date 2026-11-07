@@ -156,6 +156,9 @@ Deno.serve(async (req: Request) => {
       db.from('home_offers').select('amount_cents, response_deadline, homes(title)').eq('household_id', hh).in('status', ['pending', 'countered'])
         .gte('response_deadline', today).lte('response_deadline', addDays(today, 1))
     ])
+    // Documentos de la venta que caducan en los próximos 7 días
+    const { data: sDocs } = await db.from('sale_documents').select('title, expires_on').eq('household_id', hh).neq('status', 'no_aplica')
+      .gte('expires_on', today).lte('expires_on', addDays(today, 7)).order('expires_on')
     const when = (d: string) => (d === today ? 'hoy' : 'mañana')
     const offerLines = [
       ...(bOffers ?? []).map(o => `Oferta de ${o.buyer_name || 'un comprador'} (${eur0(o.amount_cents)}): responder ${when(o.response_deadline)}`),
@@ -163,7 +166,8 @@ Deno.serve(async (req: Request) => {
         const h = o.homes as { title: string } | { title: string }[] | null
         const title = Array.isArray(h) ? h[0]?.title : h?.title
         return `Nuestra oferta por ${title ?? 'el piso'}: esperamos respuesta ${when(o.response_deadline)}`
-      })
+      }),
+      ...(sDocs ?? []).map(d => `${d.title}: caduca ${d.expires_on === today ? 'hoy' : d.expires_on === addDays(today, 1) ? 'mañana' : `el ${d.expires_on.slice(8, 10)}/${d.expires_on.slice(5, 7)}`}`)
     ]
     const DEFAULT_ORDER = ['saldo', 'agenda', 'tareas', 'compra', 'mudanza', 'gym', 'comedor']
     const ms = (members ?? []) as Member[]

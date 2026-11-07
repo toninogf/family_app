@@ -18,6 +18,11 @@ export type ListingData = {
   municipality?: string
   /** Lo que no tiene campo propio (parcela, año, resumen): va a Notas */
   notes?: string
+  property_type?: string
+  useful_m2?: number
+  plot_m2?: number
+  year_built?: number
+  summary?: string
   advertiser?: 'agencia' | 'particular'
   agency?: string
   contact?: string
@@ -118,6 +123,14 @@ export function parseListing(raw: string): ListingData {
     if (hit) out.municipality = hit
   }
 
+  // Útiles, parcela, año de construcción y tipo
+  const useful = text.match(/(\d{1,4}(?:[.,]\d{1,2})?)\s*m(?:²|2)\s*útiles/i)
+  if (useful) out.useful_m2 = toNumber(useful[1])
+  const plot = text.match(/parcela(?: de)?\s*(\d{1,3}(?:[.\s]\d{3})*|\d+)\s*m(?:²|2)/i) ?? text.match(/(\d{1,3}(?:[.\s]\d{3})*|\d+)\s*m(?:²|2)\s*de parcela/i)
+  if (plot) out.plot_m2 = toNumber(plot[1].replace(/\s/g, '.'))
+  const year = text.match(/(?:construido en|construcción[:\s]+|año de construcción[:\s]*)\s*(1[89]\d{2}|20\d{2})/i)
+  if (year) out.year_built = Number(year[1])
+
   // Contacto: teléfono, email, particular o agencia, referencia
   const phone = text.match(/(?:\+34[\s.-]?)?\b[6789]\d{2}[\s.-]?\d{2,3}[\s.-]?\d{2,3}[\s.-]?\d{0,3}\b/)
   if (phone && phone[0].replace(/\D/g, '').replace(/^34/, '').length === 9) out.phone = phone[0].trim()
@@ -150,7 +163,7 @@ export function firstUrl(text: string) {
 export function filledLabels(d: ListingData) {
   const L: [keyof ListingData, string][] = [['price_eur', 'precio'], ['size_m2', 'm²'], ['rooms', 'habitaciones'], ['baths', 'baños'], ['floor', 'planta'],
     ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI']]
-  L.push(['notes', 'notas'], ['advertiser', 'anunciante'], ['agency', 'agencia'], ['contact', 'contacto'], ['phone', 'teléfono'], ['email', 'email'], ['ref', 'referencia'])
+  L.push(['useful_m2', 'm² útiles'], ['plot_m2', 'parcela'], ['year_built', 'año'], ['notes', 'notas'], ['advertiser', 'anunciante'], ['agency', 'agencia'], ['contact', 'contacto'], ['phone', 'teléfono'], ['email', 'email'], ['ref', 'referencia'])
   return L.filter(([k]) => d[k] != null && !(Array.isArray(d[k]) && !(d[k] as unknown[]).length)).map(([, l]) => l)
 }
 
@@ -167,6 +180,7 @@ DIRECCION: (calle, si aparece)
 ZONA: (barrio o urbanización)
 LOCALIDAD: (municipio)
 M2: (construidos, solo el número)
+UTILES: (m² útiles, solo el número)
 PARCELA: (m² de parcela, solo el número)
 HABITACIONES:
 BANOS:
@@ -185,14 +199,14 @@ EMAIL:
 REFERENCIA: (referencia del anuncio)`
 }
 
-const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'AÑO', 'ANO', 'RESUMEN',
+const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'AÑO', 'ANO', 'RESUMEN',
   'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -231,6 +245,11 @@ export function parseAiBlock(raw: string): ListingData | null {
     values.RESUMEN ?? ''
   ].filter(Boolean)
   if (notes.length) out.notes = notes.join('\n').slice(0, 1000)
+  const util = n('UTILES'); if (util) out.useful_m2 = util
+  const parc = n('PARCELA'); if (parc) out.plot_m2 = parc
+  const yr = n('AÑO') ?? n('ANO'); if (yr && yr > 1700 && yr < 2100) out.year_built = Math.round(yr)
+  if (values.RESUMEN) out.summary = values.RESUMEN.slice(0, 2000)
+  if (values.TIPO) out.property_type = values.TIPO.slice(0, 60)
   if (values.ANUNCIANTE) out.advertiser = /particular/i.test(values.ANUNCIANTE) ? 'particular' : 'agencia'
   if (values.AGENCIA) { out.agency = values.AGENCIA.slice(0, 120); out.advertiser = out.advertiser ?? 'agencia' }
   if (values.CONTACTO) out.contact = values.CONTACTO.slice(0, 120)

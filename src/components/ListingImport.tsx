@@ -1,0 +1,127 @@
+import { useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { aiPrompt, filledLabels, parseAny, type ListingData } from '../lib/listingParse'
+import { readImages } from '../lib/ocr'
+import { portalName } from '../lib/mudanza'
+import { TextArea, TextField } from './Sheet'
+
+/**
+ * «Rellenar desde el anuncio»: enlace (leer o pedírselo a una IA), pegar la respuesta o el texto del anuncio,
+ * y capturas que se leen en el móvil. Llama a onApply con lo encontrado; las capturas las guarda quien lo usa.
+ */
+export default function ListingImport({ url, onUrl, onApply, shots, onShots }: {
+  url: string; onUrl: (v: string) => void
+  onApply: (d: ListingData) => void
+  shots: File[]; onShots: (f: File[]) => void
+}) {
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasted, setPasted] = useState('')
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const full = url.trim() && (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`)
+
+  function fromText(text: string, intro = 'Rellenado') {
+    const d = parseAny(text)
+    const got = filledLabels(d)
+    onApply(d)
+    setNote(got.length
+      ? { ok: true, text: `${intro}: ${got.join(', ')}. Revísalo antes de guardar.` }
+      : { ok: false, text: 'No he encontrado datos en ese texto. Prueba a copiar el bloque de precio y características del anuncio.' })
+  }
+
+  async function read() {
+    if (!full) return
+    setBusy('Leyendo el anuncio…'); setNote(null)
+    const { data, error } = await supabase.functions.invoke('listing-preview', { body: { url: full } })
+    setBusy(null)
+    const res = data as { blocked?: boolean; error?: string; title?: string; description?: string; text?: string } | null
+    if (error || !res || res.blocked || res.error) {
+      setNote({ ok: false, text: res?.error && !res.blocked ? res.error : 'El portal no deja leer el anuncio desde la app. Pídeselo a una IA con los botones de abajo, o sube capturas.' })
+      return
+    }
+    fromText([res.title, res.description, res.text].filter(Boolean).join('\n'), 'Leído del anuncio')
+  }
+
+  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
+    if (!full) return
+    const prompt = aiPrompt(full.replace(/\?.*$/, ''))
+    try { await navigator.clipboard.writeText(prompt) } catch { /* sin permiso: se abre igualmente */ }
+    const q = encodeURIComponent(prompt)
+    const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
+    setNote({ ok: true, text: ai === 'gemini'
+      ? 'Petición copiada: pégala en Gemini. Cuando conteste, copia la respuesta y vuelve aquí a «Pegar respuesta de la IA».'
+      : 'Si no aparece escrita, pégala (está copiada). Cuando conteste, copia la respuesta y vuelve aquí a «Pegar respuesta de la IA».' })
+    window.open(target, '_blank', 'noopener')
+  }
+
+  async function pasteClipboard() {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text.trim()) throw new Error('vacío')
+      setPasted(text)
+      fromText(text, 'Rellenado con la respuesta')
+    } catch {
+      setPasteOpen(true)
+      setNote({ ok: false, text: 'No he podido leer lo copiado. Mantén pulsado el cuadro de abajo y elige «Pegar».' })
+    }
+  }
+
+  async function addShots(list: File[]) {
+    const imgs = list.filter(f => f.type.startsWith('image/')).slice(0, 10 - shots.length)
+    if (!imgs.length) return
+    onShots([...shots, ...imgs])
+    try {
+      setBusy('Preparando el lector de texto…')
+      const text = await readImages(imgs, p => setBusy(`Leyendo captura ${p.image} de ${p.total}… ${p.pct}%`))
+      setBusy(null)
+      fromText(text, 'Leído de las capturas')
+    } catch {
+      setBusy(null)
+      setNote({ ok: false, text: 'No se han podido leer las capturas. Se guardarán igualmente; puedes rellenar a mano o pegar el texto.' })
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-line p-3">
+      <p className="text-sm font-bold">📥 Rellenar desde el anuncio</p>
+      <div className="flex items-end gap-2">
+        <div className="flex-1 min-w-0">
+          <TextField label="Enlace del anuncio" type="url" inputMode="url" value={url} onChange={e => onUrl(e.target.value)} placeholder="https://www.idealista.com/inmueble/…" />
+        </div>
+        <button type="button" onClick={read} disabled={!full || !!busy}
+          className="min-h-12 px-3 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold shrink-0 disabled:opacity-40">Leer</button>
+      </div>
+      {full && (portalName(full)
+        ? <a href={full} target="_blank" rel="noopener noreferrer" className="text-xs text-accent font-semibold">✓ Anuncio de {portalName(full)} · abrir ↗</a>
+        : <span className="text-xs text-danger">Ese enlace no parece válido</span>)}
+      {full && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted">Que una IA lea el anuncio y te dé los datos:</span>
+          <div className="grid grid-cols-3 gap-2">
+            {([['chatgpt', 'ChatGPT'], ['gemini', 'Gemini'], ['claude', 'Claude']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => askAi(k)} className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold">{l} ↗</button>
+            ))}
+          </div>
+          <button type="button" onClick={pasteClipboard} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold">📋 Pegar respuesta de la IA</button>
+        </div>
+      )}
+      <label className={`min-h-11 rounded-xl border border-dashed border-line flex items-center justify-center gap-2 text-sm font-semibold text-accent cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+        📸 {shots.length ? `Añadir más capturas (${shots.length})` : 'Subir capturas del anuncio'}
+        <input type="file" accept="image/*" multiple className="sr-only" onChange={e => { void addShots(Array.from(e.target.files ?? [])); e.target.value = '' }} />
+      </label>
+      {shots.length > 0 && !busy && <p className="text-xs text-muted">Las capturas se guardan al pulsar «Guardar», como copia del anuncio.</p>}
+      {pasteOpen ? (
+        <div className="flex flex-col gap-2">
+          <TextArea label="Texto del anuncio o respuesta de la IA" value={pasted} onChange={e => setPasted(e.target.value)} maxLength={20000}
+            placeholder="Pega aquí el texto del anuncio o la respuesta de la IA…" />
+          <button type="button" onClick={() => fromText(pasted)} disabled={!pasted.trim()}
+            className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold disabled:opacity-40">Rellenar con este texto</button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setPasteOpen(true)} className="self-start min-h-10 text-sm text-accent font-semibold">📋 Pegar el texto del anuncio</button>
+      )}
+      {busy && <p role="status" className="text-xs text-muted">{busy}</p>}
+      {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
+    </div>
+  )
+}

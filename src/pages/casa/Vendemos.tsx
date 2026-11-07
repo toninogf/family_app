@@ -4,10 +4,13 @@ import { addDays, hhmm, longDate, parseISO, relativeDay, shortDate, startOfWeek,
 import {
   FINANCING, INTEREST, INTEREST_COLOR, OBJECTION_PRESETS, OFFER_STATUS, PREP_ITEMS, SOURCES, VISIT_STATUS,
   parsePrice, price, priceInput,
-  type BuyerOffer, type BuyerVisit, type Financing, type Interest, type Link, type Mudanza, type OfferStatus, type VisitStatus
+  type BuyerOffer, type BuyerVisit, type Financing, type Interest, type Mudanza, type OfferStatus, type VisitStatus
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
+import { MarketCompare, VentaFichaSheet, VentaPhotos, fichaLine } from './VentaFicha'
+import { Fold, VentaCuentas, VentaDocs, VentaPasos, docAlert, docsSummary, saleNet, stepsSummary } from './VentaGestion'
+import { DossierSheet } from './VentaDossier'
 
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const nameOf = (id: string | null, members: Member[]) => (id ? members.find(m => m.id === id)?.display_name ?? '' : '')
@@ -16,6 +19,9 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: BuyerVisit }>({ open: false })
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: BuyerOffer }>({ open: false })
   const [listingOpen, setListingOpen] = useState(false)
+  const [dossierOpen, setDossierOpen] = useState(false)
+  const [fold, setFold] = useState<string | null>(null)
+  const toggle = (k: string) => setFold(f => (f === k ? null : k))
   const [showPast, setShowPast] = useState(false)
   const t = today()
   const adults = members.filter(x => x.kind === 'adult')
@@ -43,21 +49,28 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
 
   const asking = m.listing?.price_cents ?? null
   const activeOffers = m.offers.filter(o => o.status === 'pending' || o.status === 'countered')
+  const net = saleNet(m)
+  const docAlerts = m.saleDocs.map(d => ({ d, a: docAlert(d, t) })).filter((x): x is { d: typeof x.d; a: NonNullable<typeof x.a> } => !!x.a)
+  const drop = m.prices.length > 1 && asking != null ? (() => {
+    const first = m.prices[0].price_cents
+    return { first, cents: first - asking, pct: Math.round(((first - asking) / first) * 1000) / 10 }
+  })() : null
 
   return (
     <div className="flex flex-col gap-5">
       {/* Anuncio */}
       <button onClick={() => setListingOpen(true)} className="bg-accent text-white dark:text-bg rounded-2xl p-4 flex flex-col gap-1 text-left">
-        <span className="text-[13px] opacity-85">Nuestro piso en venta</span>
+        <span className="text-[13px] opacity-85">{m.listing?.title || 'Nuestra casa en venta'}</span>
         <span className="text-[26px] font-bold leading-tight">{asking ? price(asking) : 'Pon el precio'}</span>
+        {fichaLine(m.listing) && <span className="text-[13px] opacity-90">{fichaLine(m.listing)}</span>}
         <span className="text-[13px] opacity-85">
           {m.listing?.published_on
             ? `Publicado el ${shortDate(m.listing.published_on)} · ${daysBetween(m.listing.published_on, t)} días a la venta`
-            : 'Toca para completar el anuncio'}
+            : 'Toca para rellenar la ficha (desde el anuncio, con IA o capturas)'}
         </span>
-        {m.prices.length > 1 && (
-          <span className="text-[13px] opacity-85">
-            Precios: {m.prices.map(p => price(p.price_cents)).join(' → ')}
+        {drop && (
+          <span className="text-[13px] opacity-90">
+            {drop.cents > 0 ? `Bajado ${price(drop.cents)} (${drop.pct} %) desde ${price(drop.first)}` : `Subido ${price(-drop.cents)} desde ${price(drop.first)}`} · {m.prices.length - 1} cambio{m.prices.length > 2 ? 's' : ''}
           </span>
         )}
       </button>
@@ -70,6 +83,39 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
           ))}
         </div>
       )}
+      {docAlerts.length > 0 && (
+        <button onClick={() => setFold('docs')} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-0.5 ring-2 ring-danger">
+          <span className="text-[13px] font-semibold text-danger">⚠️ Documentos por renovar</span>
+          {docAlerts.map(({ d, a }) => <span key={d.id} className="text-[14px]">{d.title}: {a.text.toLowerCase()}</span>)}
+        </button>
+      )}
+      <MarketCompare m={m} />
+
+      {/* Gestión de la venta */}
+      <div className="flex flex-col gap-2">
+        <Fold title="🖼️ Fotos y capturas" summary={`${m.salePhotos.filter(p => p.kind === 'foto').length} fotos · ${m.salePhotos.filter(p => p.kind === 'anuncio').length} capturas del anuncio`} open={fold === 'fotos'} onToggle={() => toggle('fotos')}>
+          <div className="bg-card rounded-2xl p-4 flex flex-col gap-4">
+            <VentaPhotos m={m} householdId={householdId} kind="foto" />
+            <VentaPhotos m={m} householdId={householdId} kind="anuncio" />
+          </div>
+        </Fold>
+        <Fold title="📄 Documentos" summary={m.saleDocs.length ? docsSummary(m.saleDocs) : 'Nota simple, certificado energético, IBI…'} open={fold === 'docs'} onToggle={() => toggle('docs')}>
+          <VentaDocs m={m} householdId={householdId} />
+        </Fold>
+        <Fold title="💶 ¿Cuánto nos queda?" summary={net.net != null ? `${price(net.net)} tras hipoteca y gastos` : 'Precio − hipoteca − gastos'} open={fold === 'cuentas'} onToggle={() => toggle('cuentas')}>
+          <VentaCuentas m={m} householdId={householdId} />
+        </Fold>
+        <Fold title="✍️ Pasos hasta la firma" summary={stepsSummary(m.saleSteps)} open={fold === 'pasos'} onToggle={() => toggle('pasos')}>
+          <VentaPasos m={m} />
+        </Fold>
+        <button onClick={() => setDossierOpen(true)} className="bg-card rounded-2xl p-4 flex justify-between items-center gap-2 text-left">
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[15px] font-bold">📤 Dossier para compradores</span>
+            <span className="text-[13px] text-muted">PDF con ficha, fotos y certificado para WhatsApp</span>
+          </span>
+          <span className="text-muted text-lg" aria-hidden="true">›</span>
+        </button>
+      </div>
 
       {/* Resumen */}
       {m.visits.length > 0 && (
@@ -189,7 +235,8 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
       {offerSheet.open && (
         <OfferSheet offer={offerSheet.offer} visits={m.visits} asking={asking} m={m} onClose={() => setOfferSheet({ open: false })} />
       )}
-      {listingOpen && <ListingSheet m={m} householdId={householdId} onClose={() => setListingOpen(false)} />}
+      {listingOpen && <VentaFichaSheet m={m} householdId={householdId} onClose={() => setListingOpen(false)} />}
+      {dossierOpen && <DossierSheet m={m} onClose={() => setDossierOpen(false)} />}
     </div>
   )
 }
@@ -416,63 +463,6 @@ function OfferSheet({ offer, visits, asking, m, onClose }: { offer?: BuyerOffer;
         {offer && <ConfirmDelete label="Eliminar oferta" confirming={confirming} setConfirming={setConfirming} onConfirm={async () => { await m.remove('buyer_offers', offer.id); onClose() }} />}
       </form>
       {offer?.response_deadline && <p className="text-xs text-muted">El aviso de la mañana os lo recordará el día antes y el mismo día ({longDate(offer.response_deadline)}).</p>}
-    </Sheet>
-  )
-}
-
-function ListingSheet({ m, householdId, onClose }: { m: Mudanza; householdId: string; onClose: () => void }) {
-  const l = m.listing
-  const [amount, setAmount] = useState(priceInput(l?.price_cents))
-  const [published, setPublished] = useState(l?.published_on ?? '')
-  const [links, setLinks] = useState<Link[]>(l?.links ?? [])
-  const [notes, setNotes] = useState(l?.notes ?? '')
-  const [error, setError] = useState('')
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    const cents = amount.trim() ? parsePrice(amount) : null
-    if (amount.trim() && !cents) { setError('El precio no es válido'); return }
-    const clean = links
-      .map(x => ({ label: x.label.trim().slice(0, 40), url: x.url.trim() }))
-      .filter(x => x.url)
-      .map(x => ({ ...x, url: /^https?:\/\//i.test(x.url) ? x.url.replace(/^http:/i, 'https:') : `https://${x.url}` }))
-    const err = await m.write('sale_listing', { household_id: householdId, price_cents: cents, published_on: published || null, links: clean, notes: notes.trim() || null }, undefined, 'household_id')
-    if (err) setError(err); else onClose()
-  }
-
-  return (
-    <Sheet title="Nuestro anuncio" onClose={onClose}>
-      <form onSubmit={submit} className="flex flex-col gap-5">
-        <TextField label="Precio publicado (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Ej. 285.000" />
-        <p className="text-xs text-muted -mt-3">Cada cambio de precio queda guardado en el historial.</p>
-        <TextField label="Publicado desde" type="date" value={published} onChange={e => setPublished(e.target.value)} />
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-medium text-muted mb-1.5">Dónde está anunciado</legend>
-          {links.map((x, i) => (
-            <div key={i} className="flex gap-2">
-              <input value={x.label} onChange={e => setLinks(links.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)))} placeholder="Idealista" maxLength={40}
-                className="w-28 min-h-11 px-3 rounded-xl border border-line bg-card text-[16px]" aria-label="Nombre" />
-              <input value={x.url} onChange={e => setLinks(links.map((y, j) => (j === i ? { ...y, url: e.target.value } : y)))} placeholder="https://…" type="url" inputMode="url"
-                className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[16px]" aria-label="Enlace" />
-              <button type="button" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Quitar" className="w-11 min-h-11 text-muted text-xl">×</button>
-            </div>
-          ))}
-          {links.length < 10 && (
-            <button type="button" onClick={() => setLinks([...links, { label: '', url: '' }])} className="min-h-11 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir enlace</button>
-          )}
-        </fieldset>
-        <TextArea label="Notas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} placeholder="Precio mínimo que aceptaríamos, qué incluye, gastos…" />
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        <button type="submit" className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Guardar</button>
-      </form>
-      {m.prices.length > 0 && (
-        <section className="flex flex-col gap-1">
-          <h3 className="font-bold text-[15px]">Historial de precios</h3>
-          {m.prices.slice().reverse().map(p => (
-            <p key={p.id} className="text-sm flex justify-between"><span className="text-muted">{shortDate(p.changed_on)}</span><span>{price(p.price_cents)}</span></p>
-          ))}
-        </section>
-      )}
     </Sheet>
   )
 }
