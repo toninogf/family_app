@@ -117,19 +117,16 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </section>
       )}
 
-      <div className="flex justify-between items-center gap-2">
-        <div className="flex gap-1.5 overflow-x-auto -mx-5 px-5 pb-1">
-          {([['activos', 'En marcha'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
+      <label className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-muted shrink-0">Estado</span>
+        <select value={filter} onChange={e => setFilter(e.target.value as Filter)} aria-label="Filtrar por estado"
+          className="flex-1 min-h-11 px-3 rounded-xl border border-line bg-card text-[16px] font-semibold">
+          {([['activos', 'En marcha (todos menos descartados)'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
             const n = k === 'todos' ? m.homes.length : k === 'activos' ? m.homes.filter(h => h.status !== 'descartado').length : m.homes.filter(h => h.status === k).length
-            return (
-              <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k}
-                className={`shrink-0 min-h-9 px-3 rounded-full text-[13px] font-semibold whitespace-nowrap ${filter === k ? 'bg-ink text-bg' : 'bg-card border border-line'}`}>
-                {l} <span className={filter === k ? 'opacity-70' : 'text-muted'}>{n}</span>
-              </button>
-            )
+            return <option key={k} value={k}>{l} ({n})</option>
           })}
-        </div>
-      </div>
+        </select>
+      </label>
       <div className="flex gap-2 -mt-2">
         <button onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters} className="min-h-10 px-3 rounded-xl border border-line bg-card text-sm font-semibold">
           Filtrar y ordenar{town !== 'all' || minP || maxP || sort !== 'estado' ? ' •' : ''}
