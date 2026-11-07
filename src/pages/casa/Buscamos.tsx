@@ -8,7 +8,7 @@ import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   FEATURES, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
   mustHaveCheck, parsePrice, perM2, photoUrl, portalName, price, priceInput, priceShort,
-  type CheckValue, type Home, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo, type Rating
+  type CheckValue, type Home, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -16,7 +16,7 @@ import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
-type Sort = 'estado' | 'recientes' | 'precio' | 'm2' | 'nota'
+type Sort = 'estado' | 'recientes' | 'precio' | 'm2'
 const PROVINCE_NAMES = PROVINCES.map(p => p.name)
 const municipalitiesOf = (province: string | null) => {
   const code = PROVINCES.find(p => p.name === province)?.code
@@ -51,10 +51,6 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
   const [showFilters, setShowFilters] = useState(false)
   const t = today()
   const towns = [...new Set(m.homes.map(h => h.municipality).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, 'es'))
-  const avgScore = (id: string) => {
-    const s = m.ratings.filter(r => r.home_id === id).map(r => r.score)
-    return s.length ? s.reduce((a, b) => a + b, 0) / s.length : -1
-  }
 
   const list = useMemo(() => {
     const f = m.homes.filter(h =>
@@ -73,10 +69,9 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
       sort === 'recientes' ? b.created_at.localeCompare(a.created_at)
         : sort === 'precio' ? nullsLast(a.price_cents) - nullsLast(b.price_cents)
           : sort === 'm2' ? nullsLast(perM2(a)) - nullsLast(perM2(b))
-            : sort === 'nota' ? avgScore(b.id) - avgScore(a.id)
               : HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [m.homes, m.ratings, filter, town, minP, maxP, sort])
+  }, [m.homes, filter, town, minP, maxP, sort])
 
   const nextVisits = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t)
   const open = m.homes.find(h => h.id === openId)
@@ -158,7 +153,6 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
               <option value="recientes">Guardados más recientes</option>
               <option value="precio">Precio, de menor a mayor</option>
               <option value="m2">€/m², de menor a mayor</option>
-              <option value="nota">Nota media, de mayor a menor</option>
             </select>
           </label>
         </Card>
@@ -186,7 +180,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
           onCreated={() => setEditHome({ open: false })} />
       )}
       {criteriaOpen && <CriteriaSheet m={m} householdId={householdId} onClose={() => setCriteriaOpen(false)} />}
-      {compareOpen && <CompareSheet homes={comparable} m={m} members={members} onClose={() => setCompareOpen(false)} />}
+      {compareOpen && <CompareSheet homes={comparable} m={m} onClose={() => setCompareOpen(false)} />}
     </div>
   )
 }
@@ -199,29 +193,6 @@ function Chip({ children, tone }: { children: ReactNode; tone?: 'ok' | 'bad' | '
 function StatusBadge({ s }: { s: HomeStatus }) {
   const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' ? 'bg-bg text-muted' : 'bg-accent-soft text-accent'
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : ''}{HOME_STATUS[s]}</span>
-}
-
-function Stars({ n, size = 14 }: { n: number; size?: number }) {
-  return (
-    <span aria-label={`${n} de 5`} className="inline-flex" style={{ fontSize: size, lineHeight: 1 }}>
-      {[1, 2, 3, 4, 5].map(i => <span key={i} className={i <= n ? 'text-[#E0A100]' : 'text-line'}>★</span>)}
-    </span>
-  )
-}
-
-/** Notas de los dos, sin desvelar la del otro hasta que pongas la tuya */
-function RatingsLine({ homeId, ratings, me, members }: { homeId: string; ratings: Rating[]; me: Member; members: Member[] }) {
-  const mine = ratings.find(r => r.home_id === homeId && r.member_id === me.id)
-  const others = ratings.filter(r => r.home_id === homeId && r.member_id !== me.id)
-  if (!mine && !others.length) return null
-  return (
-    <span className="flex gap-3 flex-wrap text-[13px]">
-      {mine && <span className="flex items-center gap-1">Tú <Stars n={mine.score} /></span>}
-      {others.map(r => mine
-        ? <span key={r.member_id} className="flex items-center gap-1">{nameOf(r.member_id, members)} <Stars n={r.score} /></span>
-        : <span key={r.member_id} className="text-muted">{nameOf(r.member_id, members)} ya ha puntuado</span>)}
-    </span>
-  )
 }
 
 function HomeCard({ h, m, me, members, onOpen }: { h: Home; m: Mudanza; me: Member; members: Member[]; onOpen: () => void }) {
@@ -248,7 +219,6 @@ function HomeCard({ h, m, me, members, onOpen }: { h: Home; m: Mudanza; me: Memb
           {checks.map(c => <Chip key={c.label} tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>)}
         </span>
       )}
-      <RatingsLine homeId={h.id} ratings={m.ratings} me={me} members={members} />
       {(next || nPhotos > 0 || h.minutes_to_school != null) && (
         <span className="text-[13px] text-muted">
           {[next && `Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`, h.minutes_to_school != null && `${h.minutes_to_school} min al cole`, nPhotos > 0 && `${nPhotos} foto${nPhotos > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}
@@ -340,7 +310,7 @@ function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
         </section>
       )}
 
-      <RatingBox h={h} m={m} me={me} members={members} />
+      <NotesBox h={h} m={m} />
 
       <section className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
@@ -410,7 +380,7 @@ function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
         </section>
       )}
 
-      {(h.community_fee_cents != null || h.ibi_cents != null || h.energy || h.notes || h.features.length > 0) && (
+      {(h.community_fee_cents != null || h.ibi_cents != null || h.energy || h.minutes_to_school != null || h.features.length > 0) && (
         <section className="flex flex-col gap-1 text-sm">
           <h3 className="font-bold text-[15px]">Más datos</h3>
           {h.features.length > 0 && <p>{h.features.map(k => FEATURES[k] ?? k).join(' · ')}</p>}
@@ -418,7 +388,6 @@ function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
           {h.ibi_cents != null && <p>IBI: {price(h.ibi_cents)}/año</p>}
           {h.energy && <p>Certificado energético: {h.energy}</p>}
           {h.minutes_to_school != null && <p>{h.minutes_to_school} min al cole</p>}
-          {h.notes && <p className="text-muted whitespace-pre-line">{h.notes}</p>}
         </section>
       )}
 
@@ -428,40 +397,22 @@ function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
   )
 }
 
-function RatingBox({ h, m, me, members }: { h: Home; m: Mudanza; me: Member; members: Member[] }) {
-  const mine = m.ratings.find(r => r.home_id === h.id && r.member_id === me.id)
-  const others = m.ratings.filter(r => r.home_id === h.id && r.member_id !== me.id)
-  const [score, setScore] = useState(mine?.score ?? 0)
-  const [comment, setComment] = useState(mine?.comment ?? '')
+/** Notas y comentarios del piso: un único texto compartido, que se edita aquí mismo y se guarda solo */
+function NotesBox({ h, m }: { h: Home; m: Mudanza }) {
+  const [text, setText] = useState(h.notes ?? '')
   const [saved, setSaved] = useState(false)
-
-  async function save(nextScore = score) {
-    if (!nextScore) return
-    await m.write('home_ratings', { home_id: h.id, member_id: me.id, score: nextScore, comment: comment.trim() || null }, undefined, 'home_id,member_id')
+  useEffect(() => { setText(h.notes ?? '') }, [h.notes])
+  async function save() {
+    if ((text.trim() || null) === (h.notes ?? null)) return
+    await m.write('homes', { notes: text.trim() || null }, h.id)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
-
   return (
-    <section className="flex flex-col gap-3 bg-card rounded-2xl p-4">
-      <h3 className="font-bold text-[15px]">Tu nota</h3>
-      <div className="flex gap-1" role="radiogroup" aria-label="Tu nota">
-        {[1, 2, 3, 4, 5].map(i => (
-          <button key={i} role="radio" aria-checked={score === i} aria-label={`${i} estrellas`} onClick={() => { setScore(i); save(i) }}
-            className={`w-11 h-11 text-[28px] leading-none ${i <= score ? 'text-[#E0A100]' : 'text-line'}`}>★</button>
-        ))}
-      </div>
-      <TextArea label="Comentarios" value={comment} onChange={e => setComment(e.target.value)} onBlur={() => save()} maxLength={1000}
-        placeholder={score ? 'Lo que te ha gustado, lo que no, dudas…' : 'Pon primero tu nota (estrellas) para guardar el comentario'} />
+    <section className="flex flex-col gap-2 bg-card rounded-2xl p-4">
+      <TextArea label="Notas y comentarios" value={text} onChange={e => setText(e.target.value)} onBlur={save} maxLength={1000}
+        placeholder="Lo que os ha gustado, lo que no, dudas para la próxima visita…" />
       {saved && <p role="status" className="text-xs text-accent">Guardado</p>}
-      {others.map(r => (
-        <div key={r.member_id} className="border-t border-line pt-3 flex flex-col gap-1">
-          <span className="text-sm font-semibold flex items-center gap-2">{nameOf(r.member_id, members)} {mine ? <Stars n={r.score} size={16} /> : null}</span>
-          {mine ? (
-            r.comment ? <span className="text-sm whitespace-pre-line">{r.comment}</span> : null
-          ) : <span className="text-sm text-muted">Pon tu nota para ver la suya. Así no os influís.</span>}
-        </div>
-      ))}
     </section>
   )
 }
@@ -929,7 +880,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           </div>
           <TextField label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} />
         </fieldset>
-        <TextArea label="Notas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} />
+        <TextArea label="Notas y comentarios" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" disabled={busy} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">
           {busy ? 'Guardando…' : home ? 'Guardar' : 'Guardar piso'}
@@ -992,16 +943,10 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   )
 }
 
-function CompareSheet({ homes, m, members, onClose }: { homes: Home[]; m: Mudanza; members: Member[]; onClose: () => void }) {
+function CompareSheet({ homes, m, onClose }: { homes: Home[]; m: Mudanza; onClose: () => void }) {
   const initial = homes.filter(h => h.status === 'favorito' || h.status === 'oferta').map(h => h.id)
   const [sel, setSel] = useState<string[]>((initial.length >= 2 ? initial : homes.map(h => h.id)).slice(0, 4))
-  const adults = members.filter(x => x.kind === 'adult')
   const chosen = homes.filter(h => sel.includes(h.id))
-  const score = (h: Home, id: string) => m.ratings.find(r => r.home_id === h.id && r.member_id === id)?.score
-  const avg = (h: Home) => {
-    const s = m.ratings.filter(r => r.home_id === h.id).map(r => r.score)
-    return s.length ? (s.reduce((a, b) => a + b, 0) / s.length).toLocaleString('es-ES', { maximumFractionDigits: 1 }) : '—'
-  }
   const bad = (h: Home) => m.homeVisits.filter(v => v.home_id === h.id).reduce((n, v) => n + Object.values(v.checklist ?? {}).filter(x => x.v === 'mal').length, 0)
   const musts = (h: Home) => {
     const c = mustHaveCheck(h, m.criteria)
@@ -1021,9 +966,7 @@ function CompareSheet({ homes, m, members, onClose }: { homes: Home[]; m: Mudanz
     ['IBI', h => (h.ibi_cents != null ? `${price(h.ibi_cents)}/año` : '—')],
     ['Energía', h => h.energy ?? '—'],
     ['Al cole', h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—')],
-    ['Puntos malos', h => bad(h) || '—'],
-    ...adults.map(a => [`Nota ${a.display_name}`, (h: Home) => { const s = score(h, a.id); return s ? <Stars n={s} size={12} /> : '—' }] as [string, (h: Home) => ReactNode]),
-    ['Media', avg]
+    ['Puntos malos', h => bad(h) || '—']
   ]
 
   return (
