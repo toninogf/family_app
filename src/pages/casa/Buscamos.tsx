@@ -4,6 +4,7 @@ import { supabase, type Member } from '../../lib/supabase'
 import { aiPrompt, filledLabels, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
 import { locateHome } from '../../lib/geo'
+import { badPoints, compareSummary, monthlyCost, shortName } from '../../lib/compare'
 
 // El mapa (Leaflet) solo se descarga al abrirlo
 const HomesMap = lazy(() => import('./HomesMap'))
@@ -51,6 +52,11 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   }, [])
   const [criteriaOpen, setCriteriaOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
+  // Pisos marcados para comparar (se recuerdan en este móvil)
+  const [picked, setPicked] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('compare-picked') ?? '[]') } catch { return [] } })
+  useEffect(() => { try { localStorage.setItem('compare-picked', JSON.stringify(picked)) } catch { /* nada */ } }, [picked])
+  const pickedHomes = m.homes.filter(h => picked.includes(h.id))
+  const togglePick = (id: string) => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id].slice(-4)))
   const [town, setTown] = useState<string>('all')
   const [minP, setMinP] = useState('')
   const [maxP, setMaxP] = useState('')
@@ -82,7 +88,6 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   const nextVisits = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t)
   const open = m.homes.find(h => h.id === openId)
   const c = m.criteria
-  const comparable = m.homes.filter(h => h.status !== 'descartado')
 
   return (
     <div className="flex flex-col gap-5">
@@ -171,8 +176,8 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
           </label>
         </Card>
       )}
-      {comparable.length >= 2 && (
-        <button onClick={() => setCompareOpen(true)} className="min-h-11 -mt-2 rounded-xl border border-line bg-card text-accent text-sm font-semibold">Comparar pisos</button>
+      {pickedHomes.length === 0 && m.homes.length >= 2 && (
+        <p className="text-xs text-muted -mt-2">Para comparar, marca «☐ Comparar» en los pisos que quieras (hasta 4).</p>
       )}
 
       {m.loading ? <p className="text-sm text-muted">Cargando…</p> : list.length === 0 ? (
@@ -183,7 +188,16 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </Suspense>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {list.map(h => <HomeCard key={h.id} h={h} m={m} onOpen={() => setOpenId(h.id)} />)}
+          {list.map(h => <HomeCard key={h.id} h={h} m={m} onOpen={() => setOpenId(h.id)} picked={picked.includes(h.id)} onPick={() => togglePick(h.id)} />)}
+        </div>
+      )}
+
+      {pickedHomes.length > 0 && (
+        <div className="sticky bottom-24 z-10 flex items-center gap-2 bg-ink text-bg rounded-2xl p-2 pl-4 shadow-lg">
+          <span className="text-sm font-semibold flex-1">{pickedHomes.length} marcado{pickedHomes.length > 1 ? 's' : ''} para comparar</span>
+          <button onClick={() => setPicked([])} className="min-h-10 px-3 text-sm opacity-80">Quitar</button>
+          <button onClick={() => setCompareOpen(true)} disabled={pickedHomes.length < 2}
+            className="min-h-10 px-4 rounded-xl bg-accent text-white dark:text-bg text-sm font-bold disabled:opacity-40">{pickedHomes.length < 2 ? 'Marca otro' : 'Comparar'}</button>
         </div>
       )}
 
@@ -198,7 +212,9 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
           onCreated={() => setEditHome({ open: false })} />
       )}
       {criteriaOpen && <CriteriaSheet m={m} householdId={householdId} onClose={() => setCriteriaOpen(false)} />}
-      {compareOpen && <CompareSheet homes={comparable} m={m} onClose={() => setCompareOpen(false)} />}
+      {compareOpen && pickedHomes.length >= 2 && (
+        <CompareSheet homes={pickedHomes} m={m} onRemove={id => setPicked(p => p.filter(x => x !== id))} onClose={() => setCompareOpen(false)} />
+      )}
     </div>
   )
 }
@@ -213,7 +229,7 @@ function StatusBadge({ s }: { s: HomeStatus }) {
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : ''}{HOME_STATUS[s]}</span>
 }
 
-function HomeCard({ h, m, onOpen }: { h: Home; m: Mudanza; onOpen: () => void }) {
+function HomeCard({ h, m, onOpen, picked, onPick }: { h: Home; m: Mudanza; onOpen: () => void; picked: boolean; onPick: () => void }) {
   const checks = mustHaveCheck(h, m.criteria)
   const pm2 = perM2(h)
   const next = m.homeVisits.find(v => v.home_id === h.id && v.status === 'scheduled' && v.visit_date >= today())
@@ -248,20 +264,22 @@ function HomeCard({ h, m, onOpen }: { h: Home; m: Mudanza; onOpen: () => void })
         </span>
       )}
     </button>
-    {(h.url || maps) && (
-      <div className="flex border-t border-line">
-        {h.url && (
-          <a href={h.url} target="_blank" rel="noopener noreferrer" className="flex-1 min-h-11 px-4 flex items-center gap-1.5 text-accent text-[13px] font-semibold">
-            🔗 {portalName(h.url) ?? 'Anuncio'} ↗
-          </a>
-        )}
-        {maps && (
-          <a href={maps} target="_blank" rel="noopener noreferrer" className={`flex-1 min-h-11 px-4 flex items-center gap-1.5 text-accent text-[13px] font-semibold ${h.url ? 'border-l border-line' : ''}`}>
-            📍 Cómo llegar ↗
-          </a>
-        )}
-      </div>
-    )}
+    <div className="flex border-t border-line">
+      <button type="button" onClick={onPick} aria-pressed={picked}
+        className={`min-h-11 px-3 flex items-center gap-1.5 text-[13px] font-semibold shrink-0 ${picked ? 'text-accent bg-accent-soft' : 'text-muted'}`}>
+        {picked ? '☑' : '☐'} Comparar
+      </button>
+      {h.url && (
+        <a href={h.url} target="_blank" rel="noopener noreferrer" className="flex-1 min-h-11 px-3 flex items-center gap-1.5 text-accent text-[13px] font-semibold border-l border-line min-w-0">
+          🔗 <span className="truncate">{portalName(h.url) ?? 'Anuncio'}</span> ↗
+        </a>
+      )}
+      {maps && (
+        <a href={maps} target="_blank" rel="noopener noreferrer" className="flex-1 min-h-11 px-3 flex items-center gap-1.5 text-accent text-[13px] font-semibold border-l border-line min-w-0">
+          📍 <span className="truncate">Cómo llegar</span> ↗
+        </a>
+      )}
+    </div>
     </div>
   )
 }
@@ -972,55 +990,78 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   )
 }
 
-function CompareSheet({ homes, m, onClose }: { homes: Home[]; m: Mudanza; onClose: () => void }) {
-  const initial = homes.filter(h => h.status === 'favorito' || h.status === 'oferta').map(h => h.id)
-  const [sel, setSel] = useState<string[]>((initial.length >= 2 ? initial : homes.map(h => h.id)).slice(0, 4))
-  const chosen = homes.filter(h => sel.includes(h.id))
-  const bad = (h: Home) => m.homeVisits.filter(v => v.home_id === h.id).reduce((n, v) => n + Object.values(v.checklist ?? {}).filter(x => x.v === 'mal').length, 0)
-  const musts = (h: Home) => {
-    const c = mustHaveCheck(h, m.criteria)
-    return c.length ? `${c.filter(x => x.ok).length}/${c.length}` : '—'
-  }
+/** «**texto**» → negrita */
+function Rich({ text }: { text: string }) {
+  return <>{text.split(/(\*\*[^*]+\*\*)/).map((p, i) => (p.startsWith('**') ? <b key={i}>{p.slice(2, -2)}</b> : <span key={i}>{p}</span>))}</>
+}
 
-  const rows: [string, (h: Home) => ReactNode][] = [
-    ['Precio', h => price(h.price_cents)],
-    ['m²', h => (h.size_m2 != null ? Number(h.size_m2) : '—')],
-    ['€/m²', h => price(perM2(h))],
-    ['Hab. / baños', h => `${h.rooms ?? '—'} / ${h.baths ?? '—'}`],
-    ['Planta', h => h.floor ?? '—'],
-    ['Localidad', h => h.municipality ?? '—'],
-    ['Zona', h => h.zone ?? '—'],
-    ['Imprescindibles', musts],
-    ['Comunidad', h => (h.community_fee_cents != null ? `${price(h.community_fee_cents)}/mes` : '—')],
-    ['IBI', h => (h.ibi_cents != null ? `${price(h.ibi_cents)}/año` : '—')],
-    ['Energía', h => h.energy ?? '—'],
-    ['Al cole', h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—')],
-    ['Puntos malos', h => bad(h) || '—']
+function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudanza; onRemove: (id: string) => void; onClose: () => void }) {
+  const summary = compareSummary(homes, m.criteria, m.homeVisits)
+  const musts = (h: Home) => { const c = mustHaveCheck(h, m.criteria); return c.length ? c.filter(x => x.ok).length / c.length : null }
+  const ENERGY = 'ABCDEFG'
+
+  // Cada fila: cómo se muestra y, si tiene sentido, qué valor es mejor (para resaltarlo)
+  type Row = { label: string; show: (h: Home) => ReactNode; value?: (h: Home) => number | null; better?: 'low' | 'high' }
+  const rows: Row[] = [
+    { label: 'Precio', show: h => price(h.price_cents), value: h => h.price_cents, better: 'low' },
+    { label: 'm²', show: h => (h.size_m2 != null ? Number(h.size_m2) : '—'), value: h => (h.size_m2 != null ? Number(h.size_m2) : null), better: 'high' },
+    { label: '€/m²', show: h => price(perM2(h)), value: perM2, better: 'low' },
+    { label: 'Habitaciones', show: h => h.rooms ?? '—', value: h => h.rooms, better: 'high' },
+    { label: 'Baños', show: h => h.baths ?? '—', value: h => h.baths, better: 'high' },
+    { label: 'Planta', show: h => h.floor ?? '—' },
+    { label: 'Localidad', show: h => h.municipality ?? '—' },
+    { label: 'Zona', show: h => h.zone ?? '—' },
+    { label: 'Extras', show: h => (h.features.length ? h.features.map(f => FEATURES[f] ?? f).join(', ') : '—'), value: h => h.features.length, better: 'high' },
+    { label: 'Imprescindibles', show: h => { const c = mustHaveCheck(h, m.criteria); return c.length ? `${c.filter(x => x.ok).length}/${c.length}` : '—' }, value: musts, better: 'high' },
+    { label: 'Comunidad', show: h => (h.community_fee_cents != null ? `${price(h.community_fee_cents)}/mes` : '—'), value: h => h.community_fee_cents, better: 'low' },
+    { label: 'IBI', show: h => (h.ibi_cents != null ? `${price(h.ibi_cents)}/año` : '—'), value: h => h.ibi_cents, better: 'low' },
+    { label: 'Gastos fijos', show: h => (monthlyCost(h) != null ? `${price(monthlyCost(h))}/mes` : '—'), value: monthlyCost, better: 'low' },
+    { label: 'Energía', show: h => h.energy ?? '—', value: h => (h.energy ? ENERGY.indexOf(h.energy) : null), better: 'low' },
+    { label: 'Al cole', show: h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—'), value: h => h.minutes_to_school, better: 'low' },
+    { label: 'Puntos malos', show: h => badPoints(h, m.homeVisits).length || '—', value: h => badPoints(h, m.homeVisits).length, better: 'low' }
   ]
+  const isBest = (r: Row, h: Home) => {
+    if (!r.value || !r.better) return false
+    const vals = homes.map(r.value).filter((v): v is number => v != null)
+    const v = r.value(h)
+    if (v == null || vals.length < 2 || new Set(vals).size < 2) return false
+    return v === (r.better === 'low' ? Math.min(...vals) : Math.max(...vals))
+  }
 
   return (
     <Sheet title="Comparar pisos" onClose={onClose}>
-      <MultiChips label="Elige hasta 4" value={sel} onChange={v => setSel(v.slice(-4))} options={homes.map(h => ({ value: h.id, label: h.title }))} />
-      {chosen.length < 2 ? <p className="text-sm text-muted">Elige al menos dos.</p> : (
-        <div className="overflow-x-auto -mx-5 px-5">
-          <table className="text-[13px] border-separate border-spacing-0 min-w-full">
-            <thead>
-              <tr>
-                <th className="sticky left-0 bg-bg text-left p-2" />
-                {chosen.map(h => <th key={h.id} className="p-2 text-left align-bottom min-w-[110px] font-bold">{h.title}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(([label, f]) => (
-                <tr key={label}>
-                  <th scope="row" className="sticky left-0 bg-bg text-left p-2 text-muted font-semibold border-t border-line whitespace-nowrap">{label}</th>
-                  {chosen.map(h => <td key={h.id} className="p-2 border-t border-line">{f(h)}</td>)}
-                </tr>
+      <section className="flex flex-col gap-2 bg-card rounded-2xl p-4">
+        <h3 className="font-bold text-[15px]">Diferencias importantes</h3>
+        {summary.length === 0
+          ? <p className="text-sm text-muted">No hay diferencias destacables con los datos que tenéis. Completa precio, metros y extras para que salgan.</p>
+          : <ul className="flex flex-col gap-1.5">{summary.map((t, i) => <li key={i} className="text-[14px] leading-snug"><Rich text={t} /></li>)}</ul>}
+      </section>
+      <div className="overflow-x-auto -mx-5 px-5">
+        <table className="text-[13px] border-separate border-spacing-0 min-w-full">
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-bg text-left p-2" />
+              {homes.map(h => (
+                <th key={h.id} className="p-2 text-left align-bottom min-w-[120px] font-bold">
+                  <span className="block">{shortName(h)}</span>
+                  <button onClick={() => onRemove(h.id)} className="text-[11px] font-semibold text-muted">✕ quitar</button>
+                </th>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.label}>
+                <th scope="row" className="sticky left-0 bg-bg text-left p-2 text-muted font-semibold border-t border-line whitespace-nowrap">{r.label}</th>
+                {homes.map(h => (
+                  <td key={h.id} className={`p-2 border-t border-line ${isBest(r, h) ? 'text-accent font-bold bg-accent-soft' : ''}`}>{r.show(h)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted">En azul, el mejor de cada fila.</p>
     </Sheet>
   )
 }
