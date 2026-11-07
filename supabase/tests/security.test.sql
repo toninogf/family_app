@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(91);
+select plan(97);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -160,6 +160,15 @@ select ok(public.test_fails(format('insert into public.sale_price_history (house
   'Nadie puede escribir el historial de precios a mano');
 select ok((select member_id from public.home_ratings limit 1) = (select id from public.members where email = 'toninogf@gmail.com'),
   'La nota queda a nombre de quien la pone, aunque se intente otro');
+-- Compramos
+select set_config('test.home', (select id::text from public.homes where title = 'Piso centro'), true);
+select ok(not public.test_fails(format('insert into public.purchase (household_id, home_id) values (%L, %L)', current_setting('test.hh'), current_setting('test.home'))),
+  'Toni puede elegir el piso que compra');
+insert into public.purchase_steps (kind, title, step_date) values ('firma', 'Firma en notaría', current_date + 30);
+select is((select count(*) from public.events where title like '🔑%Firma en notaría%' and origin = 'compra'), 1::bigint,
+  'Un paso de la compra con fecha aparece en la Agenda');
+select ok(public.test_fails($$ insert into public.purchase_docs (grp, title, path) values ('final', 'Truco', '00000000-0000-0000-0000-000000000000/x.pdf') $$),
+  'Un documento de la compra no puede apuntar a archivos de otro hogar');
 reset role;
 
 -- ---------- Rebeca con 2FA ----------
@@ -196,6 +205,10 @@ select is((select count(*) from public.homes), 0::bigint, 'Otro hogar: no ve vue
 select is((select count(*) from public.sale_listing), 0::bigint, 'Otro hogar: no ve vuestro anuncio');
 select is((select count(*) from public.sale_documents), 0::bigint, 'Otro hogar: no ve vuestros documentos de venta');
 select is((select count(*) from public.sale_steps), 0::bigint, 'Otro hogar: no ve vuestros pasos de la venta');
+select is((select count(*) from public.purchase_steps), 0::bigint, 'Otro hogar: no ve vuestros pasos de la compra');
+select is((select count(*) from public.mortgage_offers) + (select count(*) from public.purchase), 0::bigint, 'Otro hogar: no ve vuestra compra ni vuestras hipotecas');
+select ok(public.test_fails(format('insert into public.purchase (household_id, home_id) values (%L, %L)', '00000000-0000-0000-0000-0000000000b0', current_setting('test.home'))),
+  'Otro hogar: no puede ligar su compra a vuestro piso');
 select is((select count(*) from public.event_categories), 1::bigint, 'Otro hogar: solo ve sus propias categorías');
 select is((select count(*) from public.gym_body), 0::bigint, 'Otro hogar: no ve datos del gimnasio');
 select ok(public.test_fails(format('select public.remove_child(%L)', current_setting('test.kid'))), 'Otro hogar: no puede eliminar vuestros niños');

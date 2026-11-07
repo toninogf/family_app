@@ -392,12 +392,14 @@ function friendly(msg: string) {
 
 /** Resumen ligero para la pantalla Hoy */
 export async function mudanzaSummary(fromDate: string) {
-  const [bv, hv, bo, ho, sd] = await Promise.all([
+  const [bv, hv, bo, ho, sd, pd] = await Promise.all([
     supabase.from('buyer_visits').select('visit_date, start_time, contact_name').eq('status', 'scheduled').gte('visit_date', fromDate).order('visit_date').order('start_time').limit(1),
     supabase.from('home_visits').select('visit_date, start_time, homes(title)').eq('status', 'scheduled').gte('visit_date', fromDate).order('visit_date').order('start_time').limit(1),
     supabase.from('buyer_offers').select('response_deadline').in('status', ['pending', 'countered']),
     supabase.from('home_offers').select('response_deadline').in('status', ['pending', 'countered']),
     supabase.from('sale_documents').select('title, expires_on').neq('status', 'no_aplica').not('expires_on', 'is', null)
+      .lte('expires_on', addDays(fromDate, 15)).order('expires_on'),
+    supabase.from('purchase_docs').select('title, expires_on').neq('status', 'no_aplica').not('expires_on', 'is', null)
       .lte('expires_on', addDays(fromDate, 15)).order('expires_on')
   ])
   const nextSale = bv.data?.[0] as { visit_date: string; start_time: string; contact_name: string | null } | undefined
@@ -409,7 +411,10 @@ export async function mudanzaSummary(fromDate: string) {
     nextHome: nh ? { visit_date: nh.visit_date, start_time: nh.start_time, title: homeTitle! } : null,
     openOffers: (bo.data?.length ?? 0) + (ho.data?.length ?? 0),
     nearestDeadline: deadlines.find(d => d >= fromDate) ?? null,
-    expiringDocs: (sd.data ?? []) as { title: string; expires_on: string }[]
+    expiringDocs: [
+      ...((sd.data ?? []) as { title: string; expires_on: string }[]),
+      ...((pd.data ?? []) as { title: string; expires_on: string }[]).map(d => ({ ...d, title: `Compra · ${d.title}` }))
+    ].sort((a, b) => a.expires_on.localeCompare(b.expires_on))
   }
 }
 

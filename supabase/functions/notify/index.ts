@@ -157,8 +157,14 @@ Deno.serve(async (req: Request) => {
         .gte('response_deadline', today).lte('response_deadline', addDays(today, 1))
     ])
     // Documentos de la venta que caducan en los próximos 7 días
-    const { data: sDocs } = await db.from('sale_documents').select('title, expires_on').eq('household_id', hh).neq('status', 'no_aplica')
-      .gte('expires_on', today).lte('expires_on', addDays(today, 7)).order('expires_on')
+    const [{ data: saleDocs }, { data: buyDocs }] = await Promise.all([
+      db.from('sale_documents').select('title, expires_on').eq('household_id', hh).neq('status', 'no_aplica')
+        .gte('expires_on', today).lte('expires_on', addDays(today, 7)),
+      db.from('purchase_docs').select('title, expires_on').eq('household_id', hh).neq('status', 'no_aplica')
+        .gte('expires_on', today).lte('expires_on', addDays(today, 7))
+    ])
+    const sDocs = [...(saleDocs ?? []), ...(buyDocs ?? []).map(d => ({ ...d, title: `Compra · ${d.title}` }))]
+      .sort((a, b) => String(a.expires_on).localeCompare(String(b.expires_on)))
     const when = (d: string) => (d === today ? 'hoy' : 'mañana')
     const offerLines = [
       ...(bOffers ?? []).map(o => `Oferta de ${o.buyer_name || 'un comprador'} (${eur0(o.amount_cents)}): responder ${when(o.response_deadline)}`),
@@ -167,7 +173,7 @@ Deno.serve(async (req: Request) => {
         const title = Array.isArray(h) ? h[0]?.title : h?.title
         return `Nuestra oferta por ${title ?? 'el piso'}: esperamos respuesta ${when(o.response_deadline)}`
       }),
-      ...(sDocs ?? []).map(d => `${d.title}: caduca ${d.expires_on === today ? 'hoy' : d.expires_on === addDays(today, 1) ? 'mañana' : `el ${d.expires_on.slice(8, 10)}/${d.expires_on.slice(5, 7)}`}`)
+      ...sDocs.map(d => `${d.title}: caduca ${d.expires_on === today ? 'hoy' : d.expires_on === addDays(today, 1) ? 'mañana' : `el ${d.expires_on.slice(8, 10)}/${d.expires_on.slice(5, 7)}`}`)
     ]
     const DEFAULT_ORDER = ['saldo', 'agenda', 'tareas', 'compra', 'mudanza', 'gym', 'comedor']
     const ms = (members ?? []) as Member[]
@@ -253,6 +259,7 @@ Deno.serve(async (req: Request) => {
           const items = todays.map(a => {
             if (a.origin === 'venta' && a.title.startsWith('🏠')) return `${hhmm(a.start)} ${a.title}` // paso de la venta (arras, firma…)
             if (a.origin === 'venta') return `${hhmm(a.start)} 🏠 ${a.title}${a.drop === s.member_id ? ' · atiendes tú' : ''}`
+            if (a.origin === 'compra' && a.title.startsWith('🔑')) return `${hhmm(a.start)} ${a.title}` // paso de la compra (arras, notaría…)
             if (a.origin === 'compra') return `${hhmm(a.start)} 🏠 ${a.title}${!a.drop ? ' · vais los dos' : a.drop === s.member_id ? ' · vas tú' : ''}`
             const roles = [a.drop === s.member_id ? 'llevas tú' : '', a.pick === s.member_id ? 'recoges tú' : ''].filter(Boolean).join(' y ')
             return `${hhmm(a.start)} ${a.title}${a.child ? ` (${a.child})` : ''}${roles ? ` · ${roles}` : ''}`

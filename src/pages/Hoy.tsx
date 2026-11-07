@@ -137,8 +137,8 @@ export default function Hoy() {
               </Link>
             )}
             {mud.expiringDocs.length > 0 && (
-              <Link to="/mudanza?vista=vendemos" className="p-4 flex flex-col gap-0.5">
-                <span className="text-[13px] text-muted">Documentos de la venta</span>
+              <Link to={mud.expiringDocs[0].title.startsWith("Compra · ") ? "/mudanza?vista=compramos" : "/mudanza?vista=vendemos"} className="p-4 flex flex-col gap-0.5">
+                <span className="text-[13px] text-muted">Documentos de la mudanza</span>
                 {mud.expiringDocs.slice(0, 3).map(d => (
                   <span key={d.title} className={`text-[15px] font-semibold ${d.expires_on < today() ? 'text-danger' : ''}`}>
                     {d.title}: {d.expires_on < today() ? 'caducado' : `caduca ${relativeDay(d.expires_on).toLowerCase()}`}
