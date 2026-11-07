@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { compressImage } from './money'
+import { prepareDoc, uploadError } from './mudanza'
 
 // ---------- Tipos ----------
 export type Contact = { role: string; name: string; phone?: string; email?: string }
@@ -91,15 +91,14 @@ export function useCompra() {
   /** Sube el archivo de un documento (PDF o foto) a la carpeta privada <hogar>/compra/ */
   async function uploadDoc(householdId: string, doc: PurchaseDoc, file: File) {
     try {
-      const isPdf = file.type === 'application/pdf'
-      const body: Blob = isPdf ? file : await compressImage(file, 2400)
+      const { body, isPdf } = await prepareDoc(file)
       const path = `${householdId}/compra/${crypto.randomUUID()}.${isPdf ? 'pdf' : 'jpg'}`
       const { error } = await supabase.storage.from('sale-docs').upload(path, body, { contentType: isPdf ? 'application/pdf' : 'image/jpeg', upsert: false })
       if (error) throw error
       if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
       return await write('purchase_docs', { path, file_name: file.name.slice(0, 200), status: doc.status === 'problema' ? 'problema' : 'ok' }, doc.id)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'No se pudo subir el documento'
+      const msg = uploadError(e)
       setError(msg); return msg
     }
   }

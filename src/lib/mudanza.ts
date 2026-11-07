@@ -348,16 +348,14 @@ export function useMudanza() {
   /** Sube el archivo de un documento (PDF o foto) y lo marca como «lo tenemos» */
   async function uploadSaleDoc(householdId: string, doc: SaleDoc, file: File) {
     try {
-      const isPdf = file.type === 'application/pdf'
-      const body: Blob = isPdf ? file : await compressImage(file, 2400)
-      const ext = isPdf ? 'pdf' : 'jpg'
-      const path = `${householdId}/${crypto.randomUUID()}.${ext}`
+      const { body, isPdf } = await prepareDoc(file)
+      const path = `${householdId}/${crypto.randomUUID()}.${isPdf ? 'pdf' : 'jpg'}`
       const { error } = await supabase.storage.from('sale-docs').upload(path, body, { contentType: isPdf ? 'application/pdf' : 'image/jpeg', upsert: false })
       if (error) throw error
       if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
       return await write('sale_documents', { path, file_name: file.name.slice(0, 200), status: 'ok' }, doc.id)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'No se pudo subir el documento'
+      const msg = uploadError(e)
       setError(msg)
       return msg
     }
@@ -435,6 +433,37 @@ export function portalName(url: string | null | undefined) {
   } catch {
     return null
   }
+}
+
+/**
+ * Prepara un documento para subirlo: lo lee entero en memoria primero (en Android, un archivo elegido desde Drive
+ * o «Descargas» puede fallar al leerse durante la subida y dar «Failed to fetch»), reconoce los PDF aunque el móvil
+ * no diga su tipo, y comprime las fotos.
+ */
+export async function prepareDoc(file: File): Promise<{ body: Blob; isPdf: boolean }> {
+  let bytes: ArrayBuffer
+  try {
+    bytes = await file.arrayBuffer()
+  } catch {
+    throw new Error('El móvil no deja leer ese archivo. Si está en Drive u otra nube, descárgalo primero al teléfono y súbelo desde «Descargas».')
+  }
+  if (!bytes.byteLength) throw new Error('El archivo está vacío o no se ha terminado de descargar. Ábrelo una vez en el móvil y vuelve a intentarlo.')
+  if (bytes.byteLength > 15 * 1024 * 1024) throw new Error('El archivo pesa más de 15 MB.')
+  const head = new Uint8Array(bytes.slice(0, 5))
+  const isPdf = String.fromCharCode(...head) === '%PDF-' || file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+  if (isPdf) return { body: new Blob([bytes], { type: 'application/pdf' }), isPdf }
+  try {
+    return { body: await compressImage(new File([bytes], file.name, { type: file.type || 'image/jpeg' }), 2400), isPdf }
+  } catch {
+    throw new Error('Solo se pueden subir PDF o fotos (JPG, PNG, WEBP).')
+  }
+}
+
+/** Mensaje claro cuando falla la subida de un documento */
+export function uploadError(e: unknown) {
+  const msg = e instanceof Error ? e.message : ''
+  if (/failed to fetch|network|load failed/i.test(msg)) return 'No se ha podido subir: revisa la conexión. Si el archivo está en Drive u otra nube, descárgalo antes al móvil.'
+  return msg || 'No se pudo subir el documento'
 }
 
 /** Enlace temporal para ver un documento de la venta */
