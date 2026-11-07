@@ -24,6 +24,8 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
   const l = m.listing
   const photos = m.salePhotos.filter(p => p.kind === 'foto')
   const cee = m.saleDocs.find(d => d.doc_key === 'cee' && d.path)
+  const plans = m.saleDocs.filter(d => d.path && (d.doc_key === 'planos' || /plano/i.test(d.title)))
+  const [withPlans, setWithPlans] = useState(true)
   const [withAddress, setWithAddress] = useState(false)
   const [withPrice, setWithPrice] = useState(true)
   const [maxPhotos, setMaxPhotos] = useState(Math.min(8, photos.length))
@@ -122,21 +124,22 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
         })
       }
 
-      // Certificado energético: si es una foto va dentro; si es PDF se comparte aparte
+      // Planos y certificado energético: si son fotos van dentro; si son PDF se comparten aparte
       const files: File[] = []
-      if (cee?.path) {
-        const u = await saleDocUrl(cee.path)
-        if (u) {
-          const blob = await (await fetch(u)).blob()
-          if (blob.type === 'application/pdf') files.push(new File([blob], 'Certificado energético.pdf', { type: 'application/pdf' }))
-          else {
-            const im = await imageData(u, 1800)
-            if (im) {
-              doc.addPage(); y = M
-              para('Certificado energético', 14, 'bold', 2)
-              const scale = Math.min(CW / im.w, (297 - 2 * M - 12) / im.h)
-              doc.addImage(im.data, 'JPEG', M, y, im.w * scale, im.h * scale)
-            }
+      const attach = withPlans ? [...plans, ...(cee ? [cee] : [])] : cee ? [cee] : []
+      for (const d of attach) {
+        const u = await saleDocUrl(d.path!)
+        if (!u) continue
+        const blob = await (await fetch(u)).blob()
+        const label = clean(d.title)
+        if (blob.type === 'application/pdf') files.push(new File([blob], `${label}.pdf`, { type: 'application/pdf' }))
+        else {
+          const im = await imageData(u, 1800)
+          if (im) {
+            doc.addPage(); y = M
+            para(label, 14, 'bold', 2)
+            const scale = Math.min(CW / im.w, (297 - 2 * M - 12) / im.h)
+            doc.addImage(im.data, 'JPEG', M, y, im.w * scale, im.h * scale)
           }
         }
       }
@@ -171,10 +174,11 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
   return (
     <Sheet title="Dossier para compradores" onClose={onClose}>
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted">Un PDF con la ficha del piso, las fotos y el certificado energético, para mandarlo por WhatsApp a quien pregunte.</p>
+        <p className="text-sm text-muted">Un PDF con la ficha del piso, las fotos, los planos y el certificado energético, para mandarlo por WhatsApp a quien pregunte.</p>
         {!l?.title && !l?.size_m2 && <p className="text-sm text-danger">Rellena antes la ficha del anuncio para que el dossier tenga datos.</p>}
         <ul className="text-sm flex flex-col gap-1">
           <li>{photos.length ? `🖼️ ${photos.length} foto${photos.length > 1 ? 's' : ''} del piso` : '🖼️ Sin fotos: súbelas en «Fotos del piso»'}</li>
+          <li>{plans.length ? `📐 ${plans.length} plano${plans.length > 1 ? 's' : ''}` : '📐 Sin planos subidos (en Documentos)'}</li>
           <li>{cee ? '⚡ Certificado energético incluido' : '⚡ Sin certificado energético subido (en Documentos)'}</li>
         </ul>
         {photos.length > 1 && (
@@ -187,6 +191,12 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
           <input type="checkbox" checked={withPrice} onChange={() => setWithPrice(!withPrice)} className="w-5 h-5 accent-[var(--app-accent)]" />
           <span className="text-[15px]">Incluir el precio</span>
         </label>
+        {plans.length > 0 && (
+          <label className="flex items-center gap-3 min-h-11">
+            <input type="checkbox" checked={withPlans} onChange={() => setWithPlans(!withPlans)} className="w-5 h-5 accent-[var(--app-accent)]" />
+            <span className="text-[15px]">Incluir los planos</span>
+          </label>
+        )}
         <label className="flex items-center gap-3 min-h-11">
           <input type="checkbox" checked={withAddress} onChange={() => setWithAddress(!withAddress)} className="w-5 h-5 accent-[var(--app-accent)]" />
           <span className="text-[15px]">Incluir la dirección exacta</span>
@@ -200,7 +210,7 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
             <button onClick={() => share(ready)} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Compartir (WhatsApp…)</button>
             <button onClick={() => download(ready)} className="min-h-11 rounded-xl border border-line text-sm font-semibold">Descargar</button>
             <button onClick={() => setReady(null)} className="min-h-10 text-sm text-muted">Cambiar opciones</button>
-            {ready.length > 1 && <p className="text-xs text-muted">Se comparten dos archivos: el dossier y el certificado energético en PDF.</p>}
+            {ready.length > 1 && <p className="text-xs text-muted">Se comparten varios archivos: el dossier y los documentos que están en PDF (planos, certificado energético).</p>}
           </div>
         )}
       </div>

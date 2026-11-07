@@ -478,6 +478,7 @@ export const DOC_TEMPLATE: { key: string; title: string; hint: string; months?: 
   { key: 'nota_simple', title: 'Nota simple del Registro', hint: 'Titularidad y cargas. Se pide reciente (menos de 3 meses).', months: 3 },
   { key: 'escritura', title: 'Escritura de propiedad', hint: 'La piden el notario y el banco del comprador.' },
   { key: 'catastro', title: 'Referencia / certificado catastral', hint: 'Sede electrónica del Catastro.' },
+  { key: 'planos', title: 'Planos de la vivienda', hint: 'Del proyecto, del arquitecto o hechos para el anuncio. Si hay varios (por plantas), añade uno por cada plano.' },
   { key: 'cee', title: 'Certificado energético', hint: 'Obligatorio para anunciar y firmar. Vale 10 años.', months: 120 },
   { key: 'ibi', title: 'Último recibo del IBI', hint: 'Lo pide el notario.', months: 12 },
   { key: 'comunidad', title: 'Certificado de la comunidad (al corriente)', hint: 'Obligatorio en la firma si hay comunidad. Reciente.', months: 1 },
