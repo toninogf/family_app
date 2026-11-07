@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(87);
+select plan(92);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -113,6 +113,12 @@ select ok(not public.test_fails($$ insert into public.member_preferences (member
 select is((select count(*) from public.events where title = 'Gimnasio'), 1::bigint, 'Si comparte, sale «Gimnasio» en la Agenda familiar');
 select ok(not public.test_fails('select public.gym_rest_start(90)'), 'Toni programa el aviso de fin de descanso');
 select ok(public.test_fails('select count(*) from public.notify_log'), 'El registro de avisos enviados solo lo usa el servidor');
+insert into public.sale_documents (title, status) values ('Nota simple', 'ok');
+select ok(public.test_fails($$ insert into public.sale_documents (title, path) values ('Truco', '00000000-0000-0000-0000-000000000000/x.pdf') $$),
+  'Un documento no puede apuntar a archivos de otro hogar');
+insert into public.sale_steps (kind, title, step_date) values ('arras', 'Firma de arras', current_date + 10);
+select is((select count(*) from public.events where title like '%Firma de arras%' and origin = 'venta'), 1::bigint,
+  'Un paso de la venta con fecha aparece en la Agenda');
 select ok(not public.test_fails(format('insert into public.tasks (household_id, title, repeat, due_date) values (%L, %L, %L, current_date + 3)', current_setting('test.hh'), 'Llamar al fontanero', 'anytime')),
   'Se puede crear una tarea «Sin fecha» con fecha límite');
 select ok(public.test_fails(format('insert into public.tasks (household_id, title, repeat) values (%L, %L, %L)', current_setting('test.hh'), 'Sábanas', 'interval')),
@@ -188,6 +194,8 @@ select is((select count(*) from public.calendar_tokens), 0::bigint, 'Otro hogar:
 select is((select count(*) from public.school_menu), 0::bigint, 'Otro hogar: no ve vuestro menú');
 select is((select count(*) from public.homes), 0::bigint, 'Otro hogar: no ve vuestros pisos');
 select is((select count(*) from public.sale_listing), 0::bigint, 'Otro hogar: no ve vuestro anuncio');
+select is((select count(*) from public.sale_documents), 0::bigint, 'Otro hogar: no ve vuestros documentos de venta');
+select is((select count(*) from public.sale_steps), 0::bigint, 'Otro hogar: no ve vuestros pasos de la venta');
 select is((select count(*) from public.event_categories), 1::bigint, 'Otro hogar: solo ve sus propias categorías');
 select is((select count(*) from public.gym_body), 0::bigint, 'Otro hogar: no ve datos del gimnasio');
 select ok(public.test_fails(format('select public.remove_child(%L)', current_setting('test.kid'))), 'Otro hogar: no puede eliminar vuestros niños');
