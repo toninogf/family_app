@@ -2,7 +2,7 @@
 import { FEATURES, VISIT_CHECKLIST, mustHaveCheck, perM2, price, type Criteria, type Home, type HomeVisit } from './mudanza'
 
 /** Nombre corto para el texto: barrio o calle y localidad */
-export const shortName = (h: Home) => [h.zone ?? h.address, h.municipality].filter(Boolean).join(', ') || h.title
+export const shortName = (h: Home) => [h.zone ?? h.address, h.municipality].filter(Boolean).join(' · ') || h.title
 const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`)
 const pct = (a: number, b: number) => Math.round(((b - a) / b) * 100)
 const ENERGY = 'ABCDEFG'
@@ -45,11 +45,11 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
   // Habitaciones y baños
   const rooms = homes.filter(h => h.rooms != null)
   if (rooms.length >= 2 && new Set(rooms.map(h => h.rooms)).size > 1) {
-    out.push(`🛏️ Habitaciones: ${list(rooms.sort((a, b) => b.rooms! - a.rooms!).map(h => `${n(h)} ${h.rooms}`))}.`)
+    out.push(`🛏️ Habitaciones: ${list(rooms.sort((a, b) => b.rooms! - a.rooms!).map(h => `${n(h)} (${h.rooms})`))}.`)
   }
   const baths = homes.filter(h => h.baths != null)
   if (baths.length >= 2 && new Set(baths.map(h => h.baths)).size > 1) {
-    out.push(`🛁 Baños: ${list(baths.sort((a, b) => b.baths! - a.baths!).map(h => `${n(h)} ${h.baths}`))}.`)
+    out.push(`🛁 Baños: ${list(baths.sort((a, b) => b.baths! - a.baths!).map(h => `${n(h)} (${h.baths})`))}.`)
   }
   // Extras que solo tienen algunos
   for (const h of homes) {
