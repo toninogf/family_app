@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(92);
+select plan(91);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
