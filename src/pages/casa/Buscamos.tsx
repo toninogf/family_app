@@ -192,8 +192,10 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </div>
       )}
 
+      {pickedHomes.length > 0 && <div className="h-16" aria-hidden="true" />}
       {pickedHomes.length > 0 && (
-        <div className="sticky bottom-24 z-10 flex items-center gap-2 bg-ink text-bg rounded-2xl p-2 pl-4 shadow-lg">
+        // Fija justo encima del botón «+ Piso» para que no se tapen
+        <div className="fixed inset-x-5 mx-auto max-w-[34rem] bottom-[calc(max(env(safe-area-inset-bottom),8px)+152px)] z-10 flex items-center gap-2 bg-ink text-bg rounded-2xl p-2 pl-4 shadow-lg">
           <span className="text-sm font-semibold flex-1">{pickedHomes.length} marcado{pickedHomes.length > 1 ? 's' : ''} para comparar</span>
           <button onClick={() => setPicked([])} className="min-h-10 px-3 text-sm opacity-80">Quitar</button>
           <button onClick={() => setCompareOpen(true)} disabled={pickedHomes.length < 2}
