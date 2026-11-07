@@ -6,6 +6,9 @@
   "assets": {
     "directory": "./dist",
     // Rutas como /compra o /dinero devuelven index.html (app de una sola página)
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Sin redirecciones automáticas (/index.html → /): el service worker sirve index.html para cualquier ruta
+    // y Chrome da ERR_FAILED si una navegación recibe una respuesta redirigida
+    "html_handling": "none"
   }
 }
