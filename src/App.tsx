@@ -23,7 +23,7 @@ export default function App() {
         <PrefsProvider>
         <main className="max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28">
           <Routes>
-            <Route path="/" element={<Hoy />} />
+            <Route path="/" element={<HomeOrShare />} />
             <Route path="/compra" element={<Compra />} />
             <Route path="/tareas" element={<Tareas />} />
             <Route path="/mudanza" element={<Mudanza />} />
@@ -49,4 +49,10 @@ export default function App() {
 function CasaRedirect() {
   const vista = new URLSearchParams(useLocation().search).get('vista')
   return <Navigate replace to={vista === 'vendemos' || vista === 'buscamos' ? `/mudanza?vista=${vista}` : '/tareas'} />
+}
+
+/** Lo compartido desde otra app también puede llegar a la portada (/?text=…&url=…): se trata como /compartir */
+function HomeOrShare() {
+  const p = new URLSearchParams(useLocation().search)
+  return p.has('text') || p.has('url') || p.has('title') ? <Compartir /> : <Hoy />
 }
