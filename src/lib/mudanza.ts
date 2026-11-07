@@ -85,7 +85,7 @@ export type HomeVisit = {
   checklist: Record<string, CheckValue>
   notes: string | null
 }
-export type Rating = { home_id: string; member_id: string; score: number; best: string | null; worst: string | null }
+export type Rating = { home_id: string; member_id: string; score: number; comment: string | null }
 /** kind: «foto» (de la visita) o «anuncio» (captura del anuncio, por si lo borran del portal) */
 export type Photo = { id: string; home_id: string; path: string; created_at: string; kind: 'foto' | 'anuncio' }
 export type HomeOffer = {
@@ -211,7 +211,7 @@ export function useMudanza() {
       supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves').maybeSingle(),
       supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, energy, maps_url, contact, advertiser, agency, contact_phone, contact_email, listing_ref, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
-      supabase.from('home_ratings').select('home_id, member_id, score, best, worst'),
+      supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
       supabase.from('home_offers').select('id, home_id, offer_date, amount_cents, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false })
     ])

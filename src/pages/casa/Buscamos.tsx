@@ -432,13 +432,12 @@ function RatingBox({ h, m, me, members }: { h: Home; m: Mudanza; me: Member; mem
   const mine = m.ratings.find(r => r.home_id === h.id && r.member_id === me.id)
   const others = m.ratings.filter(r => r.home_id === h.id && r.member_id !== me.id)
   const [score, setScore] = useState(mine?.score ?? 0)
-  const [best, setBest] = useState(mine?.best ?? '')
-  const [worst, setWorst] = useState(mine?.worst ?? '')
+  const [comment, setComment] = useState(mine?.comment ?? '')
   const [saved, setSaved] = useState(false)
 
   async function save(nextScore = score) {
     if (!nextScore) return
-    await m.write('home_ratings', { home_id: h.id, member_id: me.id, score: nextScore, best: best.trim() || null, worst: worst.trim() || null }, undefined, 'home_id,member_id')
+    await m.write('home_ratings', { home_id: h.id, member_id: me.id, score: nextScore, comment: comment.trim() || null }, undefined, 'home_id,member_id')
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
@@ -452,17 +451,14 @@ function RatingBox({ h, m, me, members }: { h: Home; m: Mudanza; me: Member; mem
             className={`w-11 h-11 text-[28px] leading-none ${i <= score ? 'text-[#E0A100]' : 'text-line'}`}>★</button>
         ))}
       </div>
-      <TextField label="Lo mejor" value={best} onChange={e => setBest(e.target.value)} onBlur={() => save()} maxLength={300} />
-      <TextField label="Lo peor" value={worst} onChange={e => setWorst(e.target.value)} onBlur={() => save()} maxLength={300} />
+      <TextArea label="Comentarios" value={comment} onChange={e => setComment(e.target.value)} onBlur={() => save()} maxLength={1000}
+        placeholder={score ? 'Lo que te ha gustado, lo que no, dudas…' : 'Pon primero tu nota (estrellas) para guardar el comentario'} />
       {saved && <p role="status" className="text-xs text-accent">Guardado</p>}
       {others.map(r => (
         <div key={r.member_id} className="border-t border-line pt-3 flex flex-col gap-1">
           <span className="text-sm font-semibold flex items-center gap-2">{nameOf(r.member_id, members)} {mine ? <Stars n={r.score} size={16} /> : null}</span>
           {mine ? (
-            <>
-              {r.best && <span className="text-sm">👍 {r.best}</span>}
-              {r.worst && <span className="text-sm">👎 {r.worst}</span>}
-            </>
+            r.comment ? <span className="text-sm whitespace-pre-line">{r.comment}</span> : null
           ) : <span className="text-sm text-muted">Pon tu nota para ver la suya. Así no os influís.</span>}
         </div>
       ))}
