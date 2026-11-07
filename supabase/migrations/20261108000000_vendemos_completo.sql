@@ -80,9 +80,11 @@ as $$
 begin
   if tg_op = 'INSERT' then new.household_id := coalesce(new.household_id, private.my_household());
   else new.household_id := old.household_id; end if;
-  if tg_table_name in ('sale_photos', 'sale_documents') and new.path is not null
-     and split_part(new.path, '/', 1) <> new.household_id::text then
-    raise exception 'Archivo no válido';
+  -- (anidado: sale_steps no tiene «path» y plpgsql evaluaría el campo igualmente)
+  if tg_table_name in ('sale_photos', 'sale_documents') then
+    if new.path is not null and split_part(new.path, '/', 1) <> new.household_id::text then
+      raise exception 'Archivo no válido';
+    end if;
   end if;
   if tg_table_name = 'sale_documents' then new.updated_at := now(); end if;
   return new;
