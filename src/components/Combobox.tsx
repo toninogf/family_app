@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { fold } from '../data/places'
 
 /** Desplegable con buscador: escribe unas letras y elige de la lista (sin acentos ni mayúsculas) */
@@ -7,6 +7,8 @@ export default function Combobox({ label, value, options, onChange, placeholder,
 }) {
   const id = useId()
   const [text, setText] = useState(value ?? '')
+  // Si el valor cambia desde fuera (p. ej. al rellenar desde un anuncio), se muestra
+  useEffect(() => { if (value) setText(value) }, [value])
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
 

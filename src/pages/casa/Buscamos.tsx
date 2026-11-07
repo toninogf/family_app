@@ -26,6 +26,8 @@ const ALL_MUNICIPALITIES = PROVINCES.flatMap(p => MUNICIPALITIES[p.code].map(x =
 
 type Filter = 'activos' | 'favoritos' | 'descartados' | 'todos'
 
+/** Número para WhatsApp: con prefijo de España si no lo trae */
+const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.length === 9 ? `34${d}` : d.replace(/^00/, '') }
 const nameOf = (id: string | null, members: Member[]) => (id ? members.find(x => x.id === id)?.display_name ?? '' : '')
 const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')))
 
@@ -385,7 +387,30 @@ function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
         ))}
       </section>
 
-      {(h.community_fee_cents != null || h.ibi_cents != null || h.energy || h.contact || h.notes || h.features.length > 0) && (
+      {(h.contact || h.agency || h.contact_phone || h.contact_email || h.advertiser || h.listing_ref) && (
+        <section className="flex flex-col gap-2 bg-card rounded-2xl p-3">
+          <h3 className="font-bold text-[15px]">Contacto</h3>
+          <p className="text-sm">
+            {h.advertiser === 'particular' ? '🙋 Particular' : h.advertiser === 'agencia' ? '🏢 Agencia' : ''}
+            {h.agency ? `${h.advertiser ? ' · ' : ''}${h.agency}` : ''}
+            {h.contact ? `${h.advertiser || h.agency ? ' · ' : ''}${h.contact}` : ''}
+          </p>
+          {h.listing_ref && <p className="text-xs text-muted">Referencia del anuncio: {h.listing_ref}</p>}
+          {(h.contact_phone || h.contact_email) && (
+            <div className="flex flex-wrap gap-2">
+              {h.contact_phone && (
+                <>
+                  <a href={`tel:${h.contact_phone.replace(/[^\d+]/g, '')}`} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-sm font-semibold flex items-center">📞 {h.contact_phone}</a>
+                  <a href={`https://wa.me/${waNumber(h.contact_phone)}`} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">WhatsApp</a>
+                </>
+              )}
+              {h.contact_email && <a href={`mailto:${h.contact_email}`} className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">✉️ Email</a>}
+            </div>
+          )}
+        </section>
+      )}
+
+      {(h.community_fee_cents != null || h.ibi_cents != null || h.energy || h.notes || h.features.length > 0) && (
         <section className="flex flex-col gap-1 text-sm">
           <h3 className="font-bold text-[15px]">Más datos</h3>
           {h.features.length > 0 && <p>{h.features.map(k => FEATURES[k] ?? k).join(' · ')}</p>}
@@ -393,7 +418,6 @@ function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
           {h.ibi_cents != null && <p>IBI: {price(h.ibi_cents)}/año</p>}
           {h.energy && <p>Certificado energético: {h.energy}</p>}
           {h.minutes_to_school != null && <p>{h.minutes_to_school} min al cole</p>}
-          {h.contact && <p>Contacto: {h.contact}</p>}
           {h.notes && <p className="text-muted whitespace-pre-line">{h.notes}</p>}
         </section>
       )}
@@ -661,6 +685,11 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [energy, setEnergy] = useState<string | null>(home?.energy ?? null)
   const [minutes, setMinutes] = useState(home?.minutes_to_school?.toString() ?? '')
   const [contact, setContact] = useState(home?.contact ?? '')
+  const [advertiser, setAdvertiser] = useState<'agencia' | 'particular' | null>(home?.advertiser ?? null)
+  const [agency, setAgency] = useState(home?.agency ?? '')
+  const [phone, setPhone] = useState(home?.contact_phone ?? '')
+  const [email, setEmail] = useState(home?.contact_email ?? '')
+  const [listingRef, setListingRef] = useState(home?.listing_ref ?? '')
   const [notes, setNotes] = useState(home?.notes ?? '')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -681,6 +710,12 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     if (d.community_eur) setFee(priceInput(Math.round(d.community_eur * 100)))
     if (d.ibi_eur) setIbi(priceInput(Math.round(d.ibi_eur * 100)))
     if (d.notes) setNotes(n => n.trim() ? n : d.notes!)
+    if (d.advertiser) setAdvertiser(d.advertiser)
+    if (d.agency) setAgency(d.agency.slice(0, 120))
+    if (d.contact) setContact(d.contact.slice(0, 120))
+    if (d.phone) setPhone(d.phone.slice(0, 30))
+    if (d.email) setEmail(d.email.slice(0, 120))
+    if (d.ref) setListingRef(d.ref.slice(0, 60))
     return filledLabels(d)
   }
 
@@ -770,6 +805,8 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     const priceCents = amount.trim() ? parsePrice(amount) : null
     if (amount.trim() && !priceCents) { setError('El precio no es válido'); return }
     const cleanUrl = url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim().replace(/^http:/i, 'https:') : `https://${url.trim()}`) : null
+    if (phone.trim() && !/^[0-9 +().-]{3,30}$/.test(phone.trim())) { setError('El teléfono solo puede llevar números, espacios y +'); return }
+    if (email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setError('El email no es válido'); return }
     if (maps.trim() && !isMapsUrl(maps.trim())) { setError('El enlace de mapa debe ser de Google Maps (Compartir → Copiar enlace)'); return }
     const ints = [rooms, baths, minutes].map(x => (x.trim() ? parseInt(x, 10) : null))
     if (ints.some(x => x != null && (isNaN(x) || x < 0))) { setError('Revisa habitaciones, baños y minutos'); return }
@@ -780,7 +817,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       title: title.trim(), url: cleanUrl, price_cents: priceCents, size_m2: size, rooms: ints[0], baths: ints[1], floor: floor.trim() || null,
       zone: zone.trim() || null, province, municipality, address: address.trim() || null, maps_url: maps.trim() || null, features,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null, energy,
-      minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null
+      minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
+      advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
+      contact_email: email.trim() || null, listing_ref: listingRef.trim() || null
     }
     let homeId = home?.id
     let err: string | undefined
@@ -882,7 +921,18 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
         <Choice<string | null> label="Certificado energético" value={energy} onChange={setEnergy}
           options={[...'ABCDEFG'.split('').map(l => ({ value: l as string | null, label: l })), { value: null, label: '?' }]} />
         <TextField label="Minutos al cole" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="Ej. 10 (andando o en coche, como lo midáis)" />
-        <TextField label="Contacto (agencia o dueño)" value={contact} onChange={e => setContact(e.target.value)} maxLength={120} />
+        <fieldset className="flex flex-col gap-3 rounded-2xl border border-line p-3">
+          <legend className="text-sm font-bold px-1">Contacto del anuncio</legend>
+          <Choice<'agencia' | 'particular' | null> label="¿Quién lo anuncia?" value={advertiser} onChange={setAdvertiser}
+            options={[{ value: 'agencia', label: '🏢 Agencia' }, { value: 'particular', label: '🙋 Particular' }, { value: null, label: '?' }]} />
+          {advertiser !== 'particular' && <TextField label="Agencia" value={agency} onChange={e => setAgency(e.target.value)} maxLength={120} placeholder="Nombre de la inmobiliaria" />}
+          <TextField label="Persona de contacto" value={contact} onChange={e => setContact(e.target.value)} maxLength={120} />
+          <div className="grid grid-cols-2 gap-3">
+            <TextField label="Teléfono" type="tel" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} maxLength={30} placeholder="600 000 000" />
+            <TextField label="Referencia" value={listingRef} onChange={e => setListingRef(e.target.value)} maxLength={60} placeholder="Ref. del anuncio" />
+          </div>
+          <TextField label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} />
+        </fieldset>
         <TextArea label="Notas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" disabled={busy} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">

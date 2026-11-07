@@ -18,6 +18,12 @@ export type ListingData = {
   municipality?: string
   /** Lo que no tiene campo propio (parcela, año, resumen): va a Notas */
   notes?: string
+  advertiser?: 'agencia' | 'particular'
+  agency?: string
+  contact?: string
+  phone?: string
+  email?: string
+  ref?: string
 }
 
 /** «1.250.000» / «350.000,50» / «95,5» → número */
@@ -112,6 +118,18 @@ export function parseListing(raw: string): ListingData {
     if (hit) out.municipality = hit
   }
 
+  // Contacto: teléfono, email, particular o agencia, referencia
+  const phone = text.match(/(?:\+34[\s.-]?)?\b[6789]\d{2}[\s.-]?\d{2,3}[\s.-]?\d{2,3}[\s.-]?\d{0,3}\b/)
+  if (phone && phone[0].replace(/\D/g, '').replace(/^34/, '').length === 9) out.phone = phone[0].trim()
+  const email = text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)
+  if (email) out.email = email[0]
+  if (/\bparticular\b/i.test(text)) out.advertiser = 'particular'
+  else if (/\b(profesional|inmobiliaria|agencia|real estate|fincas)\b/i.test(text)) out.advertiser = 'agencia'
+  const agency = text.match(/([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ&.\- ]{2,60}?(?:Inmobiliaria|Real Estate|Fincas|Properties|Homes)(?:\s*,?\s*S\.?L\.?U?\.?)?)/)
+  if (agency) { out.agency = agency[1].trim(); out.advertiser = out.advertiser ?? 'agencia' }
+  const ref = text.match(/(?:referencia(?: del anuncio)?|ref\.?)\s*[:#]?\s*([A-Z0-9][A-Z0-9_\-/]{2,30})/i)
+  if (ref) out.ref = ref[1]
+
   // Nombre para reconocerlo: tipo + zona/calle + municipio, corto
   const type = text.match(/\b(piso|ático|atico|chalet(?: adosado| pareado| independiente)?|casa(?: o chalet independiente| adosada| pareada)?|dúplex|duplex|estudio|apartamento|loft)\b/i)
   if (type) {
@@ -132,7 +150,7 @@ export function firstUrl(text: string) {
 export function filledLabels(d: ListingData) {
   const L: [keyof ListingData, string][] = [['price_eur', 'precio'], ['size_m2', 'm²'], ['rooms', 'habitaciones'], ['baths', 'baños'], ['floor', 'planta'],
     ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI']]
-  L.push(['notes', 'notas'])
+  L.push(['notes', 'notas'], ['advertiser', 'anunciante'], ['agency', 'agencia'], ['contact', 'contacto'], ['phone', 'teléfono'], ['email', 'email'], ['ref', 'referencia'])
   return L.filter(([k]) => d[k] != null && !(Array.isArray(d[k]) && !(d[k] as unknown[]).length)).map(([, l]) => l)
 }
 
@@ -158,16 +176,23 @@ CERTIFICADO: (letra de consumo, A-G)
 COMUNIDAD: (€/mes, solo el número)
 IBI: (€/año, solo el número)
 AÑO: (de construcción)
-RESUMEN: (dos frases con lo más destacable)`
+RESUMEN: (dos frases con lo más destacable)
+ANUNCIANTE: (agencia o particular)
+AGENCIA: (nombre de la inmobiliaria, si es agencia)
+CONTACTO: (nombre de la persona de contacto)
+TELEFONO:
+EMAIL:
+REFERENCIA: (referencia del anuncio)`
 }
 
-const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'AÑO', 'ANO', 'RESUMEN']
+const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'AÑO', 'ANO', 'RESUMEN',
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|A[NÑ]O|RESUMEN'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -206,6 +231,12 @@ export function parseAiBlock(raw: string): ListingData | null {
     values.RESUMEN ?? ''
   ].filter(Boolean)
   if (notes.length) out.notes = notes.join('\n').slice(0, 1000)
+  if (values.ANUNCIANTE) out.advertiser = /particular/i.test(values.ANUNCIANTE) ? 'particular' : 'agencia'
+  if (values.AGENCIA) { out.agency = values.AGENCIA.slice(0, 120); out.advertiser = out.advertiser ?? 'agencia' }
+  if (values.CONTACTO) out.contact = values.CONTACTO.slice(0, 120)
+  const tel = values.TELEFONO?.match(/\+?[\d][\d\s.()-]{6,20}\d/); if (tel) out.phone = tel[0].trim()
+  const mail = values.EMAIL?.match(/[\w.+-]+@[\w-]+\.[\w.-]+/); if (mail) out.email = mail[0]
+  if (values.REFERENCIA) out.ref = values.REFERENCIA.slice(0, 60)
   if (values.TIPO) {
     const where = out.zone ?? out.address ?? out.municipality
     const t = values.TIPO.charAt(0).toUpperCase() + values.TIPO.slice(1)
