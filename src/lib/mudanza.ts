@@ -81,7 +81,8 @@ export type HomeVisit = {
   notes: string | null
 }
 export type Rating = { home_id: string; member_id: string; score: number; best: string | null; worst: string | null }
-export type Photo = { id: string; home_id: string; path: string; created_at: string }
+/** kind: «foto» (de la visita) o «anuncio» (captura del anuncio, por si lo borran del portal) */
+export type Photo = { id: string; home_id: string; path: string; created_at: string; kind: 'foto' | 'anuncio' }
 export type HomeOffer = {
   id: string
   home_id: string
@@ -206,7 +207,7 @@ export function useMudanza() {
       supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, energy, maps_url, contact, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, best, worst'),
-      supabase.from('home_photos').select('id, home_id, path, created_at').order('created_at'),
+      supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
       supabase.from('home_offers').select('id, home_id, offer_date, amount_cents, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false })
     ])
     const firstError = [l, p, v, o, c, h, hv, r, ph, ho].find(x => x.error)?.error
@@ -258,13 +259,22 @@ export function useMudanza() {
     await remove('homes', id)
   }
 
-  async function addPhoto(householdId: string, homeId: string, file: File) {
+  /** Crea un piso y devuelve su id (para subir después las capturas del anuncio) */
+  async function createHome(data: Record<string, unknown>): Promise<{ id?: string; error?: string }> {
+    const { data: row, error } = await supabase.from('homes').insert(data).select('id').single()
+    if (error) { setError(friendly(error.message)); return { error: friendly(error.message) } }
+    await load()
+    return { id: row.id as string }
+  }
+
+  async function addPhoto(householdId: string, homeId: string, file: File, kind: 'foto' | 'anuncio' = 'foto') {
     try {
-      const blob = await compressImage(file)
+      // Las capturas del anuncio se guardan más grandes para que el texto se siga leyendo
+      const blob = await compressImage(file, kind === 'anuncio' ? 2400 : 1600)
       const path = `${householdId}/${homeId}/${crypto.randomUUID()}.jpg`
       const { error } = await supabase.storage.from('house-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
       if (error) throw error
-      return await write('home_photos', { home_id: homeId, path })
+      return await write('home_photos', { home_id: homeId, path, kind })
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'No se pudo subir la foto'
       setError(msg)
@@ -279,7 +289,7 @@ export function useMudanza() {
 
   return {
     listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, loading, error,
-    clearError: () => setError(''), reload: load, write, remove, removeHome, addPhoto, removePhoto
+    clearError: () => setError(''), reload: load, write, remove, removeHome, createHome, addPhoto, removePhoto
   }
 }
 export type Mudanza = ReturnType<typeof useMudanza>

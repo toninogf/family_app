@@ -35,11 +35,17 @@ export default defineConfig({
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
         ],
         // Aparece en el menú «Compartir» de Android: un anuncio de Idealista, Fotocasa… abre un piso nuevo en Buscamos
-        share_target: { action: '/compartir', method: 'GET', params: { title: 'title', text: 'text', url: 'url' } }
+        // POST para poder recibir también capturas de pantalla (las recoge el service worker, ver push-handler.js)
+        share_target: {
+          action: '/compartir', method: 'POST', enctype: 'multipart/form-data',
+          params: { title: 'title', text: 'text', url: 'url', files: [{ name: 'shots', accept: ['image/*'] }] }
+        }
       },
       workbox: {
         // Nunca cachear llamadas a Supabase: los datos siempre frescos y privados
         navigateFallbackDenylist: [/^\/auth/, /^\/renovar/],
+        // El lector de texto (OCR) pesa varios MB: se descarga solo cuando se usa, no al instalar la app
+        globIgnores: ['ocr/**'],
         runtimeCaching: [],
         importScripts: ['push-handler.js'],
         cleanupOutdatedCaches: true,

@@ -43,3 +43,23 @@ self.addEventListener('notificationclick', event => {
     })
   )
 })
+
+// «Compartir» desde otra app (share_target por POST): se guardan las capturas en una caché temporal
+// y se abre /compartir, que las recoge y abre un piso nuevo en Mudanza → Buscamos
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url)
+  if (event.request.method !== 'POST' || url.origin !== self.location.origin || url.pathname !== '/compartir') return
+  event.respondWith((async () => {
+    const form = await event.request.formData()
+    const cache = await caches.open('share-inbox')
+    for (const k of await cache.keys()) await cache.delete(k)
+    const files = form.getAll('shots').filter(f => f && typeof f !== 'string')
+    await Promise.all(files.slice(0, 10).map((f, i) => cache.put(`/share-inbox/${i}`, new Response(f, {
+      headers: { 'Content-Type': f.type || 'image/png', 'X-Name': encodeURIComponent(f.name || `captura-${i + 1}.png`) }
+    }))))
+    const q = new URLSearchParams()
+    for (const k of ['title', 'text', 'url']) { const v = form.get(k); if (typeof v === 'string' && v) q.set(k, v) }
+    if (files.length) q.set('capturas', String(Math.min(files.length, 10)))
+    return Response.redirect(`/compartir?${q}`, 303)
+  })())
+})

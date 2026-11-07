@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { useLocation } from 'react-router-dom'
 import { supabase, type Member } from '../../lib/supabase'
 import { filledLabels, parseListing, type ListingData } from '../../lib/listingParse'
+import { readImages } from '../../lib/ocr'
 import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
@@ -179,7 +180,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
           onEdit={() => setEditHome({ open: true, home: open })} onClose={() => setOpenId(null)} />
       )}
       {editHome.open && (
-        <HomeEditSheet home={editHome.home} initial={editHome.initial} m={m} onClose={() => setEditHome({ open: false })}
+        <HomeEditSheet home={editHome.home} initial={editHome.initial} m={m} householdId={householdId} onClose={() => setEditHome({ open: false })}
           onCreated={() => setEditHome({ open: false })} />
       )}
       {criteriaOpen && <CriteriaSheet m={m} householdId={householdId} onClose={() => setCriteriaOpen(false)} />}
@@ -362,7 +363,8 @@ function HomeSheet({ h, m, me, members, householdId, onEdit, onClose }: {
         })}
       </section>
 
-      <Photos h={h} m={m} householdId={householdId} />
+      <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
+      <Photos h={h} m={m} householdId={householdId} kind="foto" />
 
       <section className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
@@ -444,8 +446,9 @@ function RatingBox({ h, m, me, members }: { h: Home; m: Mudanza; me: Member; mem
   )
 }
 
-function Photos({ h, m, householdId }: { h: Home; m: Mudanza; householdId: string }) {
-  const photos = m.photos.filter(p => p.home_id === h.id)
+function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId: string; kind: 'foto' | 'anuncio' }) {
+  const photos = m.photos.filter(p => p.home_id === h.id && (p.kind ?? 'foto') === kind)
+  const ad = kind === 'anuncio'
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState<Photo | null>(null)
@@ -463,24 +466,26 @@ function Photos({ h, m, householdId }: { h: Home; m: Mudanza; householdId: strin
   async function add(files: FileList | null) {
     if (!files?.length) return
     setBusy(true)
-    for (const f of Array.from(files).slice(0, 10)) await m.addPhoto(householdId, h.id, f)
+    for (const f of Array.from(files).slice(0, 10)) await m.addPhoto(householdId, h.id, f, kind)
     setBusy(false)
   }
 
   return (
     <section className="flex flex-col gap-2">
       <div className="flex justify-between items-center">
-        <h3 className="font-bold text-[15px]">Fotos</h3>
+        <h3 className="font-bold text-[15px]">{ad ? '📸 Capturas del anuncio' : 'Fotos de la visita'}</h3>
         <label className="min-h-10 px-2 text-sm font-semibold text-accent flex items-center cursor-pointer">
-          {busy ? 'Subiendo…' : '+ Fotos'}
+          {busy ? 'Subiendo…' : ad ? '+ Capturas' : '+ Fotos'}
           <input type="file" accept="image/*" multiple className="sr-only" disabled={busy} onChange={e => { add(e.target.files); e.target.value = '' }} />
         </label>
       </div>
-      {photos.length === 0 ? <p className="text-sm text-muted">Haz fotos durante la visita: se guardan en privado, solo para vosotros.</p> : (
-        <div className="grid grid-cols-3 gap-1.5">
+      {photos.length === 0 ? <p className="text-sm text-muted">{ad
+        ? 'Guarda capturas del anuncio: así lo tenéis aunque lo borren del portal.'
+        : 'Haz fotos durante la visita: se guardan en privado, solo para vosotros.'}</p> : (
+        <div className={`grid ${ad ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5`}>
           {photos.map(p => (
-            <button key={p.id} onClick={() => setView(p)} className="aspect-square rounded-lg overflow-hidden bg-bg">
-              {urls[p.id] && <img src={urls[p.id]} alt="" className="w-full h-full object-cover" loading="lazy" />}
+            <button key={p.id} onClick={() => setView(p)} className={`${ad ? 'aspect-[9/16]' : 'aspect-square'} rounded-lg overflow-hidden bg-bg`}>
+              {urls[p.id] && <img src={urls[p.id]} alt="" className={`w-full h-full ${ad ? 'object-cover object-top' : 'object-cover'}`} loading="lazy" />}
             </button>
           ))}
         </div>
@@ -488,11 +493,11 @@ function Photos({ h, m, householdId }: { h: Home; m: Mudanza; householdId: strin
       {view && (
         <div className="fixed inset-0 z-40 bg-black/90 flex flex-col" onClick={() => setView(null)}>
           <div className="flex justify-between p-3" onClick={e => e.stopPropagation()}>
-            <button onClick={async () => { await m.removePhoto(view); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">Borrar foto</button>
+            <button onClick={async () => { await m.removePhoto(view); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">{ad ? 'Borrar captura' : 'Borrar foto'}</button>
             <button onClick={() => setView(null)} aria-label="Cerrar" className="w-11 h-11 text-white text-2xl">×</button>
           </div>
-          <div className="flex-1 flex items-center justify-center p-2">
-            {urls[view.id] && <img src={urls[view.id]} alt="" className="max-w-full max-h-full object-contain" />}
+          <div className={`flex-1 p-2 ${ad ? 'overflow-y-auto' : 'flex items-center justify-center'}`}>
+            {urls[view.id] && <img src={urls[view.id]} alt="" className={ad ? 'w-full h-auto' : 'max-w-full max-h-full object-contain'} />}
           </div>
         </div>
       )}
@@ -626,9 +631,14 @@ function HomeOfferSheet({ home, offer, m, onClose }: { home: Home; offer?: HomeO
   )
 }
 
-type Shared = { url?: string | null; text?: string | null }
+type Shared = { url?: string | null; text?: string | null; files?: File[] }
 
-function HomeEditSheet({ home, initial, m, onClose, onCreated }: { home?: Home; initial?: Shared; m: Mudanza; onClose: () => void; onCreated: () => void }) {
+function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
+  home?: Home; initial?: Shared; m: Mudanza; householdId: string; onClose: () => void; onCreated: () => void
+}) {
+  // Capturas del anuncio: se leen en el móvil para rellenar la ficha y se guardan con el piso al guardar
+  const [shots, setShots] = useState<File[]>([])
+  const [ocr, setOcr] = useState<string | null>(null)
   const [title, setTitle] = useState(home?.title ?? '')
   const [url, setUrl] = useState(home?.url ?? initial?.url ?? '')
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -701,11 +711,30 @@ function HomeEditSheet({ home, initial, m, onClose, onCreated }: { home?: Home; 
     }
   }
 
+  async function addShots(list: File[]) {
+    const imgs = list.filter(f => f.type.startsWith('image/')).slice(0, 10 - shots.length)
+    if (!imgs.length) return
+    setShots(s => [...s, ...imgs])
+    setImportNote(null)
+    try {
+      setOcr('Preparando el lector de texto…')
+      const text = await readImages(imgs, p => setOcr(`Leyendo captura ${p.image} de ${p.total}… ${p.pct}%`))
+      setOcr(null)
+      setPasted(prev => [prev, text].filter(Boolean).join('\n'))
+      fromText([pasted, text].filter(Boolean).join('\n'), 'Leído de las capturas')
+    } catch {
+      setOcr(null)
+      setImportNote({ ok: false, text: 'No se han podido leer las capturas. Se guardarán igualmente con el piso; puedes rellenar a mano o pegar el texto.' })
+    }
+  }
+
   // Si viene de «Compartir», se rellena solo
   useEffect(() => {
     if (!initial) return
+    if (initial.files?.length) void addShots(initial.files)
     if (initial.text) fromText(initial.text, 'Rellenado con lo compartido')
-    if (initial.url) void readLink(initial.url)
+    // Con capturas ya está todo: no hace falta intentar leer el enlace (Idealista suele bloquearlo)
+    if (initial.url && !initial.files?.length) void readLink(initial.url)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -721,12 +750,22 @@ function HomeEditSheet({ home, initial, m, onClose, onCreated }: { home?: Home; 
     const size = num(m2)
     if (size != null && (isNaN(size) || size <= 0)) { setError('Los metros no son válidos'); return }
     setBusy(true); setError('')
-    const err = await m.write('homes', {
+    const data = {
       title: title.trim(), url: cleanUrl, price_cents: priceCents, size_m2: size, rooms: ints[0], baths: ints[1], floor: floor.trim() || null,
       zone: zone.trim() || null, province, municipality, address: address.trim() || null, maps_url: maps.trim() || null, features,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null, energy,
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null
-    }, home?.id)
+    }
+    let homeId = home?.id
+    let err: string | undefined
+    if (home) err = await m.write('homes', data, home.id)
+    else { const r = await m.createHome(data); err = r.error; homeId = r.id }
+    // Las capturas se suben con el piso ya creado
+    if (!err && homeId && shots.length) {
+      setOcr(`Guardando ${shots.length} captura${shots.length === 1 ? '' : 's'}…`)
+      for (const f of shots) await m.addPhoto(householdId, homeId, f, 'anuncio')
+      setOcr(null)
+    }
     setBusy(false)
     if (err) setError(err); else if (home) onClose(); else onCreated()
   }
@@ -750,6 +789,12 @@ function HomeEditSheet({ home, initial, m, onClose, onCreated }: { home?: Home; 
               ? <a href={full} target="_blank" rel="noopener noreferrer" className="text-xs text-accent font-semibold">✓ Anuncio de {portal} · abrir ↗</a>
               : <span className="text-xs text-danger">Ese enlace no parece válido</span>
           })()}
+          <label className={`min-h-11 rounded-xl border border-dashed border-line flex items-center justify-center gap-2 text-sm font-semibold text-accent cursor-pointer ${ocr ? 'opacity-50 pointer-events-none' : ''}`}>
+            📸 {shots.length ? `Añadir más capturas (${shots.length})` : 'Subir capturas del anuncio'}
+            <input type="file" accept="image/*" multiple className="sr-only" onChange={e => { void addShots(Array.from(e.target.files ?? [])); e.target.value = '' }} />
+          </label>
+          {shots.length > 0 && !ocr && <p className="text-xs text-muted">Las capturas se guardan con el piso al pulsar «Guardar», por si borran el anuncio.</p>}
+          {ocr && <p role="status" className="text-xs text-muted">{ocr}</p>}
           {pasteOpen ? (
             <div className="flex flex-col gap-2">
               <TextArea label="Texto del anuncio" value={pasted} onChange={e => setPasted(e.target.value)} maxLength={20000}
