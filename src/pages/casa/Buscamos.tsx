@@ -117,11 +117,11 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </section>
       )}
 
-      <label className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-muted shrink-0">Estado</span>
+      <label className="flex items-center gap-2 min-w-0">
+        <span className="text-[13px] font-semibold text-muted shrink-0">Estado</span>
         <select value={filter} onChange={e => setFilter(e.target.value as Filter)} aria-label="Filtrar por estado"
-          className="flex-1 min-h-11 px-3 rounded-xl border border-line bg-card text-[16px] font-semibold">
-          {([['activos', 'En marcha (todos menos descartados)'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
+          className="flex-1 min-w-0 w-full min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold truncate">
+          {([['activos', 'En marcha (sin descartados)'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
             const n = k === 'todos' ? m.homes.length : k === 'activos' ? m.homes.filter(h => h.status !== 'descartado').length : m.homes.filter(h => h.status === k).length
             return <option key={k} value={k}>{l} ({n})</option>
           })}
