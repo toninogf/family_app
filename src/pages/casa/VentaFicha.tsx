@@ -41,6 +41,9 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [energy, setEnergy] = useState<string | null>(l?.energy ?? null)
   const [fee, setFee] = useState(priceInput(l?.community_fee_cents))
   const [ibi, setIbi] = useState(priceInput(l?.ibi_cents))
+  const [power, setPower] = useState(priceInput(l?.electricity_cents))
+  const [water, setWater] = useState(priceInput(l?.water_cents))
+  const [heating, setHeating] = useState(priceInput(l?.heating_cents))
   const [year, setYear] = useState(l?.year_built?.toString() ?? '')
   const [ref, setRef] = useState(l?.listing_ref ?? '')
   const [description, setDescription] = useState(l?.description ?? '')
@@ -65,6 +68,9 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
     if (d.energy) setEnergy(d.energy)
     if (d.community_eur) setFee(priceInput(Math.round(d.community_eur * 100)))
     if (d.ibi_eur) setIbi(priceInput(Math.round(d.ibi_eur * 100)))
+    if (d.power_eur) setPower(priceInput(Math.round(d.power_eur * 100)))
+    if (d.water_eur) setWater(priceInput(Math.round(d.water_eur * 100)))
+    if (d.heating_eur) setHeating(priceInput(Math.round(d.heating_eur * 100)))
     if (d.year_built) setYear(String(d.year_built))
     if (d.ref) setRef(d.ref.slice(0, 60))
     if (d.summary) setDescription(x => x.trim() ? x : d.summary!.slice(0, 5000))
@@ -89,6 +95,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
       municipality, province: municipality ? 'Madrid' : null, size_m2: sizes[0], useful_m2: sizes[1], plot_m2: sizes[2],
       rooms: ints[0], baths: ints[1], floor: floor.trim() || null, features, energy,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null,
+      electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
       year_built: ints[2], listing_ref: ref.trim() || null, description: description.trim() || null,
       notes: notes.trim() || null
     }, undefined, 'household_id')
@@ -139,6 +146,12 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
           <TextField label="IBI €/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} />
           <TextField label="Año constr." inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} />
         </div>
+        <div className="grid grid-cols-3 gap-3">
+          <TextField label="Luz €/mes" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} />
+          <TextField label="Agua €/mes" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} />
+          <TextField label="Calefacción €/mes" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} />
+        </div>
+        <p className="text-xs text-muted -mt-3">Gasto medio al mes de vuestras facturas: a los compradores les interesa y sale en el dossier.</p>
         <TextField label="Referencia del anuncio" value={ref} onChange={e => setRef(e.target.value)} maxLength={60} />
         <TextArea label="Descripción del anuncio" value={description} onChange={e => setDescription(e.target.value)} maxLength={5000}
           placeholder="El texto que tenéis publicado (sirve también para el dossier)" />

@@ -12,6 +12,7 @@ export type Listing = {
   title: string | null; property_type: string | null; address: string | null; zone: string | null; municipality: string | null; province: string | null
   size_m2: number | null; useful_m2: number | null; plot_m2: number | null; rooms: number | null; baths: number | null; floor: string | null
   features: string[]; energy: string | null; community_fee_cents: number | null; ibi_cents: number | null; year_built: number | null
+  electricity_cents: number | null; water_cents: number | null; heating_cents: number | null
   description: string | null; listing_ref: string | null
   // Cuentas
   mortgage_cents: number | null; costs: SaleCost[]
@@ -81,6 +82,9 @@ export type Home = {
   features: string[]
   community_fee_cents: number | null
   ibi_cents: number | null
+  electricity_cents: number | null
+  water_cents: number | null
+  heating_cents: number | null
   energy: string | null
   maps_url: string | null
   contact: string | null
@@ -238,7 +242,7 @@ export function useMudanza() {
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves').maybeSingle(),
-      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, energy, maps_url, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
+      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, energy, maps_url, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),

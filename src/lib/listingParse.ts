@@ -13,6 +13,10 @@ export type ListingData = {
   energy?: string
   community_eur?: number
   ibi_eur?: number
+  /** Suministros, media €/mes */
+  power_eur?: number
+  water_eur?: number
+  heating_eur?: number
   address?: string
   zone?: string
   municipality?: string
@@ -101,6 +105,10 @@ export function parseListing(raw: string): ListingData {
   if (fee) out.community_eur = toNumber(fee[1])
   const ibi = text.match(/\bIBI\b[^\d\n]{0,30}(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|euros)/i)
   if (ibi) out.ibi_eur = toNumber(ibi[1])
+  const supply = (re: RegExp) => { const x = text.match(re); return x ? toNumber(x[1]) : undefined }
+  const pw = supply(/\b(?:luz|electricidad)\b[^\d\n]{0,25}(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|euros)\s*(?:\/|al |por )?\s*mes/i); if (pw) out.power_eur = pw
+  const wt = supply(/\bagua\b[^\d\n]{0,25}(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|euros)\s*(?:\/|al |por )?\s*mes/i); if (wt) out.water_eur = wt
+  const ht = supply(/\bcalefacci[oó]n\b[^\d\n]{0,25}(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|euros)\s*(?:\/|al |por )?\s*mes/i); if (ht) out.heating_eur = ht
 
   // «Piso en venta en Calle X, Barrio, Municipio» (formato de título de Idealista)
   const loc = text.match(/\ben venta en\s+([^\n—|]+)/i)
@@ -162,7 +170,7 @@ export function firstUrl(text: string) {
 /** Nombres legibles de lo que se ha encontrado, para decir qué se ha rellenado */
 export function filledLabels(d: ListingData) {
   const L: [keyof ListingData, string][] = [['price_eur', 'precio'], ['size_m2', 'm²'], ['rooms', 'habitaciones'], ['baths', 'baños'], ['floor', 'planta'],
-    ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI']]
+    ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI'], ['power_eur', 'luz'], ['water_eur', 'agua'], ['heating_eur', 'calefacción']]
   L.push(['useful_m2', 'm² útiles'], ['plot_m2', 'parcela'], ['year_built', 'año'], ['notes', 'notas'], ['advertiser', 'anunciante'], ['agency', 'agencia'], ['contact', 'contacto'], ['phone', 'teléfono'], ['email', 'email'], ['ref', 'referencia'])
   return L.filter(([k]) => d[k] != null && !(Array.isArray(d[k]) && !(d[k] as unknown[]).length)).map(([, l]) => l)
 }
@@ -189,6 +197,9 @@ EXTRAS: (elige entre: ascensor, garaje, trastero, terraza, exterior, calefaccion
 CERTIFICADO: (letra de consumo, A-G)
 COMUNIDAD: (€/mes, solo el número)
 IBI: (€/año, solo el número)
+LUZ: (gasto medio de luz en €/mes, solo el número, si aparece)
+AGUA: (gasto medio de agua en €/mes, solo el número, si aparece)
+CALEFACCION: (gasto medio de calefacción en €/mes, solo el número, si aparece)
 AÑO: (de construcción)
 RESUMEN: (dos frases con lo más destacable)
 ANUNCIANTE: (agencia o particular)
@@ -199,14 +210,14 @@ EMAIL:
 REFERENCIA: (referencia del anuncio)`
 }
 
-const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'AÑO', 'ANO', 'RESUMEN',
+const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'AÑO', 'ANO', 'RESUMEN',
   'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -239,6 +250,9 @@ export function parseAiBlock(raw: string): ListingData | null {
   const cert = values.CERTIFICADO?.match(/\b([A-G])\b/i); if (cert) out.energy = cert[1].toUpperCase()
   const fee = n('COMUNIDAD'); if (fee) out.community_eur = fee
   const ibi = n('IBI'); if (ibi) out.ibi_eur = ibi
+  const pw = n('LUZ'); if (pw) out.power_eur = pw
+  const wt = n('AGUA'); if (wt) out.water_eur = wt
+  const ht = n('CALEFACCION'); if (ht) out.heating_eur = ht
   const notes = [
     n('PARCELA') ? `Parcela: ${n('PARCELA')!.toLocaleString('es-ES')} m²` : '',
     values.AÑO || values.ANO ? `Año: ${values.AÑO ?? values.ANO}` : '',

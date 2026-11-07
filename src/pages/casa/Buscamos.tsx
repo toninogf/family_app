@@ -4,7 +4,7 @@ import { supabase, type Member } from '../../lib/supabase'
 import { aiPrompt, filledLabels, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
 import { locateHome } from '../../lib/geo'
-import { badPoints, compareSummary, monthlyCost, shortName } from '../../lib/compare'
+import { badPoints, compareSummary, monthlyCost, shortName, supplyCost } from '../../lib/compare'
 
 // El mapa (Leaflet) solo se descarga al abrirlo
 const HomesMap = lazy(() => import('./HomesMap'))
@@ -425,12 +425,13 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
         </section>
       )}
 
-      {(h.community_fee_cents != null || h.ibi_cents != null || h.energy || h.minutes_to_school != null || h.features.length > 0) && (
+      {(h.community_fee_cents != null || h.ibi_cents != null || supplyCost(h) != null || h.energy || h.minutes_to_school != null || h.features.length > 0) && (
         <section className="flex flex-col gap-1 text-sm">
           <h3 className="font-bold text-[15px]">Más datos</h3>
           {h.features.length > 0 && <p>{h.features.map(k => FEATURES[k] ?? k).join(' · ')}</p>}
           {h.community_fee_cents != null && <p>Comunidad: {price(h.community_fee_cents)}/mes</p>}
           {h.ibi_cents != null && <p>IBI: {price(h.ibi_cents)}/año</p>}
+          {supplyCost(h) != null && <p>Suministros: {[h.electricity_cents != null && `luz ${price(h.electricity_cents)}`, h.water_cents != null && `agua ${price(h.water_cents)}`, h.heating_cents != null && `calefacción ${price(h.heating_cents)}`].filter(Boolean).join(' · ')} al mes</p>}
           {h.energy && <p>Certificado energético: {h.energy}</p>}
           {h.minutes_to_school != null && <p>{h.minutes_to_school} min al cole</p>}
         </section>
@@ -674,6 +675,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [features, setFeatures] = useState<string[]>(home?.features ?? [])
   const [fee, setFee] = useState(priceInput(home?.community_fee_cents))
   const [ibi, setIbi] = useState(priceInput(home?.ibi_cents))
+  const [power, setPower] = useState(priceInput(home?.electricity_cents))
+  const [water, setWater] = useState(priceInput(home?.water_cents))
+  const [heating, setHeating] = useState(priceInput(home?.heating_cents))
   const [energy, setEnergy] = useState<string | null>(home?.energy ?? null)
   const [minutes, setMinutes] = useState(home?.minutes_to_school?.toString() ?? '')
   const [contact, setContact] = useState(home?.contact ?? '')
@@ -701,6 +705,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     if (d.energy) setEnergy(d.energy)
     if (d.community_eur) setFee(priceInput(Math.round(d.community_eur * 100)))
     if (d.ibi_eur) setIbi(priceInput(Math.round(d.ibi_eur * 100)))
+    if (d.power_eur) setPower(priceInput(Math.round(d.power_eur * 100)))
+    if (d.water_eur) setWater(priceInput(Math.round(d.water_eur * 100)))
+    if (d.heating_eur) setHeating(priceInput(Math.round(d.heating_eur * 100)))
     if (d.notes) setNotes(n => n.trim() ? n : d.notes!)
     if (d.advertiser) setAdvertiser(d.advertiser)
     if (d.agency) setAgency(d.agency.slice(0, 120))
@@ -809,6 +816,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       title: title.trim(), url: cleanUrl, price_cents: priceCents, size_m2: size, rooms: ints[0], baths: ints[1], floor: floor.trim() || null,
       zone: zone.trim() || null, province, municipality, address: address.trim() || null, maps_url: maps.trim() || null, features,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null, energy,
+      electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
       advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
       contact_email: email.trim() || null, listing_ref: listingRef.trim() || null
@@ -916,6 +924,12 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           <TextField label="Comunidad (€/mes)" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} />
           <TextField label="IBI (€/año)" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} />
         </div>
+        <div className="grid grid-cols-3 gap-3">
+          <TextField label="Luz (€/mes)" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} />
+          <TextField label="Agua (€/mes)" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} />
+          <TextField label="Calefacción (€/mes)" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} />
+        </div>
+        <p className="text-xs text-muted -mt-3">Gasto medio al mes; si es bimestral, divide la factura entre dos.</p>
         <Choice<string | null> label="Certificado energético" value={energy} onChange={setEnergy}
           options={[...'ABCDEFG'.split('').map(l => ({ value: l as string | null, label: l })), { value: null, label: '?' }]} />
         <TextField label="Minutos al cole" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="Ej. 10 (andando o en coche, como lo midáis)" />
@@ -1019,6 +1033,9 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Imprescindibles', show: h => { const c = mustHaveCheck(h, m.criteria); return c.length ? `${c.filter(x => x.ok).length}/${c.length}` : '—' }, value: musts, better: 'high' },
     { label: 'Comunidad', show: h => (h.community_fee_cents != null ? `${price(h.community_fee_cents)}/mes` : '—'), value: h => h.community_fee_cents, better: 'low' },
     { label: 'IBI', show: h => (h.ibi_cents != null ? `${price(h.ibi_cents)}/año` : '—'), value: h => h.ibi_cents, better: 'low' },
+    { label: 'Luz', show: h => (h.electricity_cents != null ? `${price(h.electricity_cents)}/mes` : '—'), value: h => h.electricity_cents, better: 'low' },
+    { label: 'Agua', show: h => (h.water_cents != null ? `${price(h.water_cents)}/mes` : '—'), value: h => h.water_cents, better: 'low' },
+    { label: 'Calefacción', show: h => (h.heating_cents != null ? `${price(h.heating_cents)}/mes` : '—'), value: h => h.heating_cents, better: 'low' },
     { label: 'Gastos fijos', show: h => (monthlyCost(h) != null ? `${price(monthlyCost(h))}/mes` : '—'), value: monthlyCost, better: 'low' },
     { label: 'Energía', show: h => h.energy ?? '—', value: h => (h.energy ? ENERGY.indexOf(h.energy) : null), better: 'low' },
     { label: 'Al cole', show: h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—'), value: h => h.minutes_to_school, better: 'low' },

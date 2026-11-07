@@ -8,8 +8,16 @@ const pct = (a: number, b: number) => Math.round(((b - a) / b) * 100)
 const ENERGY = 'ABCDEFG'
 
 /** Valores numéricos de cada fila para marcar el mejor de cada una en la tabla */
-export const monthlyCost = (h: Home) =>
-  h.community_fee_cents == null && h.ibi_cents == null ? null : (h.community_fee_cents ?? 0) + Math.round((h.ibi_cents ?? 0) / 12)
+/** Gastos fijos al mes: comunidad + IBI/12 + luz + agua + calefacción (lo que se sepa) */
+export const monthlyCost = (h: Home) => {
+  const parts = [h.community_fee_cents, h.ibi_cents == null ? null : Math.round(h.ibi_cents / 12), h.electricity_cents, h.water_cents, h.heating_cents]
+  return parts.every(x => x == null) ? null : parts.reduce<number>((s, x) => s + (x ?? 0), 0)
+}
+/** Suministros al mes: luz + agua + calefacción */
+export const supplyCost = (h: Pick<Home, 'electricity_cents' | 'water_cents' | 'heating_cents'>) => {
+  const parts = [h.electricity_cents, h.water_cents, h.heating_cents]
+  return parts.every(x => x == null) ? null : parts.reduce<number>((s, x) => s + (x ?? 0), 0)
+}
 
 export function badPoints(h: Home, visits: HomeVisit[]) {
   const keys = new Set<string>()
@@ -67,7 +75,7 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
   if (costs.length >= 2) {
     const lo = costs[0], hi = costs[costs.length - 1]
     const d = monthlyCost(hi)! - monthlyCost(lo)!
-    if (d >= 2000) out.push(`🧾 Gastos fijos (comunidad + IBI): **${n(hi)}** paga unos ${price(d)} al mes más que **${n(lo)}** (${price(d * 12)} al año).`)
+    if (d >= 2000) out.push(`🧾 Gastos fijos (comunidad, IBI y suministros): **${n(hi)}** paga unos ${price(d)} al mes más que **${n(lo)}** (${price(d * 12)} al año).`)
   }
   // Imprescindibles
   if (criteria) {

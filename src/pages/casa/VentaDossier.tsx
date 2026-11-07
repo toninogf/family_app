@@ -86,6 +86,9 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
         ['Certificado energético', l.energy ? `Letra ${l.energy}` : null],
         ['Comunidad', l.community_fee_cents != null ? `${price(l.community_fee_cents)}/mes` : null],
         ['IBI', l.ibi_cents != null ? `${price(l.ibi_cents)}/año` : null],
+        ['Luz (media)', l.electricity_cents != null ? `${price(l.electricity_cents)}/mes` : null],
+        ['Agua (media)', l.water_cents != null ? `${price(l.water_cents)}/mes` : null],
+        ['Calefacción (media)', l.heating_cents != null ? `${price(l.heating_cents)}/mes` : null],
         ['Precio por m²', withPrice && l.price_cents && l.size_m2 ? `${price(Math.round(l.price_cents / Number(l.size_m2)))}/m²` : null]
       ] as [string, string | null][]).filter((x): x is [string, string] => !!x[1])
       if (facts.length) {
