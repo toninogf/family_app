@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { prepareDoc, uploadError } from './mudanza'
+import { uploadDocFiles, type DocFile } from './mudanza'
 
 // ---------- Tipos ----------
 export type Contact = { role: string; name: string; phone?: string; email?: string }
@@ -16,7 +16,7 @@ export type DocGroup = 'comprobacion' | 'banco' | 'final'
 export type PDocStatus = 'pendiente' | 'pedido' | 'ok' | 'problema' | 'no_aplica'
 export type PurchaseDoc = {
   id: string; grp: DocGroup; doc_key: string | null; title: string; status: PDocStatus; expires_on: string | null
-  path: string | null; file_name: string | null; notes: string | null; position: number
+  files: DocFile[]; notes: string | null; position: number
 }
 export type PStepKind = 'reserva' | 'arras' | 'hipoteca' | 'firma' | 'registro' | 'suministros' | 'otro'
 export type PurchaseStep = {
@@ -42,7 +42,7 @@ export function useCompra() {
   const load = useCallback(async () => {
     const [p, d, s, b] = await Promise.all([
       supabase.from('purchase').select('*').maybeSingle(),
-      supabase.from('purchase_docs').select('id, grp, doc_key, title, status, expires_on, path, file_name, notes, position').order('position').order('title'),
+      supabase.from('purchase_docs').select('id, grp, doc_key, title, status, expires_on, files, notes, position').order('position').order('title'),
       supabase.from('purchase_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position'),
       supabase.from('mortgage_offers').select('id, bank, rate_type, amount_cents, years, tin, tae, monthly_cents, ties, fees, notes, chosen').order('created_at')
     ])
@@ -88,26 +88,22 @@ export function useCompra() {
   /** Guarda campos de la compra (fila única del hogar) */
   const savePurchase = (householdId: string, data: Partial<Purchase>) => write('purchase', { household_id: householdId, ...data })
 
-  /** Sube el archivo de un documento (PDF o foto) a la carpeta privada <hogar>/compra/ */
-  async function uploadDoc(householdId: string, doc: PurchaseDoc, file: File) {
-    try {
-      const { body, isPdf } = await prepareDoc(file)
-      const path = `${householdId}/compra/${crypto.randomUUID()}.${isPdf ? 'pdf' : 'jpg'}`
-      const { error } = await supabase.storage.from('sale-docs').upload(path, body, { contentType: isPdf ? 'application/pdf' : 'image/jpeg', upsert: false })
-      if (error) throw error
-      if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
-      return await write('purchase_docs', { path, file_name: file.name.slice(0, 200), status: doc.status === 'problema' ? 'problema' : 'ok' }, doc.id)
-    } catch (e) {
-      const msg = uploadError(e)
-      setError(msg); return msg
+  /** Añade archivos (PDF o fotos) a un documento, en la carpeta privada <hogar>/compra/ */
+  async function uploadDoc(householdId: string, doc: PurchaseDoc, list: File[], onProgress?: (i: number) => void) {
+    const { added, error } = await uploadDocFiles(`${householdId}/compra`, list, 20 - doc.files.length, onProgress)
+    if (added.length) {
+      const err = await write('purchase_docs', { files: [...doc.files, ...added], status: doc.status === 'problema' ? 'problema' : 'ok' }, doc.id)
+      if (err) return err
     }
+    if (error) setError(error)
+    return error
   }
-  async function removeDocFile(doc: PurchaseDoc) {
-    if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
-    return write('purchase_docs', { path: null, file_name: null }, doc.id)
+  async function removeDocFile(doc: PurchaseDoc, f: DocFile) {
+    await supabase.storage.from('sale-docs').remove([f.path])
+    return write('purchase_docs', { files: doc.files.filter(x => x.path !== f.path) }, doc.id)
   }
   async function removeDoc(doc: PurchaseDoc) {
-    if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
+    if (doc.files.length) await supabase.storage.from('sale-docs').remove(doc.files.map(f => f.path))
     await remove('purchase_docs', doc.id)
   }
 

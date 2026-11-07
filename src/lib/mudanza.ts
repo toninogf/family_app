@@ -18,10 +18,12 @@ export type Listing = {
   mortgage_cents: number | null; costs: SaleCost[]
 }
 export type SalePhoto = { id: string; path: string; kind: 'foto' | 'anuncio'; created_at: string }
+/** Archivo de un documento (PDF o foto) en el bucket privado sale-docs */
+export type DocFile = { path: string; name: string }
 export type DocStatus = 'falta' | 'pedido' | 'ok' | 'no_aplica'
 export type SaleDoc = {
   id: string; doc_key: string | null; title: string; status: DocStatus; expires_on: string | null
-  path: string | null; file_name: string | null; notes: string | null; position: number; updated_at: string
+  files: DocFile[]; notes: string | null; position: number; updated_at: string
 }
 export type StepKind = 'reserva' | 'arras' | 'firma' | 'otro'
 export type SaleStep = {
@@ -248,7 +250,7 @@ export function useMudanza() {
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
       supabase.from('home_offers').select('id, home_id, offer_date, amount_cents, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('sale_photos').select('id, path, kind, created_at').order('created_at'),
-      supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, path, file_name, notes, position, updated_at').order('position').order('title'),
+      supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, files, notes, position, updated_at').order('position').order('title'),
       supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position')
     ])
     const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss].find(x => x.error)?.error
@@ -345,27 +347,22 @@ export function useMudanza() {
     await remove('sale_photos', p.id)
   }
 
-  /** Sube el archivo de un documento (PDF o foto) y lo marca como «lo tenemos» */
-  async function uploadSaleDoc(householdId: string, doc: SaleDoc, file: File) {
-    try {
-      const { body, isPdf } = await prepareDoc(file)
-      const path = `${householdId}/${crypto.randomUUID()}.${isPdf ? 'pdf' : 'jpg'}`
-      const { error } = await supabase.storage.from('sale-docs').upload(path, body, { contentType: isPdf ? 'application/pdf' : 'image/jpeg', upsert: false })
-      if (error) throw error
-      if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
-      return await write('sale_documents', { path, file_name: file.name.slice(0, 200), status: 'ok' }, doc.id)
-    } catch (e) {
-      const msg = uploadError(e)
-      setError(msg)
-      return msg
+  /** Añade archivos (PDF o fotos) a un documento y lo marca como «lo tenemos» */
+  async function uploadSaleDoc(householdId: string, doc: SaleDoc, list: File[], onProgress?: (i: number) => void) {
+    const { added, error } = await uploadDocFiles(`${householdId}`, list, 20 - doc.files.length, onProgress)
+    if (added.length) {
+      const err = await write('sale_documents', { files: [...doc.files, ...added], status: 'ok' }, doc.id)
+      if (err) return err
     }
+    if (error) setError(error)
+    return error
   }
-  async function removeSaleDocFile(doc: SaleDoc) {
-    if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
-    return write('sale_documents', { path: null, file_name: null }, doc.id)
+  async function removeSaleDocFile(doc: SaleDoc, f: DocFile) {
+    await supabase.storage.from('sale-docs').remove([f.path])
+    return write('sale_documents', { files: doc.files.filter(x => x.path !== f.path) }, doc.id)
   }
   async function removeSaleDoc(doc: SaleDoc) {
-    if (doc.path) await supabase.storage.from('sale-docs').remove([doc.path])
+    if (doc.files.length) await supabase.storage.from('sale-docs').remove(doc.files.map(f => f.path))
     await remove('sale_documents', doc.id)
   }
 
@@ -457,6 +454,26 @@ export async function prepareDoc(file: File): Promise<{ body: Blob; isPdf: boole
   } catch {
     throw new Error('Solo se pueden subir PDF o fotos (JPG, PNG, WEBP).')
   }
+}
+
+/** Sube varios archivos de documentos a <carpeta>/; devuelve los subidos y, si alguno falló, el error */
+export async function uploadDocFiles(folder: string, list: File[], room: number, onProgress?: (i: number) => void) {
+  const added: DocFile[] = []
+  let error: string | undefined
+  if (list.length > room) error = `Caben como mucho 20 archivos por documento: se suben los ${Math.max(0, room)} primeros.`
+  for (const [i, file] of list.slice(0, Math.max(0, room)).entries()) {
+    onProgress?.(i + 1)
+    try {
+      const { body, isPdf } = await prepareDoc(file)
+      const path = `${folder}/${crypto.randomUUID()}.${isPdf ? 'pdf' : 'jpg'}`
+      const { error: e } = await supabase.storage.from('sale-docs').upload(path, body, { contentType: isPdf ? 'application/pdf' : 'image/jpeg', upsert: false })
+      if (e) throw e
+      added.push({ path, name: (file.name || (isPdf ? 'Documento.pdf' : 'Foto.jpg')).slice(0, 200) })
+    } catch (e) {
+      error = `${file.name ? `«${file.name}»: ` : ''}${uploadError(e)}`
+    }
+  }
+  return { added, error }
 }
 
 /** Mensaje claro cuando falla la subida de un documento */

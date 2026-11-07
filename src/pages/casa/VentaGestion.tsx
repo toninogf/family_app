@@ -1,10 +1,11 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { addDays, hhmm, relativeDay, shortDate, today } from '../../lib/dates'
 import {
-  COST_TEMPLATE, DOC_TEMPLATE, STEP_TEMPLATE, parsePrice, price, priceInput, saleDocUrl,
+  COST_TEMPLATE, DOC_TEMPLATE, STEP_TEMPLATE, parsePrice, price, priceInput,
   type DocStatus, type Mudanza, type SaleCost, type SaleDoc, type SaleStep, type StepKind
 } from '../../lib/mudanza'
 import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../components/Sheet'
+import DocFiles, { openDocFile } from '../../components/DocFiles'
 
 /** Sección plegable de Vendemos */
 export function Fold({ title, summary, open, onToggle, children }: { title: string; summary?: string; open: boolean; onToggle: () => void; children: ReactNode }) {
@@ -58,12 +59,6 @@ export function VentaDocs({ m, householdId }: { m: Mudanza; householdId: string 
     setBusy(false)
   }
 
-  async function open(d: SaleDoc) {
-    if (!d.path) return
-    const url = await saleDocUrl(d.path)
-    if (url) window.open(url, '_blank', 'noopener')
-  }
-
   return (
     <>
       {m.saleDocs.length === 0 && (
@@ -87,7 +82,11 @@ export function VentaDocs({ m, householdId }: { m: Mudanza; householdId: string 
                     : d.expires_on ? <span className="text-[12px] text-muted">Válido hasta {shortDate(d.expires_on)}</span>
                       : hint && d.status !== 'ok' ? <span className="text-[12px] text-muted">{hint}</span> : null}
                 </button>
-                {d.path && <button onClick={() => open(d)} aria-label={`Ver ${d.title}`} className="min-h-10 px-2 text-lg">📄</button>}
+                {d.files.length > 0 && (
+                  <button onClick={() => (d.files.length === 1 ? openDocFile(d.files[0]) : setEdit(d))} aria-label={`Ver ${d.title}`} className="min-h-10 px-2 text-[15px] flex items-center gap-0.5">
+                    📄{d.files.length > 1 && <span className="text-[12px] font-semibold text-muted">{d.files.length}</span>}
+                  </button>
+                )}
                 <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${DOC_STATUS[d.status].cls}`}>{DOC_STATUS[d.status].label}</span>
               </li>
             )
@@ -105,13 +104,14 @@ export function VentaDocs({ m, householdId }: { m: Mudanza; householdId: string 
   )
 }
 
-function DocSheet({ doc, m, householdId, onClose }: { doc?: SaleDoc; m: Mudanza; householdId: string; onClose: () => void }) {
+function DocSheet({ doc: initial, m, householdId, onClose }: { doc?: SaleDoc; m: Mudanza; householdId: string; onClose: () => void }) {
+  // Siempre la versión al día (los archivos cambian al subir o quitar)
+  const doc = initial ? m.saleDocs.find(x => x.id === initial.id) ?? initial : undefined
   const tpl = DOC_TEMPLATE.find(t => t.key === doc?.doc_key)
   const [title, setTitle] = useState(doc?.title ?? '')
   const [status, setStatus] = useState<DocStatus>(doc?.status ?? 'falta')
   const [expires, setExpires] = useState(doc?.expires_on ?? '')
   const [notes, setNotes] = useState(doc?.notes ?? '')
-  const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
 
@@ -122,10 +122,8 @@ function DocSheet({ doc, m, householdId, onClose }: { doc?: SaleDoc; m: Mudanza;
     if (err) setError(err); else onClose()
   }
 
-  async function upload(f: File | undefined) {
-    if (!f || !doc) return
-    if (f.size > 15 * 1024 * 1024) { setError('El archivo pesa más de 15 MB'); return }
-    setBusy('Subiendo…')
+  async function upload(list: File[], onProgress: (i: number) => void) {
+    if (!doc) return
     // Si aún no tiene fecha de caducidad y el documento caduca, se propone desde hoy
     if (!expires && tpl?.months) {
       const d = new Date(); d.setMonth(d.getMonth() + tpl.months)
@@ -133,9 +131,9 @@ function DocSheet({ doc, m, householdId, onClose }: { doc?: SaleDoc; m: Mudanza;
       setExpires(iso)
       await m.write('sale_documents', { expires_on: iso }, doc.id)
     }
-    const err = await m.uploadSaleDoc(householdId, doc, f)
-    setBusy(null)
-    if (err) setError(err); else setStatus('ok')
+    const err = await m.uploadSaleDoc(householdId, doc, list, onProgress)
+    if (!err) setStatus('ok')
+    return err
   }
 
   return (
@@ -149,22 +147,8 @@ function DocSheet({ doc, m, householdId, onClose }: { doc?: SaleDoc; m: Mudanza;
           type="date" value={expires} onChange={e => setExpires(e.target.value)} />
         <TextArea label="Notas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={500} placeholder="Dónde se pide, cuánto cuesta, quién lo trae…" />
         {doc ? (
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-muted">Archivo</span>
-            {doc.path ? (
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={async () => { const u = await saleDocUrl(doc.path!); if (u) window.open(u, '_blank', 'noopener') }}
-                  className="flex-1 min-h-11 px-3 rounded-xl border border-line bg-card text-sm font-semibold text-left truncate">📄 {doc.file_name ?? 'Ver documento'}</button>
-                <button type="button" onClick={() => m.removeSaleDocFile(doc)} className="min-h-11 px-3 text-sm text-danger">Quitar</button>
-              </div>
-            ) : null}
-            <label className={`min-h-11 rounded-xl border border-dashed border-line flex items-center justify-center text-sm font-semibold text-accent cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
-              {busy ?? (doc.path ? 'Cambiar archivo (PDF o foto)' : '⬆️ Subir PDF o foto')}
-              <input type="file" accept="application/pdf,image/*" className="sr-only" onChange={e => { void upload(e.target.files?.[0]); e.target.value = '' }} />
-            </label>
-            <p className="text-xs text-muted">Se guarda en privado, solo para vosotros. Hasta 15 MB.</p>
-          </div>
-        ) : <p className="text-xs text-muted">Guarda el documento para poder subir su archivo.</p>}
+          <DocFiles files={doc.files} onAdd={upload} onRemove={f => m.removeSaleDocFile(doc, f)} />
+        ) : <p className="text-xs text-muted">Guarda el documento para poder subir sus archivos.</p>}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Guardar</button>
         {doc && <ConfirmDelete label="Eliminar documento" confirming={confirming} setConfirming={setConfirming} onConfirm={async () => { await m.removeSaleDoc(doc); onClose() }} />}

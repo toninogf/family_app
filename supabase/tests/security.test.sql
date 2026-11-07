@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(97);
+select plan(98);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -116,6 +116,8 @@ select ok(public.test_fails('select count(*) from public.notify_log'), 'El regis
 insert into public.sale_documents (title, status) values ('Nota simple', 'ok');
 select ok(public.test_fails($$ insert into public.sale_documents (title, path) values ('Truco', '00000000-0000-0000-0000-000000000000/x.pdf') $$),
   'Un documento no puede apuntar a archivos de otro hogar');
+select ok(public.test_fails($$ update public.sale_documents set files = '[{"path":"00000000-0000-0000-0000-000000000000/x.pdf","name":"x"}]' $$),
+  'Ningún archivo de la lista de un documento puede ser de otro hogar');
 insert into public.sale_steps (kind, title, step_date) values ('arras', 'Firma de arras', current_date + 10);
 select is((select count(*) from public.events where title like '%Firma de arras%' and origin = 'venta'), 1::bigint,
   'Un paso de la venta con fecha aparece en la Agenda');

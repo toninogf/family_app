@@ -23,8 +23,10 @@ async function imageData(url: string, max = 1400): Promise<{ data: string; w: nu
 export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }) {
   const l = m.listing
   const photos = m.salePhotos.filter(p => p.kind === 'foto')
-  const cee = m.saleDocs.find(d => d.doc_key === 'cee' && d.path)
-  const plans = m.saleDocs.filter(d => d.path && (d.doc_key === 'planos' || /plano/i.test(d.title)))
+  const cee = m.saleDocs.find(d => d.doc_key === 'cee' && d.files.length)
+  const planDocs = m.saleDocs.filter(d => d.files.length && (d.doc_key === 'planos' || /plano/i.test(d.title)))
+  const plans = planDocs.flatMap(d => d.files.map((f, i) => ({ ...f, title: d.files.length > 1 ? `${d.title} (${i + 1})` : d.title })))
+  const ceeFiles = (cee?.files ?? []).map((f, i, all) => ({ ...f, title: all.length > 1 ? `Certificado energético (${i + 1})` : 'Certificado energético' }))
   const [withPlans, setWithPlans] = useState(true)
   const [withAddress, setWithAddress] = useState(false)
   const [withPrice, setWithPrice] = useState(true)
@@ -126,9 +128,9 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
 
       // Planos y certificado energético: si son fotos van dentro; si son PDF se comparten aparte
       const files: File[] = []
-      const attach = withPlans ? [...plans, ...(cee ? [cee] : [])] : cee ? [cee] : []
+      const attach = withPlans ? [...plans, ...ceeFiles] : ceeFiles
       for (const d of attach) {
-        const u = await saleDocUrl(d.path!)
+        const u = await saleDocUrl(d.path)
         if (!u) continue
         const blob = await (await fetch(u)).blob()
         const label = clean(d.title)

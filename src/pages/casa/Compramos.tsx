@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { addDays, hhmm, parseISO, relativeDay, shortDate, today } from '../../lib/dates'
-import { OFFER_STATUS, parsePrice, price, priceInput, saleDocUrl, type Mudanza } from '../../lib/mudanza'
+import { OFFER_STATUS, parsePrice, price, priceInput, type Mudanza } from '../../lib/mudanza'
 import {
   ARRAS, CONTACT_ROLES, GROUP_TEMPLATES, PCOST_TEMPLATE, PHASES, PSTEP_TEMPLATE, monthlyPayment,
   type ArrasType, type Compra, type Contact, type Cost, type DocGroup, type MortgageOffer, type PDocStatus, type PStepKind,
   type PurchaseDoc, type PurchaseStep, type RateType
 } from '../../lib/compra'
 import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../components/Sheet'
+import DocFiles, { openDocFile } from '../../components/DocFiles'
 import { Fold, saleNet } from './VentaGestion'
 
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
@@ -201,7 +202,11 @@ function PDocs({ c, householdId, grp }: { c: Compra; householdId: string; grp: D
                     : d.notes ? <span className="text-[12px] text-muted truncate">{d.notes}</span>
                       : hint && d.status === 'pendiente' ? <span className="text-[12px] text-muted">{hint}</span> : null}
                 </button>
-                {d.path && <button onClick={async () => { const u = await saleDocUrl(d.path!); if (u) window.open(u, '_blank', 'noopener') }} aria-label={`Ver ${d.title}`} className="min-h-10 px-2 text-lg">📄</button>}
+                {d.files.length > 0 && (
+                  <button onClick={() => (d.files.length === 1 ? openDocFile(d.files[0]) : setEdit(d))} aria-label={`Ver ${d.title}`} className="min-h-10 px-2 text-[15px] flex items-center gap-0.5">
+                    📄{d.files.length > 1 && <span className="text-[12px] font-semibold text-muted">{d.files.length}</span>}
+                  </button>
+                )}
                 <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${STATUS[d.status].cls}`}>{STATUS[d.status].label}</span>
               </li>
             )
@@ -217,13 +222,14 @@ function PDocs({ c, householdId, grp }: { c: Compra; householdId: string; grp: D
   )
 }
 
-function PDocSheet({ doc, grp, c, householdId, onClose }: { doc?: PurchaseDoc; grp: DocGroup; c: Compra; householdId: string; onClose: () => void }) {
+function PDocSheet({ doc: initial, grp, c, householdId, onClose }: { doc?: PurchaseDoc; grp: DocGroup; c: Compra; householdId: string; onClose: () => void }) {
+  // Siempre la versión al día (los archivos cambian al subir o quitar)
+  const doc = initial ? c.docs.find(x => x.id === initial.id) ?? initial : undefined
   const tpl = GROUP_TEMPLATES[grp].find(x => x.key === doc?.doc_key)
   const [title, setTitle] = useState(doc?.title ?? '')
   const [status, setStatus] = useState<PDocStatus>(doc?.status ?? 'pendiente')
   const [expires, setExpires] = useState(doc?.expires_on ?? '')
   const [notes, setNotes] = useState(doc?.notes ?? '')
-  const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
 
@@ -234,19 +240,17 @@ function PDocSheet({ doc, grp, c, householdId, onClose }: { doc?: PurchaseDoc; g
     if (err) setError(err); else onClose()
   }
 
-  async function upload(f: File | undefined) {
-    if (!f || !doc) return
-    if (f.size > 15 * 1024 * 1024) { setError('El archivo pesa más de 15 MB'); return }
-    setBusy('Subiendo…')
+  async function upload(list: File[], onProgress: (i: number) => void) {
+    if (!doc) return
     if (!expires && tpl?.months) {
       const d = new Date(); d.setMonth(d.getMonth() + tpl.months)
       const iso = d.toISOString().slice(0, 10)
       setExpires(iso)
       await c.write('purchase_docs', { expires_on: iso }, doc.id)
     }
-    const err = await c.uploadDoc(householdId, doc, f)
-    setBusy(null)
-    if (err) setError(err); else if (status !== 'problema') setStatus('ok')
+    const err = await c.uploadDoc(householdId, doc, list, onProgress)
+    if (!err && status !== 'problema') setStatus('ok')
+    return err
   }
 
   return (
@@ -259,22 +263,8 @@ function PDocSheet({ doc, grp, c, householdId, onClose }: { doc?: PurchaseDoc; g
         <TextField label={tpl?.months ? `Caduca el (suele valer ${tpl.months} mes${tpl.months > 1 ? 'es' : ''})` : 'Caduca el (opcional)'} type="date" value={expires} onChange={e => setExpires(e.target.value)} />
         <TextArea label={status === 'problema' ? 'Qué problema hay' : 'Notas'} value={notes} onChange={e => setNotes(e.target.value)} maxLength={500} />
         {doc ? (
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-muted">Archivo</span>
-            {doc.path && (
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={async () => { const u = await saleDocUrl(doc.path!); if (u) window.open(u, '_blank', 'noopener') }}
-                  className="flex-1 min-h-11 px-3 rounded-xl border border-line bg-card text-sm font-semibold text-left truncate">📄 {doc.file_name ?? 'Ver documento'}</button>
-                <button type="button" onClick={() => c.removeDocFile(doc)} className="min-h-11 px-3 text-sm text-danger">Quitar</button>
-              </div>
-            )}
-            <label className={`min-h-11 rounded-xl border border-dashed border-line flex items-center justify-center text-sm font-semibold text-accent cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
-              {busy ?? (doc.path ? 'Cambiar archivo (PDF o foto)' : '⬆️ Subir PDF o foto')}
-              <input type="file" accept="application/pdf,image/*" className="sr-only" onChange={e => { void upload(e.target.files?.[0]); e.target.value = '' }} />
-            </label>
-            <p className="text-xs text-muted">Se guarda en privado, solo para vosotros. Hasta 15 MB.</p>
-          </div>
-        ) : <p className="text-xs text-muted">Guárdalo para poder subir su archivo.</p>}
+          <DocFiles files={doc.files} onAdd={upload} onRemove={f => c.removeDocFile(doc, f)} />
+        ) : <p className="text-xs text-muted">Guárdalo para poder subir sus archivos.</p>}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Guardar</button>
         {doc && <ConfirmDelete label="Eliminar" confirming={confirming} setConfirming={setConfirming} onConfirm={async () => { await c.removeDoc(doc); onClose() }} />}
