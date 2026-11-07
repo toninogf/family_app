@@ -16,6 +16,8 @@ export type ListingData = {
   address?: string
   zone?: string
   municipality?: string
+  /** Lo que no tiene campo propio (parcela, año, resumen): va a Notas */
+  notes?: string
 }
 
 /** «1.250.000» / «350.000,50» / «95,5» → número */
@@ -130,5 +132,89 @@ export function firstUrl(text: string) {
 export function filledLabels(d: ListingData) {
   const L: [keyof ListingData, string][] = [['price_eur', 'precio'], ['size_m2', 'm²'], ['rooms', 'habitaciones'], ['baths', 'baños'], ['floor', 'planta'],
     ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI']]
+  L.push(['notes', 'notas'])
   return L.filter(([k]) => d[k] != null && !(Array.isArray(d[k]) && !(d[k] as unknown[]).length)).map(([, l]) => l)
+}
+
+// ---------- Respuesta de una IA (ChatGPT, Gemini, Claude) en formato «CLAVE: valor» ----------
+
+/** Lo que se le pide a la IA: leer el anuncio y contestar con un bloque fijo que la app sabe leer */
+export function aiPrompt(url: string) {
+  return `Lee este anuncio inmobiliario: ${url}
+
+Responde SOLO con este bloque, sin nada más, una línea por dato. Si un dato no aparece en el anuncio pon «-». No inventes nada.
+PRECIO: (en euros, solo el número)
+TIPO: (piso, ático, chalet independiente…)
+DIRECCION: (calle, si aparece)
+ZONA: (barrio o urbanización)
+LOCALIDAD: (municipio)
+M2: (construidos, solo el número)
+PARCELA: (m² de parcela, solo el número)
+HABITACIONES:
+BANOS:
+PLANTA:
+EXTRAS: (elige entre: ascensor, garaje, trastero, terraza, exterior, calefaccion, aire, jardin, piscina, reformado)
+CERTIFICADO: (letra de consumo, A-G)
+COMUNIDAD: (€/mes, solo el número)
+IBI: (€/año, solo el número)
+AÑO: (de construcción)
+RESUMEN: (dos frases con lo más destacable)`
+}
+
+const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'AÑO', 'ANO', 'RESUMEN']
+
+/** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
+export function parseAiBlock(raw: string): ListingData | null {
+  const values: Record<string, string> = {}
+  for (const line of raw.replace(/[*`_]/g, '').split(/\r?\n/)) {
+    const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
+    if (!m) continue
+    const key = fold(m[1]).toUpperCase().replace(/\s+/g, '').replace('BAÑOS', 'BANOS')
+    const k = AI_KEYS.find(x => fold(x).toUpperCase() === key)
+    const v = m[2].trim()
+    if (k && v && !/^[-–—]$|^(no consta|no aparece|n\/?a|desconocido|-)\.?$/i.test(v)) values[k] = v
+  }
+  if (Object.keys(values).length < 3) return null
+
+  const n = (k: string) => { const x = values[k]?.match(/\d[\d.,]*/); return x ? toNumber(x[0]) : undefined }
+  const out: ListingData = {}
+  const price = n('PRECIO'); if (price && price >= 1000) out.price_eur = price
+  const m2 = n('M2'); if (m2) out.size_m2 = m2
+  const rooms = n('HABITACIONES'); if (rooms != null) out.rooms = Math.round(rooms)
+  const baths = n('BANOS'); if (baths != null) out.baths = Math.round(baths)
+  if (values.PLANTA) out.floor = values.PLANTA.replace(/^planta\s*/i, '').slice(0, 20)
+  if (values.DIRECCION) out.address = values.DIRECCION.slice(0, 120)
+  if (values.ZONA) out.zone = values.ZONA.slice(0, 60)
+  if (values.LOCALIDAD) {
+    const town = MADRID_TOWNS.find(t => fold(t) === fold(values.LOCALIDAD))
+    if (town) out.municipality = town
+  }
+  if (values.EXTRAS) {
+    const f = fold(values.EXTRAS)
+    const keys = ['ascensor', 'garaje', 'trastero', 'terraza', 'exterior', 'calefaccion', 'aire', 'jardin', 'piscina', 'reformado'].filter(k => f.includes(k))
+    if (keys.length) out.features = keys
+  }
+  const cert = values.CERTIFICADO?.match(/\b([A-G])\b/i); if (cert) out.energy = cert[1].toUpperCase()
+  const fee = n('COMUNIDAD'); if (fee) out.community_eur = fee
+  const ibi = n('IBI'); if (ibi) out.ibi_eur = ibi
+  const notes = [
+    values.PARCELA && n('PARCELA') ? `Parcela: ${values.PARCELA.match(/\d[\d.,]*/)?.[0]} m²` : '',
+    values.AÑO || values.ANO ? `Año: ${values.AÑO ?? values.ANO}` : '',
+    values.RESUMEN ?? ''
+  ].filter(Boolean)
+  if (notes.length) out.notes = notes.join('\n').slice(0, 1000)
+  if (values.TIPO) {
+    const where = out.zone ?? out.address ?? out.municipality
+    const t = values.TIPO.charAt(0).toUpperCase() + values.TIPO.slice(1)
+    out.title = `${t}${out.rooms ? ` ${out.rooms} hab.` : ''}${where ? ` · ${where}` : ''}`.slice(0, 80)
+  }
+  return out
+}
+
+/** Lee cualquier texto: primero como respuesta de IA y, lo que falte, como texto suelto del anuncio */
+export function parseAny(raw: string): ListingData {
+  const ai = parseAiBlock(raw)
+  const free = parseListing(raw)
+  if (!ai) return free
+  return { ...free, ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v != null)) }
 }

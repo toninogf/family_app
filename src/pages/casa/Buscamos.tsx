@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase, type Member } from '../../lib/supabase'
-import { filledLabels, parseListing, type ListingData } from '../../lib/listingParse'
+import { aiPrompt, filledLabels, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
 import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
@@ -680,11 +680,12 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     if (d.energy) setEnergy(d.energy)
     if (d.community_eur) setFee(priceInput(Math.round(d.community_eur * 100)))
     if (d.ibi_eur) setIbi(priceInput(Math.round(d.ibi_eur * 100)))
+    if (d.notes) setNotes(n => n.trim() ? n : d.notes!)
     return filledLabels(d)
   }
 
   function fromText(text: string, intro = 'Rellenado') {
-    const got = apply(parseListing(text))
+    const got = apply(parseAny(text))
     setImportNote(got.length
       ? { ok: true, text: `${intro}: ${got.join(', ')}. Revísalo antes de guardar.` }
       : { ok: false, text: 'No he encontrado datos en ese texto. Prueba a copiar el bloque de precio y características del anuncio.' })
@@ -700,14 +701,39 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     setReading(false)
     const res = data as { blocked?: boolean; error?: string; title?: string; description?: string; text?: string } | null
     if (error || !res || res.blocked || res.error) {
-      setImportNote({ ok: false, text: res?.error && !res.blocked ? res.error : 'El portal no ha dejado leer el anuncio. Copia el texto del anuncio y pégalo abajo.' })
-      setPasteOpen(true)
+      setImportNote({ ok: false, text: res?.error && !res.blocked ? res.error : 'El portal no deja leer el anuncio desde la app. Pídeselo a una IA con los botones de abajo, o sube capturas.' })
       return
     }
     const got = fromText([res.title, res.description, res.text].filter(Boolean).join('\n'), 'Leído del anuncio')
     if (got.length && !got.includes('precio')) {
-      setImportNote({ ok: true, text: `Leído del anuncio: ${got.join(', ')}. El portal no deja ver el resto: para el precio y la ficha completa, pega el texto del anuncio.` })
+      setImportNote({ ok: true, text: `Leído del anuncio: ${got.join(', ')}. El portal no deja ver el resto: para el precio y la ficha completa, pídeselo a una IA con los botones de abajo.` })
+    }
+  }
+
+  /** Abre ChatGPT, Gemini o Claude con la petición ya escrita (y copiada, por si la app no la recoge) */
+  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
+    const full = url.trim() && (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`)
+    if (!full) return
+    const prompt = aiPrompt(full.replace(/\?.*$/, ''))
+    try { await navigator.clipboard.writeText(prompt) } catch { /* sin permiso: se abre igualmente */ }
+    const q = encodeURIComponent(prompt)
+    const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
+    setImportNote({ ok: true, text: ai === 'gemini'
+      ? 'Petición copiada: pégala en Gemini. Cuando conteste, copia la respuesta y vuelve aquí a «Pegar respuesta de la IA».'
+      : 'Si no aparece escrita, pégala (está copiada). Cuando conteste, copia la respuesta y vuelve aquí a «Pegar respuesta de la IA».' })
+    window.open(target, '_blank', 'noopener')
+  }
+
+  /** Lee lo copiado (la respuesta de la IA o el texto del anuncio) y rellena la ficha */
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text.trim()) throw new Error('vacío')
+      setPasted(text)
+      fromText(text, 'Rellenado con la respuesta')
+    } catch {
       setPasteOpen(true)
+      setImportNote({ ok: false, text: 'No he podido leer lo copiado. Mantén pulsado el cuadro de abajo y elige «Pegar».' })
     }
   }
 
@@ -789,6 +815,17 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
               ? <a href={full} target="_blank" rel="noopener noreferrer" className="text-xs text-accent font-semibold">✓ Anuncio de {portal} · abrir ↗</a>
               : <span className="text-xs text-danger">Ese enlace no parece válido</span>
           })()}
+          {url.trim() && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs text-muted">Que una IA lea el anuncio y te dé los datos:</span>
+              <div className="grid grid-cols-3 gap-2">
+                {([['chatgpt', 'ChatGPT'], ['gemini', 'Gemini'], ['claude', 'Claude']] as const).map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => askAi(k)} className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold">{l} ↗</button>
+                ))}
+              </div>
+              <button type="button" onClick={pasteFromClipboard} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold">📋 Pegar respuesta de la IA</button>
+            </div>
+          )}
           <label className={`min-h-11 rounded-xl border border-dashed border-line flex items-center justify-center gap-2 text-sm font-semibold text-accent cursor-pointer ${ocr ? 'opacity-50 pointer-events-none' : ''}`}>
             📸 {shots.length ? `Añadir más capturas (${shots.length})` : 'Subir capturas del anuncio'}
             <input type="file" accept="image/*" multiple className="sr-only" onChange={e => { void addShots(Array.from(e.target.files ?? [])); e.target.value = '' }} />
