@@ -1,25 +1,29 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { aiPrompt, parseAny, type ListingData } from '../lib/listingParse'
+import { aiPrompt, parseAny, type AiSource, type ListingData } from '../lib/listingParse'
 import { readImages } from '../lib/ocr'
-import { portalName } from '../lib/mudanza'
+import { portalName, price, type Link } from '../lib/mudanza'
 import { TextArea, TextField } from './Sheet'
 
 /**
  * «Rellenar desde el anuncio»: enlace (leer o pedírselo a una IA), pegar la respuesta o el texto del anuncio,
  * y capturas que se leen en el móvil. Llama a onApply con lo encontrado; las capturas las guarda quien lo usa.
  */
-export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos, known }: {
+export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos, known, onLinks, ourPrice }: {
   url: string; onUrl: (v: string) => void
   onApply: (d: ListingData) => { filled: string[]; diffs: ImportDiff[] }
   shots: File[]; onShots: (f: File[]) => void
   adPhotos: File[]; onAdPhotos: (f: File[]) => void
   /** Lo que ya está apuntado: la IA lo compara con el anuncio */
   known?: Record<string, string>
+  /** Webs marcadas para guardarse como enlaces extra */
+  onLinks?: (links: Link[]) => void
+  ourPrice?: number | null
 }) {
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
   const [diffs, setDiffs] = useState<ImportDiff[]>([])
-  const [sources, setSources] = useState<string[]>([])
+  const [sources, setSources] = useState<AiSource[]>([])
+  const [picked, setPicked] = useState<string[]>([])
   const [changes, setChanges] = useState<string | undefined>()
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasted, setPasted] = useState('')
@@ -31,7 +35,12 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
     const d = parseAny(text)
     const r = onApply(d)
     setDiffs(r.diffs)
-    if (d.sources?.length) setSources(d.sources)
+    if (d.sources?.length) {
+      setSources(d.sources)
+      // Por defecto se guardan todas menos la del propio anuncio
+      const p = d.sources.map(x => x.url).filter(u => u.replace(/\?.*$/, '') !== (full || '').replace(/\?.*$/, ''))
+      setPicked(p); onLinks?.(sourcesToLinks(d.sources, p))
+    }
     if (d.changes) setChanges(d.changes)
     if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
     setNote(importMessage(intro, r.filled, r.diffs.length))
@@ -133,7 +142,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
       {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
       <ImportDiffs diffs={diffs} onChange={setDiffs} />
       <AiChanges text={changes} />
-      <AiSources urls={sources} />
+      <AiSources sources={sources} picked={picked} ourPrice={ourPrice} onPicked={p => { setPicked(p); onLinks?.(sourcesToLinks(sources, p)) }} />
     </div>
   )
 }
@@ -256,21 +265,46 @@ export function ImportDiffs({ diffs, onChange }: { diffs: ImportDiff[]; onChange
   )
 }
 
-/** Otras webs que la IA dice haber usado: se enseñan para poder comprobar que es la misma vivienda */
-export function AiSources({ urls }: { urls: string[] }) {
-  if (!urls.length) return null
+/** Otras webs donde está la misma vivienda: se pueden abrir para comprobarla y marcar para guardarlas como enlaces */
+export function AiSources({ sources, picked, onPicked, ourPrice }: {
+  sources: AiSource[]; picked: string[]; onPicked: (urls: string[]) => void; ourPrice?: number | null
+}) {
+  if (!sources.length) return null
   const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u } }
+  const cheaper = sources.filter(x => x.price_eur && ourPrice && x.price_eur * 100 < ourPrice)
   return (
-    <div className="flex flex-col gap-1 rounded-xl bg-bg p-2.5">
-      <span className="text-xs font-semibold">🔎 La IA ha completado con otras webs:</span>
-      <span className="flex gap-1.5 flex-wrap">
-        {urls.map(u => (
-          <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="min-h-8 px-2.5 rounded-full bg-card border border-line text-[12px] font-semibold text-accent flex items-center">{host(u)} ↗</a>
-        ))}
-      </span>
-      <span className="text-[11px] text-muted">Échales un vistazo para confirmar que es la misma casa (fotos, metros, dirección) antes de guardar.</span>
+    <div className="flex flex-col gap-1.5 rounded-xl bg-bg p-2.5">
+      <span className="text-xs font-semibold">🔎 También está en otras webs (según la IA):</span>
+      {sources.map(x => {
+        const on = picked.includes(x.url)
+        const low = x.price_eur && ourPrice && x.price_eur * 100 < ourPrice
+        return (
+          <div key={x.url} className="flex items-center gap-2">
+            <label className="flex items-center gap-2 flex-1 min-w-0 min-h-10">
+              <input type="checkbox" checked={on} onChange={() => onPicked(on ? picked.filter(u => u !== x.url) : [...picked, x.url])}
+                className="w-5 h-5 shrink-0 accent-[var(--app-accent)]" aria-label={`Guardar ${host(x.url)} como enlace`} />
+              <span className="flex flex-col min-w-0">
+                <span className="text-[13px] font-semibold truncate">{portalName(x.url) ?? host(x.url)}{x.price_eur ? ` · ${price(Math.round(x.price_eur * 100))}` : ''}{low ? ' ⬇️' : ''}</span>
+                {x.note && <span className="text-[11px] text-muted truncate">{x.note}</span>}
+              </span>
+            </label>
+            <a href={x.url} target="_blank" rel="noopener noreferrer" className="min-h-9 px-2.5 rounded-lg bg-card border border-line text-[12px] font-semibold text-accent flex items-center shrink-0">Abrir ↗</a>
+          </div>
+        )
+      })}
+      {cheaper.length > 0 && <span className="text-[12px] font-semibold text-accent">⬇️ {cheaper.map(x => portalName(x.url) ?? host(x.url)).join(', ')} la anuncia más barata que el precio que tenéis.</span>}
+      <span className="text-[11px] text-muted">Las marcadas se guardan como enlaces del piso al pulsar «Guardar». Ábrelas antes para confirmar que es la misma casa.</span>
     </div>
   )
+}
+
+/** Fuentes marcadas → enlaces para guardar (con el precio que pone cada web) */
+export function sourcesToLinks(sources: AiSource[], picked: string[]): Link[] {
+  return sources.filter(x => picked.includes(x.url)).map(x => {
+    let label = portalName(x.url) ?? x.url
+    try { if (label === new URL(x.url).hostname.replace(/^www\./, '')) label = label.split('.')[0] } catch { /* nada */ }
+    return { url: x.url, label: label.slice(0, 40), price_cents: x.price_eur ? Math.round(x.price_eur * 100) : null }
+  })
 }
 
 /** Lo que la IA dice que ha cambiado respecto a lo que teníais (bajadas de precio, datos nuevos…) */

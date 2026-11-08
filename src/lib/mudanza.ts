@@ -4,7 +4,8 @@ import { compressImage } from './money'
 import { addDays } from './dates'
 
 // ---------- Tipos ----------
-export type Link = { label: string; url: string }
+/** Enlace a un anuncio (opcionalmente con el precio que pone esa web) */
+export type Link = { label: string; url: string; price_cents?: number | null }
 export type SaleCost = { label: string; cents: number }
 export type Listing = {
   household_id: string; price_cents: number | null; published_on: string | null; links: Link[]; notes: string | null
@@ -93,6 +94,7 @@ export type Home = {
   energy: string | null
   maps_url: string | null
   cover_photo_id: string | null
+  links: Link[]
   plot_m2: number | null
   useful_m2: number | null
   year_built: number | null
@@ -260,7 +262,7 @@ export function useMudanza() {
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves').maybeSingle(),
-      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, plot_m2, useful_m2, year_built, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
+      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, plot_m2, useful_m2, year_built, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
@@ -456,6 +458,24 @@ export async function mudanzaSummary(fromDate: string) {
 }
 
 /** Nombre del portal a partir del enlace: «Idealista», «Fotocasa»… */
+/** Añade enlaces nuevos sin repetir (compara sin «www», parámetros ni barra final); máximo 10 */
+export function mergeLinks(existing: Link[], extra: Link[], exclude: (string | null | undefined)[] = []) {
+  const key = (u: string) => { try { const x = new URL(u); return (x.hostname.replace(/^www\./, '') + x.pathname.replace(/\/+$/, '')).toLowerCase() } catch { return u } }
+  const seen = new Set([...existing.map(l => key(l.url)), ...exclude.filter((x): x is string => !!x).map(key)])
+  const out = [...existing]
+  for (const l of extra) {
+    const k = key(l.url)
+    if (seen.has(k)) {
+      // Si ya estaba, se actualiza su precio
+      const i = out.findIndex(x => key(x.url) === k)
+      if (i >= 0 && l.price_cents != null) out[i] = { ...out[i], price_cents: l.price_cents }
+      continue
+    }
+    seen.add(k); out.push(l)
+  }
+  return out.slice(0, 10)
+}
+
 export function portalName(url: string | null | undefined) {
   if (!url) return null
   try {

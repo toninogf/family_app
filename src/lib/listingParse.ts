@@ -32,7 +32,7 @@ export type ListingData = {
   /** Enlaces directos a las fotos del anuncio (si la IA los da) */
   photo_urls?: string[]
   /** Otras webs que ha usado la IA (además del anuncio) */
-  sources?: string[]
+  sources?: AiSource[]
   /** Lo que la IA dice que no coincide con lo que ya teníamos */
   changes?: string
   advertiser?: 'agencia' | 'particular'
@@ -233,7 +233,7 @@ EMAIL:
 REFERENCIA: (referencia del anuncio)
 FOTOS: (enlaces directos a las fotos de esta vivienda —por ejemplo https://img3.idealista.com/…jpg—, del anuncio o de las otras webs verificadas, uno por línea; máximo 20; si no puedes verlos, pon «-»)
 CAMBIOS: (${have.length ? 'qué no coincide con lo que ya tenemos y qué has encontrado nuevo; si todo coincide, pon «todo coincide»' : 'pon «-»'})
-FUENTES: (enlaces de las otras webs que hayas usado y verificado que son la misma vivienda, uno por línea, con lo que has sacado de cada una; si solo has usado el anuncio, pon «-»)`
+FUENTES: (una línea por cada web donde esté publicada ESTA MISMA vivienda —otros portales o la web de la inmobiliaria—, solo si lo has verificado, con este formato: enlace | precio que pone esa web, solo el número | qué has sacado de ella; si no la has encontrado en otras webs, pon «-»)`
 }
 
 // Servidores de fotos de los portales (los mismos que permite la función que las descarga)
@@ -243,14 +243,22 @@ const PHOTO_HOSTS = ['idealista.com', 'fotocasa.es', 'pisos.com', 'imghs.net', '
 /** Nada de direcciones internas (IP sueltas, localhost…) */
 export const publicHost = (h: string) => /\.[a-z]{2,}$/i.test(h) && !/^(localhost|.*\.local|.*\.internal)$/i.test(h) && !/^[\d.]+$|:/.test(h)
 
-/** Webs que la IA dice haber usado además del anuncio (línea FUENTES), sin fotos */
-export function sourceUrls(raw: string): string[] {
+/** Webs que la IA dice haber usado además del anuncio (línea FUENTES): «enlace | precio | qué ha sacado» */
+export type AiSource = { url: string; price_eur?: number; note?: string }
+export function sourceUrls(raw: string): AiSource[] {
   const block = raw.match(/FUENTES\s*:([\s\S]*?)(?:\n\s*[A-ZÁÉÍÓÚÑ]{3,15}\s*:|$)/)?.[1] ?? ''
-  const out: string[] = []
-  for (const m of block.matchAll(/https:\/\/[^\s"'<>()\[\]]+/gi)) {
-    const u = m[0].replace(/[.,;]+$/, '')
-    try { if (publicHost(new URL(u).hostname) && !out.includes(u) && !/\.(jpe?g|png|webp|avif)$/i.test(u)) out.push(u) } catch { /* nada */ }
-    if (out.length >= 8) break
+  const out: AiSource[] = []
+  for (const line of block.split(/\n/)) {
+    for (const m of line.matchAll(/https:\/\/[^\s"'<>()\[\]|]+/gi)) {
+      const u = m[0].replace(/[.,;]+$/, '')
+      try { if (!publicHost(new URL(u).hostname) || /\.(jpe?g|png|webp|avif)$/i.test(u) || out.some(x => x.url === u)) continue } catch { continue }
+      // Lo que va detrás del enlace en la misma línea: el precio (si lo hay) y una nota
+      const rest = line.slice(line.indexOf(m[0]) + m[0].length).replace(/^[\s|:–—-]+/, '')
+      const money = rest.match(/(\d{1,3}(?:[.\s]\d{3})+|\d{5,})(?:,\d+)?\s*(?:€|euros|eur)?/i)
+      const price = money ? Number(money[1].replace(/[.\s]/g, '')) : undefined
+      out.push({ url: u, ...(price && price >= 10000 ? { price_eur: price } : {}), ...(rest.trim() ? { note: rest.replace(/\|/g, '·').trim().slice(0, 200) } : {}) })
+      if (out.length >= 8) return out
+    }
   }
   return out
 }

@@ -3,7 +3,7 @@ import type { Member } from '../../lib/supabase'
 import { addDays, hhmm, longDate, parseISO, relativeDay, shortDate, startOfWeek, today } from '../../lib/dates'
 import {
   FINANCING, INTEREST, INTEREST_COLOR, OBJECTION_PRESETS, OFFER_STATUS, PREP_ITEMS, SOURCES, VISIT_STATUS,
-  parsePrice, price, priceInput,
+  parsePrice, portalName, price, priceInput, priceShort,
   type BuyerOffer, type BuyerVisit, type Financing, type Interest, type Mudanza, type OfferStatus, type VisitStatus
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
@@ -78,7 +78,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         <div className="flex gap-1.5 flex-wrap -mt-2">
           {m.listing.links.map((l, i) => (
             <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-full bg-card border border-line text-[13px] font-semibold text-accent flex items-center">
-              {l.label || 'Anuncio'} ↗
+              {l.label || portalName(l.url) || 'Anuncio'}{l.price_cents && l.price_cents !== asking ? ` · ${priceShort(l.price_cents)} ⚠️` : ''} ↗
             </a>
           ))}
         </div>

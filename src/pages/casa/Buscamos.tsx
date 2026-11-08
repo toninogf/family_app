@@ -12,14 +12,15 @@ import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
-  coverPhoto, mustHaveCheck, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
-  type CheckValue, type Cooling, type HeatingType, type Home, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
+  coverPhoto, mergeLinks, mustHaveCheck, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
+  type CheckValue, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
-import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, type ImportDiff } from '../../components/ListingImport'
+import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
+import type { AiSource } from '../../lib/listingParse'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
 type Sort = 'estado' | 'recientes' | 'precio' | 'm2'
@@ -293,6 +294,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
         </span>
       )}
     </button>
+    {h.links?.length > 0 && <div className="px-4 pb-3 -mt-1"><LinkChips links={h.links} ourPrice={h.price_cents} /></div>}
     <div className="flex border-t border-line">
       <button type="button" onClick={onPick} aria-pressed={picked}
         className={`min-h-11 px-3 flex items-center gap-1.5 text-[13px] font-semibold shrink-0 ${picked ? 'text-accent bg-accent-soft' : 'text-muted'}`}>
@@ -354,6 +356,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
 
       <div className="flex gap-2 flex-wrap">
         {h.url && <a href={h.url} target="_blank" rel="noopener noreferrer" className="min-h-11 px-4 rounded-xl bg-card border border-line text-accent text-sm font-semibold flex items-center">Abrir en {portalName(h.url)} ↗</a>}
+        {h.links?.length > 0 && <div className="w-full"><LinkChips links={h.links} ourPrice={h.price_cents} big /></div>}
         {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="min-h-11 px-4 rounded-xl bg-card border border-line text-accent text-sm font-semibold flex items-center">Cómo llegar ↗</a>}
         <button onClick={onEdit} className="min-h-11 px-4 rounded-xl bg-card border border-line text-sm font-semibold">Editar datos</button>
       </div>
@@ -689,7 +692,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   // Fotos traídas desde los enlaces que dé la IA (se guardan como fotos del piso)
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
   const [diffs, setDiffs] = useState<ImportDiff[]>([])
-  const [sources, setSources] = useState<string[]>([])
+  const [sources, setSources] = useState<AiSource[]>([])
+  const [picked, setPicked] = useState<string[]>([])
+  const [links, setLinks] = useState<Link[]>(home?.links ?? [])
   const [changes, setChanges] = useState<string | undefined>()
   const [adPhotos, setAdPhotos] = useState<File[]>([])
   const [ocr, setOcr] = useState<string | null>(null)
@@ -736,7 +741,10 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   /** Rellena solo lo vacío; lo que ya tenía otro valor se ofrece aparte (no se machaca) */
   function apply(d: ListingData) {
     if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
-    if (d.sources?.length) setSources(d.sources)
+    if (d.sources?.length) {
+      setSources(d.sources)
+      setPicked(d.sources.map(x => x.url).filter(u => u.replace(/\?.*$/, '') !== url.trim().replace(/\?.*$/, '')))
+    }
     if (d.changes) setChanges(d.changes)
     const f = merger()
     const eur = (v?: number) => (v ? priceInput(Math.round(v * 100)) : null)
@@ -884,7 +892,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
       advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
-      contact_email: email.trim() || null, listing_ref: listingRef.trim() || null
+      contact_email: email.trim() || null, listing_ref: listingRef.trim() || null,
+      links: mergeLinks(links.filter(l => l.url.trim()).map(l => ({ ...l, label: l.label.trim(),
+        url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim().replace(/^http:/i, 'https:') : `https://${l.url.trim()}` })), sourcesToLinks(sources, picked), [cleanUrl])
     }
     let homeId = home?.id
     let err: string | undefined
@@ -960,8 +970,22 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           {importNote && <p role="status" className={`text-xs ${importNote.ok ? 'text-accent' : 'text-danger'}`}>{importNote.text}</p>}
           <ImportDiffs diffs={diffs} onChange={setDiffs} />
           <AiChanges text={changes} />
-          <AiSources urls={sources} />
+          <AiSources sources={sources} picked={picked} onPicked={setPicked} ourPrice={amount.trim() ? parsePrice(amount) : null} />
         </div>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-sm font-medium text-muted mb-1">Otros enlaces de este piso</legend>
+          {links.map((l, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <input value={l.label} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, label: e.target.value.slice(0, 40) } : x)))} placeholder="Nombre"
+                aria-label="Nombre del enlace" className="w-28 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold" />
+              <input value={l.url} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} placeholder="https://…" inputMode="url"
+                aria-label="Enlace" className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px]" />
+              {l.price_cents ? <span className="text-[12px] text-muted shrink-0">{priceShort(l.price_cents)}</span> : null}
+              <button type="button" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Quitar enlace" className="w-9 text-muted text-xl">×</button>
+            </div>
+          ))}
+          {links.length < 10 && <button type="button" onClick={() => setLinks([...links, { label: '', url: '' }])} className="self-start min-h-10 text-sm text-accent font-semibold">+ Añadir enlace (otro portal, la inmobiliaria…)</button>}
+        </fieldset>
         <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />
         <div className="grid grid-cols-2 gap-3">
           <TextField label="Precio (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="320.000" />
@@ -1170,5 +1194,23 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
       </div>
       <p className="text-xs text-muted">En azul, el mejor de cada fila.</p>
     </Sheet>
+  )
+}
+
+/** Enlaces extra de un piso (otros portales, la inmobiliaria), con su precio y aviso si es más barato */
+function LinkChips({ links, ourPrice, big }: { links: Link[]; ourPrice: number | null; big?: boolean }) {
+  return (
+    <span className="flex gap-1.5 flex-wrap items-center">
+      <span className="text-[12px] text-muted">También en:</span>
+      {links.map(l => {
+        const low = l.price_cents != null && ourPrice != null && l.price_cents < ourPrice
+        return (
+          <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
+            className={`${big ? 'min-h-10 px-3 text-[13px]' : 'min-h-8 px-2.5 text-[12px]'} rounded-full border font-semibold flex items-center gap-1 ${low ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-card text-accent'}`}>
+            {l.label || portalName(l.url)}{l.price_cents ? ` · ${priceShort(l.price_cents)}` : ''}{low ? ' ⬇️' : ''} ↗
+          </a>
+        )
+      })}
+    </span>
   )
 }

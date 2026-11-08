@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { COOLING, FEATURES, HEATING, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
+import { COOLING, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
 import { Choice, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -25,6 +25,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [url, setUrl] = useState(firstLink)
   const [shots, setShots] = useState<File[]>([])
   const [adPhotos, setAdPhotos] = useState<File[]>([])
+  const [extraLinks, setExtraLinks] = useState<Link[]>([])
   const [amount, setAmount] = useState(priceInput(l?.price_cents))
   const [published, setPublished] = useState(l?.published_on ?? '')
   const [title, setTitle] = useState(l?.title ?? '')
@@ -100,9 +101,10 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
     const links = [...(l?.links ?? [])]
     const clean = url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim().replace(/^http:/i, 'https:') : `https://${url.trim()}`) : ''
     if (clean && !links.some(x => x.url === clean)) links.unshift({ label: '', url: clean })
+    const allLinks = mergeLinks(links, extraLinks)
     setBusy('Guardando…'); setError('')
     const err = await m.write('sale_listing', {
-      household_id: householdId, price_cents: cents, published_on: published || null, links: links.slice(0, 10),
+      household_id: householdId, price_cents: cents, published_on: published || null, links: allLinks.slice(0, 10),
       title: title.trim() || null, property_type: type.trim() || null, address: address.trim() || null, zone: zone.trim() || null,
       municipality, province: municipality ? 'Madrid' : null, size_m2: sizes[0], useful_m2: sizes[1], plot_m2: sizes[2],
       rooms: ints[0], baths: ints[1], floor: floor.trim() || null, features, energy, heating_type: heatType, cooling,
@@ -130,7 +132,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   return (
     <Sheet title="Ficha de nuestro anuncio" onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
-        <ListingImport url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} adPhotos={adPhotos} onAdPhotos={setAdPhotos}
+        <ListingImport url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} adPhotos={adPhotos} onAdPhotos={setAdPhotos} onLinks={setExtraLinks} ourPrice={amount.trim() ? parsePrice(amount) : null}
           known={knownForAi({
             'Precio': amount && `${amount} €`, 'Título': title, 'Tipo': type, 'Dirección': address, 'Zona': zone, 'Localidad': municipality,
             'Metros construidos': m2, 'Metros útiles': useful, 'Parcela (m²)': plot, 'Habitaciones': rooms, 'Baños': baths, 'Planta': floor,
