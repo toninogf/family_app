@@ -8,9 +8,10 @@ import {
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
-import { MarketCompare, VentaFichaSheet, VentaPhotos, fichaLine } from './VentaFicha'
+import { MarketCompare, VentaFichaSheet, VentaPhotos } from './VentaFicha'
 import { Fold, VentaCuentas, VentaDocs, VentaPasos, docAlert, docsSummary, saleNet, stepsSummary } from './VentaGestion'
 import { DossierSheet } from './VentaDossier'
+import { SaleFacts, SaleGallery } from './VentaHeader'
 
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const nameOf = (id: string | null, members: Member[]) => (id ? members.find(m => m.id === id)?.display_name ?? '' : '')
@@ -58,31 +59,47 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Anuncio */}
-      <button onClick={() => setListingOpen(true)} className="bg-accent text-white dark:text-bg rounded-2xl p-4 flex flex-col gap-1 text-left">
-        <span className="text-[13px] opacity-85">{m.listing?.title || 'Nuestra casa en venta'}</span>
-        <span className="text-[26px] font-bold leading-tight">{asking ? price(asking) : 'Pon el precio'}</span>
-        {fichaLine(m.listing) && <span className="text-[13px] opacity-90">{fichaLine(m.listing)}</span>}
-        <span className="text-[13px] opacity-85">
+      {/* 1. Cabecera visual: fotos, precio y días a la venta */}
+      <SaleGallery m={m} onAdd={() => setFold('fotos')} />
+      <div className="flex flex-col gap-0.5 -mt-1">
+        <span className="text-[13px] text-muted">{m.listing?.title || 'Nuestra casa en venta'}</span>
+        <button onClick={() => setListingOpen(true)} className="text-left">
+          <span className="text-[26px] font-bold leading-tight">{asking ? price(asking) : 'Pon el precio'}</span>
+          {asking && m.listing?.size_m2 ? <span className="text-[13px] text-muted"> · {price(Math.round(asking / Number(m.listing.size_m2)))}/m²</span> : null}
+        </button>
+        <span className="text-[13px] text-muted">
           {m.listing?.published_on
             ? `Publicado el ${shortDate(m.listing.published_on)} · ${daysBetween(m.listing.published_on, t)} días a la venta`
-            : 'Toca para rellenar la ficha (desde el anuncio, con IA o capturas)'}
+            : 'Rellena la ficha desde vuestro anuncio (con IA o capturas)'}
+          {drop ? ` · ${drop.cents > 0 ? `bajado ${price(drop.cents)} (${drop.pct} %)` : `subido ${price(-drop.cents)}`}` : ''}
         </span>
-        {drop && (
-          <span className="text-[13px] opacity-90">
-            {drop.cents > 0 ? `Bajado ${price(drop.cents)} (${drop.pct} %) desde ${price(drop.first)}` : `Subido ${price(-drop.cents)} desde ${price(drop.first)}`} · {m.prices.length - 1} cambio{m.prices.length > 2 ? 's' : ''}
-          </span>
-        )}
-      </button>
-      {m.listing && m.listing.links.length > 0 && (
-        <div className="flex gap-1.5 flex-wrap -mt-2">
-          {m.listing.links.map((l, i) => (
-            <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-full bg-card border border-line text-[13px] font-semibold text-accent flex items-center">
-              {l.label || portalName(l.url) || 'Anuncio'}{l.price_cents && l.price_cents !== asking ? ` · ${priceShort(l.price_cents)} ⚠️` : ''} ↗
+      </div>
+
+      {/* 2. Lo que toca hacer ahora */}
+      <div className="flex flex-col gap-2 -mt-2">
+        <div className="flex gap-2">
+          {activeOffers.length > 0 ? (
+            <button onClick={() => setOfferSheet({ open: true, offer: activeOffers[0] })} className="flex-1 min-h-12 px-4 rounded-xl bg-accent text-white dark:text-bg font-bold text-[15px]">
+              💶 Responder oferta · {price(activeOffers[0].amount_cents)}{activeOffers[0].response_deadline ? ` · ${relativeDay(activeOffers[0].response_deadline).toLowerCase()}` : ''}
+            </button>
+          ) : (
+            <button onClick={() => setVisitSheet({ open: true })} className="flex-1 min-h-12 px-4 rounded-xl bg-accent text-white dark:text-bg font-bold text-[15px]">📅 Apuntar una visita</button>
+          )}
+          <button onClick={() => setDossierOpen(true)} className="min-h-12 px-4 rounded-xl bg-card border border-line font-bold text-[15px]">📤 Dossier</button>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {(m.listing?.links ?? []).map((l, i) => (
+            <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">
+              🔗 {l.label || portalName(l.url) || 'Anuncio'}{l.price_cents && l.price_cents !== asking ? ` · ${priceShort(l.price_cents)} ⚠️` : ''} ↗
             </a>
           ))}
+          <button onClick={() => setListingOpen(true)} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">✏️ Editar la ficha</button>
         </div>
-      )}
+      </div>
+
+      {/* 3. De un vistazo */}
+      <SaleFacts m={m} onEdit={() => setListingOpen(true)} />
+
       {docAlerts.length > 0 && (
         <button onClick={() => setFold('docs')} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-0.5 ring-2 ring-danger">
           <span className="text-[13px] font-semibold text-danger">⚠️ Documentos por renovar</span>
