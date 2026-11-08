@@ -12,7 +12,7 @@ import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   FEATURES, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
-  mustHaveCheck, parsePrice, perM2, photoUrl, portalName, price, priceInput, priceShort,
+  coverPhoto, mustHaveCheck, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
   type CheckValue, type Home, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
@@ -87,6 +87,16 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   }, [m.homes, filter, town, minP, maxP, sort])
 
   const nextVisits = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t)
+  // Portadas de los pisos de la lista (enlaces temporales pedidos de una vez)
+  const [covers, setCovers] = useState<Record<string, string>>({})
+  const coverPaths = list.map(h => coverPhoto(h, m.photos)?.path).filter((x): x is string => !!x)
+  useEffect(() => {
+    if (!coverPaths.length) return
+    let alive = true
+    photoUrls(coverPaths).then(u => { if (alive) setCovers(c => ({ ...c, ...u })) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverPaths.join()])
   const open = m.homes.find(h => h.id === openId)
   const c = m.criteria
 
@@ -189,7 +199,11 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </Suspense>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {list.map(h => <HomeCard key={h.id} h={h} m={m} onOpen={() => setOpenId(h.id)} picked={picked.includes(h.id)} onPick={() => togglePick(h.id)} />)}
+          {list.map(h => {
+            const cp = coverPhoto(h, m.photos)
+            return <HomeCard key={h.id} h={h} m={m} cover={cp ? { url: covers[cp.path], ad: cp.kind === 'anuncio' } : null}
+              onOpen={() => setOpenId(h.id)} picked={picked.includes(h.id)} onPick={() => togglePick(h.id)} />
+          })}
         </div>
       )}
 
@@ -234,7 +248,9 @@ function StatusBadge({ s }: { s: HomeStatus }) {
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</span>
 }
 
-function HomeCard({ h, m, onOpen, picked, onPick }: { h: Home; m: Mudanza; onOpen: () => void; picked: boolean; onPick: () => void }) {
+function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
+  h: Home; m: Mudanza; cover: { url?: string; ad: boolean } | null; onOpen: () => void; picked: boolean; onPick: () => void
+}) {
   const checks = mustHaveCheck(h, m.criteria)
   const pm2 = perM2(h)
   const next = m.homeVisits.find(v => v.home_id === h.id && v.status === 'scheduled' && v.visit_date >= today())
@@ -242,6 +258,11 @@ function HomeCard({ h, m, onOpen, picked, onPick }: { h: Home; m: Mudanza; onOpe
   const maps = h.maps_url || h.address || h.municipality ? mapsHref({ location: [h.address, h.municipality].filter(Boolean).join(', ') || h.zone, maps_url: h.maps_url }) : null
   return (
     <div className={`bg-card rounded-2xl flex flex-col overflow-hidden ${h.status === 'descartado' ? 'opacity-60' : ''}`}>
+    {cover && (
+      <button onClick={onOpen} aria-label={`Abrir ${h.title}`} className="block w-full aspect-[16/9] bg-bg">
+        {cover.url && <img src={cover.url} alt="" loading="lazy" className={`w-full h-full object-cover ${cover.ad ? 'object-top' : ''}`} />}
+      </button>
+    )}
     <button onClick={onOpen} className="p-4 text-left flex flex-col gap-2">
       <span className="flex justify-between items-start gap-2">
         <span className="flex flex-col gap-0.5 min-w-0">
@@ -491,7 +512,7 @@ function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId:
   return (
     <section className="flex flex-col gap-2">
       <div className="flex justify-between items-center">
-        <h3 className="font-bold text-[15px]">{ad ? '📸 Capturas del anuncio' : 'Fotos de la visita'}</h3>
+        <h3 className="font-bold text-[15px]">{ad ? '📸 Capturas del anuncio' : '🖼️ Fotos'}</h3>
         <label className="min-h-10 px-2 text-sm font-semibold text-accent flex items-center cursor-pointer">
           {busy ? 'Subiendo…' : ad ? '+ Capturas' : '+ Fotos'}
           <input type="file" accept="image/*" multiple className="sr-only" disabled={busy} onChange={e => { add(e.target.files); e.target.value = '' }} />
@@ -499,7 +520,7 @@ function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId:
       </div>
       {photos.length === 0 ? <p className="text-sm text-muted">{ad
         ? 'Guarda capturas del anuncio: así lo tenéis aunque lo borren del portal.'
-        : 'Haz fotos durante la visita: se guardan en privado, solo para vosotros.'}</p> : (
+        : 'Fotos del anuncio o de la visita: se guardan en privado, solo para vosotros. La primera sale de portada (en cada foto puedes elegir otra).'}</p> : (
         <div className={`grid ${ad ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5`}>
           {photos.map(p => (
             <button key={p.id} onClick={() => setView(p)} className={`${ad ? 'aspect-[9/16]' : 'aspect-square'} rounded-lg overflow-hidden bg-bg`}>
@@ -512,7 +533,12 @@ function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId:
         <div className="fixed inset-0 z-40 bg-black/90 flex flex-col" onClick={() => setView(null)}>
           <div className="flex justify-between p-3" onClick={e => e.stopPropagation()}>
             <button onClick={async () => { await m.removePhoto(view); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">{ad ? 'Borrar captura' : 'Borrar foto'}</button>
-            <button onClick={() => setView(null)} aria-label="Cerrar" className="w-11 h-11 text-white text-2xl">×</button>
+            <span className="flex items-center">
+              {coverPhoto(h, m.photos)?.id === view.id
+                ? <span className="min-h-11 px-3 text-sm font-semibold text-white/80 flex items-center">★ Es la portada</span>
+                : <button onClick={async () => { await m.write('homes', { cover_photo_id: view.id }, h.id); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">☆ Poner de portada</button>}
+              <button onClick={() => setView(null)} aria-label="Cerrar" className="w-11 h-11 text-white text-2xl">×</button>
+            </span>
           </div>
           <div className={`flex-1 p-2 ${ad ? 'overflow-y-auto' : 'flex items-center justify-center'}`}>
             {urls[view.id] && <img src={urls[view.id]} alt="" className={ad ? 'w-full h-auto' : 'max-w-full max-h-full object-contain'} />}

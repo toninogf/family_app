@@ -89,6 +89,7 @@ export type Home = {
   heating_cents: number | null
   energy: string | null
   maps_url: string | null
+  cover_photo_id: string | null
   contact: string | null
   advertiser: 'agencia' | 'particular' | null
   agency: string | null
@@ -244,7 +245,7 @@ export function useMudanza() {
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves').maybeSingle(),
-      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, energy, maps_url, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
+      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, energy, maps_url, cover_photo_id, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
@@ -378,6 +379,28 @@ export function useMudanza() {
   }
 }
 export type Mudanza = ReturnType<typeof useMudanza>
+
+/** Foto de portada de un piso: la elegida o, si no, la primera foto (y si no hay, la primera captura) */
+export function coverPhoto(h: Pick<Home, 'id' | 'cover_photo_id'>, photos: Photo[]): Photo | null {
+  const own = photos.filter(p => p.home_id === h.id)
+  return own.find(p => p.id === h.cover_photo_id) ?? own.find(p => (p.kind ?? 'foto') === 'foto') ?? own[0] ?? null
+}
+
+// Enlaces temporales de fotos ya pedidos (duran 30 min; se reutilizan 25 para no pedirlos en cada recarga)
+const urlCache = new Map<string, { url: string; until: number }>()
+/** Enlaces de varias fotos de una vez (para las portadas de la lista) */
+export async function photoUrls(paths: string[]): Promise<Record<string, string>> {
+  const now = Date.now()
+  const out: Record<string, string> = {}
+  const missing = paths.filter(p => { const c = urlCache.get(p); if (c && c.until > now) { out[p] = c.url; return false } return true })
+  if (missing.length) {
+    const { data } = await supabase.storage.from('house-photos').createSignedUrls(missing, 60 * 30)
+    for (const d of data ?? []) {
+      if (d.path && d.signedUrl) { out[d.path] = d.signedUrl; urlCache.set(d.path, { url: d.signedUrl, until: now + 25 * 60 * 1000 }) }
+    }
+  }
+  return out
+}
 
 export async function photoUrl(path: string): Promise<string | null> {
   const { data } = await supabase.storage.from('house-photos').createSignedUrl(path, 60 * 30)
