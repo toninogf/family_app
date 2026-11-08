@@ -35,6 +35,13 @@ export type ListingData = {
   sources?: AiSource[]
   /** Lo que la IA dice que no coincide con lo que ya teníamos */
   changes?: string
+  /** Referencia catastral, si aparece */
+  cadastral_ref?: string
+  /** Lo que dice la IA de ITE, urbanización, VPO, ocupación, saneamiento y ruido (texto) */
+  checks?: Record<string, string>
+  /** Precio medio del m² en la zona (€/m²) y su fuente */
+  zone_m2_eur?: number
+  zone_m2_note?: string
   advertiser?: 'agencia' | 'particular'
   agency?: string
   contact?: string
@@ -232,6 +239,14 @@ TELEFONO:
 EMAIL:
 REFERENCIA: (referencia del anuncio)
 FOTOS: (enlaces directos a las fotos de esta vivienda —por ejemplo https://img3.idealista.com/…jpg—, del anuncio o de las otras webs verificadas, uno por línea; máximo 20; si no puedes verlos, pon «-»)
+CATASTRO: (referencia catastral, si aparece en el anuncio o en la web de la inmobiliaria)
+ITE: (empieza por BIEN, REVISAR, PROBLEMA o NO CONSTA y explica: inspección técnica del edificio, licencias, obras o ampliaciones sin legalizar)
+URBANIZACION: (empieza por BIEN, REVISAR, PROBLEMA o NO CONSTA: si está en una urbanización, si está recepcionada por el ayuntamiento o hay entidad de conservación o cuota)
+VPO: (BIEN si es vivienda libre; PROBLEMA si es de protección oficial; NO CONSTA si no se sabe)
+OCUPACION: (BIEN si se entrega libre; PROBLEMA si está alquilada, ocupada o es nuda propiedad; NO CONSTA si no se sabe)
+SANEAMIENTO: (BIEN si tiene alcantarillado y agua de red; REVISAR si es fosa séptica, pozo o depuradora propia; NO CONSTA)
+RUIDO: (BIEN, REVISAR o NO CONSTA: autopistas, aeropuerto, tren o zonas de ocio cerca)
+MERCADO: (precio medio del m² de vivienda en esa zona o municipio según penotariado.com u otra estadística oficial: el número en €/m² y de dónde sale)
 CAMBIOS: (${have.length ? 'qué no coincide con lo que ya tenemos y qué has encontrado nuevo; si todo coincide, pon «todo coincide»' : 'pon «-»'})
 FUENTES: (una línea por cada web donde esté publicada ESTA MISMA vivienda —otros portales o la web de la inmobiliaria—, solo si lo has verificado, con este formato: enlace | precio que pone esa web, solo el número | qué has sacado de ella; si no la has encontrado en otras webs, pon «-»)`
 }
@@ -282,13 +297,13 @@ export function photoUrls(raw: string): string[] {
 }
 
 const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'SISTEMA', 'CLIMA', 'AÑO', 'ANO', 'RESUMEN',
-  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS']
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -320,6 +335,18 @@ export function parseAiBlock(raw: string): ListingData | null {
   }
   const cert = values.CERTIFICADO?.match(/\b([A-G])\b/i); if (cert) out.energy = cert[1].toUpperCase()
   const hType = values.SISTEMA && heatingFrom(values.SISTEMA); if (hType) out.heating_type = hType
+  const rc = values.CATASTRO?.toUpperCase().replace(/[^0-9A-Z]/g, '').match(/[0-9]{7}[A-Z]{2}[0-9]{4}[A-Z]([0-9]{4}[A-Z]{2})?/)?.[0]
+  if (rc) out.cadastral_ref = rc
+  const checks: Record<string, string> = {}
+  for (const [k, key] of [['ITE', 'ite'], ['URBANIZACION', 'urbanizacion'], ['VPO', 'vpo'], ['OCUPACION', 'ocupacion'], ['SANEAMIENTO', 'saneamiento'], ['RUIDO', 'ruido']] as const) {
+    if (values[k]) checks[key] = values[k].slice(0, 400)
+  }
+  if (Object.keys(checks).length) out.checks = checks
+  if (values.MERCADO) {
+    const z = values.MERCADO.match(/(\d{1,2}[.\s]?\d{3}|\d{3,5})(?:,\d+)?\s*(?:€|euros)?/)
+    const v = z ? Number(z[1].replace(/[.\s]/g, '')) : NaN
+    if (v >= 300 && v <= 30000) { out.zone_m2_eur = v; out.zone_m2_note = values.MERCADO.slice(0, 200) }
+  }
   const cType = values.CLIMA && coolingFrom(values.CLIMA); if (cType) out.cooling = cType
   const fee = n('COMUNIDAD'); if (fee) out.community_eur = fee
   const ibi = n('IBI'); if (ibi) out.ibi_eur = ibi

@@ -19,6 +19,8 @@ import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
+import HomeHealth from './HomeHealth'
+import { aiStatus, type Health } from '../../lib/health'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
@@ -383,6 +385,8 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
         </section>
       )}
 
+      <HomeHealth h={h} m={m} householdId={householdId} />
+
       <NotesBox h={h} m={m} />
 
       <section className="flex flex-col gap-2">
@@ -695,6 +699,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [sources, setSources] = useState<AiSource[]>([])
   const [picked, setPicked] = useState<string[]>([])
   const [links, setLinks] = useState<Link[]>(home?.links ?? [])
+  // Lo que diga la IA de ITE, urbanización, VPO… (no pisa lo que hayáis puesto a mano) y la referencia catastral
+  const [health, setHealth] = useState<Health>(home?.health ?? {})
+  const [cadRef, setCadRef] = useState<string | null>(home?.cadastral_ref ?? null)
   const [changes, setChanges] = useState<string | undefined>()
   const [adPhotos, setAdPhotos] = useState<File[]>([])
   const [ocr, setOcr] = useState<string | null>(null)
@@ -746,6 +753,23 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       setPicked(d.sources.map(x => x.url).filter(u => u.replace(/\?.*$/, '') !== url.trim().replace(/\?.*$/, '')))
     }
     if (d.changes) setChanges(d.changes)
+    if (d.cadastral_ref && !cadRef) setCadRef(d.cadastral_ref)
+    if (d.checks || d.zone_m2_eur) {
+      const next: Health = { ...health }
+      for (const [k, text] of Object.entries(d.checks ?? {})) {
+        if (next[k]?.src === 'manual') continue
+        next[k] = { s: aiStatus(k, text), n: text.replace(/^\s*(BIEN|REVISAR|PROBLEMA|NO CONSTA)\s*[—–:-]*\s*/i, '').slice(0, 400) || text.slice(0, 400), src: 'ia', ...(next[k]?.files ? { files: next[k].files } : {}) }
+      }
+      if (d.zone_m2_eur) {
+        const ours = (() => { const p = amount.trim() ? parsePrice(amount) : null; const s = num(m2); return p && s ? p / 100 / s : null })()
+        const diff = ours ? Math.round((ours / d.zone_m2_eur - 1) * 100) : null
+        next.precio_zona = {
+          s: diff == null ? 'unknown' : diff > 15 ? 'warn' : 'ok', src: 'ia',
+          n: `Media de la zona: ${d.zone_m2_eur.toLocaleString('es-ES')} €/m²${diff != null ? ` · este piso, ${Math.round(ours!).toLocaleString('es-ES')} €/m² (${diff > 0 ? '+' : ''}${diff} %)` : ''}${d.zone_m2_note ? ` · ${d.zone_m2_note.replace(/^[\d.,\s]+€?\/?m²?\s*/i, '').slice(0, 120)}` : ''}`.slice(0, 480)
+        }
+      }
+      setHealth(next)
+    }
     const f = merger()
     const eur = (v?: number) => (v ? priceInput(Math.round(v * 100)) : null)
     f.put('nombre', title, d.title, setTitle, { diff: false })
@@ -893,6 +917,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
       advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
       contact_email: email.trim() || null, listing_ref: listingRef.trim() || null,
+      health, cadastral_ref: cadRef,
       links: mergeLinks(links.filter(l => l.url.trim()).map(l => ({ ...l, label: l.label.trim(),
         url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim().replace(/^http:/i, 'https:') : `https://${l.url.trim()}` })), sourcesToLinks(sources, picked), [cleanUrl])
     }

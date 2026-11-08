@@ -16,7 +16,7 @@ end;
 $$;
 grant execute on function public.test_fails(text) to anon, authenticated;
 
-select plan(98);
+select plan(99);
 
 -- ---------- Preparación ----------
 insert into auth.users (id, email, aud, role) values
@@ -162,6 +162,8 @@ select ok(public.test_fails(format('insert into public.sale_price_history (house
   'Nadie puede escribir el historial de precios a mano');
 select ok((select member_id from public.home_ratings limit 1) = (select id from public.members where email = 'toninogf@gmail.com'),
   'La nota queda a nombre de quien la pone, aunque se intente otro');
+select ok(public.test_fails($q$ update public.homes set health = '{"nota_simple":{"s":"ok","files":[{"path":"00000000-0000-0000-0000-000000000000/x.pdf","name":"x"}]}}' where title = 'Piso centro' $q$),
+  'La nota simple de un piso no puede apuntar a archivos de otro hogar');
 -- Compramos
 select set_config('test.home', (select id::text from public.homes where title = 'Piso centro'), true);
 select ok(not public.test_fails(format('insert into public.purchase (household_id, home_id) values (%L, %L)', current_setting('test.hh'), current_setting('test.home'))),
