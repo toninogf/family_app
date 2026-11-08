@@ -17,6 +17,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
 }) {
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
   const [diffs, setDiffs] = useState<ImportDiff[]>([])
+  const [sources, setSources] = useState<string[]>([])
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasted, setPasted] = useState('')
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -27,6 +28,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
     const d = parseAny(text)
     const r = onApply(d)
     setDiffs(r.diffs)
+    if (d.sources?.length) setSources(d.sources)
     if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
     setNote(importMessage(intro, r.filled, r.diffs.length))
   }
@@ -126,6 +128,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
       {busy && <p role="status" className="text-xs text-muted">{busy}</p>}
       {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
       <ImportDiffs diffs={diffs} onChange={setDiffs} />
+      <AiSources urls={sources} />
     </div>
   )
 }
@@ -244,6 +247,23 @@ export function ImportDiffs({ diffs, onChange }: { diffs: ImportDiff[]; onChange
         <button type="button" onClick={() => onChange([])} className="min-h-9 px-3 text-[13px] text-muted">Dejar lo nuestro</button>
         {diffs.length > 1 && <button type="button" onClick={() => { diffs.forEach(d => d.use()); onChange([]) }} className="min-h-9 px-3 rounded-lg bg-accent text-white dark:text-bg text-[13px] font-semibold">Usar todos</button>}
       </div>
+    </div>
+  )
+}
+
+/** Otras webs que la IA dice haber usado: se enseñan para poder comprobar que es la misma vivienda */
+export function AiSources({ urls }: { urls: string[] }) {
+  if (!urls.length) return null
+  const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u } }
+  return (
+    <div className="flex flex-col gap-1 rounded-xl bg-bg p-2.5">
+      <span className="text-xs font-semibold">🔎 La IA ha completado con otras webs:</span>
+      <span className="flex gap-1.5 flex-wrap">
+        {urls.map(u => (
+          <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="min-h-8 px-2.5 rounded-full bg-card border border-line text-[12px] font-semibold text-accent flex items-center">{host(u)} ↗</a>
+        ))}
+      </span>
+      <span className="text-[11px] text-muted">Échales un vistazo para confirmar que es la misma casa (fotos, metros, dirección) antes de guardar.</span>
     </div>
   )
 }

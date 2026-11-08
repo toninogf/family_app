@@ -1,5 +1,6 @@
 // Descarga UNA foto de un anuncio (a partir del enlace que haya dado la IA) para guardarla en la app.
-// Solo usuarios con 2FA, solo https y solo servidores de fotos de portales inmobiliarios conocidos (nada de URLs arbitrarias).
+// Solo usuarios con 2FA y solo https. De portales conocidos, su servidor de fotos; de otras webs (la de la inmobiliaria),
+// solo enlaces que acaben en .jpg/.png/.webp/.avif, nunca direcciones internas. Y siempre tiene que llegar una imagen.
 // Devuelve la imagen tal cual (application/octet-stream); la app la comprime y la guarda en vuestra carpeta privada.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -15,7 +16,10 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 // Portales y sus servidores de imágenes (idealista: img*.idealista.com; pisos.com: imghs.net; habitaclia: habimg.com…)
 const HOSTS = ['idealista.com', 'fotocasa.es', 'pisos.com', 'imghs.net', 'habitaclia.com', 'habimg.com', 'yaencontre.com', 'milanuncios.com',
   'tucasa.com', 'enalquiler.com', 'housfy.com', 'solvia.es', 'altamirainmuebles.com', 'servihabitat.com', 'aliseda.es', 'haya.es', 'adevinta.com']
-const allowed = (host: string) => HOSTS.some(p => host === p || host.endsWith('.' + p))
+const portal = (host: string) => HOSTS.some(p => host === p || host.endsWith('.' + p))
+const publicHost = (h: string) => /\.[a-z]{2,}$/i.test(h) && !/^(localhost|.*\.local|.*\.internal|.*\.supabase\.co)$/i.test(h) && !/^[\d.]+$|:/.test(h)
+const isImageFile = (u: URL) => /\.(jpe?g|png|webp|avif)$/i.test(u.pathname)
+const allowedUrl = (u: URL) => u.protocol === 'https:' && !u.port && !u.username && publicHost(u.hostname) && (portal(u.hostname) || isImageFile(u))
 const MAX = 8 * 1024 * 1024
 
 Deno.serve(async (req: Request) => {
@@ -32,7 +36,7 @@ Deno.serve(async (req: Request) => {
   const { url } = await req.json().catch(() => ({ url: '' }))
   let target: URL
   try { target = new URL(String(url)) } catch { return json({ error: 'Enlace no válido' }, 400) }
-  if (target.protocol !== 'https:' || !allowed(target.hostname) || target.port) return json({ error: 'Solo fotos de portales inmobiliarios conocidos' }, 400)
+  if (!allowedUrl(target)) return json({ error: 'Solo enlaces directos a fotos (https)' }, 400)
 
   try {
     const site = target.hostname.split('.').slice(-2).join('.')
@@ -47,7 +51,7 @@ Deno.serve(async (req: Request) => {
     let res = r
     if (r.status >= 300 && r.status < 400 && r.headers.get('location')) {
       const next = new URL(r.headers.get('location')!, target)
-      if (next.protocol !== 'https:' || !allowed(next.hostname)) return json({ error: 'Redirección no permitida' }, 400)
+      if (next.protocol !== 'https:' || next.port || !publicHost(next.hostname)) return json({ error: 'Redirección no permitida' }, 400)
       res = await fetch(next, { headers: { 'Accept': 'image/*', 'Referer': `https://www.${site}/` }, redirect: 'manual', signal: AbortSignal.timeout(12000) })
     }
     if (!res.ok) return json({ blocked: true, status: res.status })
