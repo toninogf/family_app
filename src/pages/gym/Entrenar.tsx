@@ -181,7 +181,7 @@ function SessionView({ g, s, live, onClose, onFinished }: { g: Gym; s: Session; 
     setAlarm(true)
   }
 
-  // Aviso al terminar el descanso: 5 vibraciones largas, 5 pitidos y la barra parpadea
+  // Aviso al terminar el descanso: una vibración larga, un pitido y la barra parpadea
   useEffect(() => {
     if (rest && now >= rest.until) {
       ring()
