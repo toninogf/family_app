@@ -109,28 +109,11 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverPaths.join()])
   const open = m.homes.find(h => h.id === openId)
-  const c = m.criteria
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Qué buscamos */}
-      <button onClick={() => setCriteriaOpen(true)} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1.5">
-        <span className="flex justify-between items-baseline">
-          <span className="text-[15px] font-bold">Qué buscamos</span>
-          <span className="text-sm text-accent font-semibold">Editar</span>
-        </span>
-        {c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length || c.nice_to_haves?.length) ? (
-          <span className="flex gap-1.5 flex-wrap">
-            {c.max_price_cents && <Chip>Hasta {priceShort(c.max_price_cents)}</Chip>}
-            {c.min_rooms ? <Chip>{c.min_rooms}+ hab.</Chip> : null}
-            {c.min_m2 ? <Chip>{c.min_m2}+ m²</Chip> : null}
-            {(c.municipalities ?? []).map(z => <Chip key={`m-${z}`}>📍 {z}</Chip>)}
-            {c.zones.map(z => <Chip key={z}>{z}</Chip>)}
-            {c.must_haves.map(k => <Chip key={k}>🎯 {criteriaLabel(k)}</Chip>)}
-            {(c.nice_to_haves ?? []).map(k => <Chip key={`n-${k}`}>⭐ {criteriaLabel(k)}</Chip>)}
-          </span>
-        ) : <span className="text-sm text-muted">Presupuesto, zonas, imprescindibles y lo que valoramos. Cada piso marcará cuáles cumple.</span>}
-      </button>
+      {/* Qué buscamos: plegado por defecto (presupuesto y localidades + cuántos imprescindibles y valoramos) */}
+      <CriteriaCard c={m.criteria} onEdit={() => setCriteriaOpen(true)} />
 
       {nextVisits.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -529,6 +512,68 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }
         <button onClick={() => onEdit()} className={small}>✏️ Editar</button>
       </div>
     </div>
+  )
+}
+
+/** «Qué buscamos» en la portada: lo básico siempre a la vista y el detalle al desplegar */
+function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => void }) {
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem('buscamos.criterios') === '1' } catch { return false } })
+  const toggle = () => setOpen(o => { try { localStorage.setItem('buscamos.criterios', o ? '0' : '1') } catch { /* sin almacenamiento */ } return !o })
+  const nice = c?.nice_to_haves ?? []
+  const has = c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length || nice.length)
+  if (!has) {
+    return (
+      <button onClick={onEdit} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1.5">
+        <span className="flex justify-between items-baseline">
+          <span className="text-[15px] font-bold">Qué buscamos</span>
+          <span className="text-sm text-accent font-semibold">Editar</span>
+        </span>
+        <span className="text-sm text-muted">Presupuesto, zonas, imprescindibles y lo que valoramos. Cada piso marcará cuáles cumple.</span>
+      </button>
+    )
+  }
+  const basics = [
+    c.max_price_cents ? `Hasta ${priceShort(c.max_price_cents)}` : null,
+    c.min_rooms ? `${c.min_rooms}+ hab.` : null,
+    c.min_m2 ? `${c.min_m2}+ m²` : null
+  ].filter(Boolean).join(' · ')
+  const places = [...(c.municipalities ?? []), ...c.zones]
+  return (
+    <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
+      <div className="flex justify-between items-center gap-2">
+        <button onClick={toggle} aria-expanded={open} className="flex-1 min-h-10 text-left flex items-center gap-2">
+          <span className="text-[15px] font-bold">Qué buscamos</span>
+          <span className="text-muted" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        </button>
+        <button onClick={onEdit} className="min-h-10 px-1 text-sm text-accent font-semibold">Editar</button>
+      </div>
+      <button onClick={toggle} className="text-left flex flex-col gap-1">
+        {basics && <span className="text-[14px] font-semibold">{basics}</span>}
+        {places.length > 0 && <span className="text-[13px] text-muted truncate">📍 {places.join(', ')}</span>}
+        {!open && (c.must_haves.length > 0 || nice.length > 0) && (
+          <span className="flex gap-1.5 flex-wrap mt-0.5">
+            {c.must_haves.length > 0 && <Chip>🎯 {c.must_haves.length} imprescindible{c.must_haves.length === 1 ? '' : 's'}</Chip>}
+            {nice.length > 0 && <Chip>⭐ {nice.length} que valoramos</Chip>}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2 border-t border-line pt-2">
+          {c.must_haves.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[13px] font-semibold text-muted">🎯 Imprescindibles</span>
+              <span className="flex gap-1.5 flex-wrap">{c.must_haves.map(k => <Chip key={k}>{FEATURE_ICON[k] ? `${FEATURE_ICON[k]} ` : ''}{criteriaLabel(k)}</Chip>)}</span>
+            </div>
+          )}
+          {nice.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[13px] font-semibold text-muted">⭐ Valoramos</span>
+              <span className="flex gap-1.5 flex-wrap">{nice.map(k => <Chip key={k}>{FEATURE_ICON[k] ? `${FEATURE_ICON[k]} ` : ''}{criteriaLabel(k)}</Chip>)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 
