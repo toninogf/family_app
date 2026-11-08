@@ -19,6 +19,7 @@ import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
+import { AdPhotoFetch } from '../../components/ListingImport'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
 type Sort = 'estado' | 'recientes' | 'precio' | 'm2'
@@ -655,6 +656,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
 }) {
   // Capturas del anuncio: se leen en el móvil para rellenar la ficha y se guardan con el piso al guardar
   const [shots, setShots] = useState<File[]>([])
+  // Fotos traídas desde los enlaces que dé la IA (se guardan como fotos del piso)
+  const [photoLinks, setPhotoLinks] = useState<string[]>([])
+  const [adPhotos, setAdPhotos] = useState<File[]>([])
   const [ocr, setOcr] = useState<string | null>(null)
   const [title, setTitle] = useState(home?.title ?? '')
   const [url, setUrl] = useState(home?.url ?? initial?.url ?? '')
@@ -692,6 +696,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
 
   /** Rellena la ficha con lo que se haya sacado del anuncio (solo los datos encontrados) */
   function apply(d: ListingData) {
+    if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
     if (d.title) setTitle(t => t.trim() ? t : d.title!)
     if (d.price_eur) setAmount(priceInput(Math.round(d.price_eur * 100)))
     if (d.size_m2) setM2(String(d.size_m2).replace('.', ','))
@@ -831,6 +836,10 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       for (const f of shots) await m.addPhoto(householdId, homeId, f, 'anuncio')
       setOcr(null)
     }
+    if (!err && homeId && adPhotos.length) {
+      for (const [i, f] of adPhotos.entries()) { setOcr(`Guardando fotos… ${i + 1} de ${adPhotos.length}`); await m.addPhoto(householdId, homeId, f, 'foto') }
+      setOcr(null)
+    }
     // Situarlo en el mapa en segundo plano (si es nuevo o ha cambiado la dirección)
     if (!err && homeId) {
       const id = homeId
@@ -887,6 +896,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           ) : (
             <button type="button" onClick={() => setPasteOpen(true)} className="self-start min-h-10 text-sm text-accent font-semibold">📋 Pegar el texto del anuncio</button>
           )}
+          <AdPhotoFetch urls={photoLinks} photos={adPhotos} onPhotos={setAdPhotos} />
           {importNote && <p role="status" className={`text-xs ${importNote.ok ? 'text-accent' : 'text-danger'}`}>{importNote.text}</p>}
         </div>
         <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />

@@ -9,11 +9,13 @@ import { TextArea, TextField } from './Sheet'
  * «Rellenar desde el anuncio»: enlace (leer o pedírselo a una IA), pegar la respuesta o el texto del anuncio,
  * y capturas que se leen en el móvil. Llama a onApply con lo encontrado; las capturas las guarda quien lo usa.
  */
-export default function ListingImport({ url, onUrl, onApply, shots, onShots }: {
+export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos }: {
   url: string; onUrl: (v: string) => void
   onApply: (d: ListingData) => void
   shots: File[]; onShots: (f: File[]) => void
+  adPhotos: File[]; onAdPhotos: (f: File[]) => void
 }) {
+  const [photoLinks, setPhotoLinks] = useState<string[]>([])
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasted, setPasted] = useState('')
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -24,6 +26,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots }: {
     const d = parseAny(text)
     const got = filledLabels(d)
     onApply(d)
+    if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
     setNote(got.length
       ? { ok: true, text: `${intro}: ${got.join(', ')}. Revísalo antes de guardar.` }
       : { ok: false, text: 'No he encontrado datos en ese texto. Prueba a copiar el bloque de precio y características del anuncio.' })
@@ -120,8 +123,77 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots }: {
       ) : (
         <button type="button" onClick={() => setPasteOpen(true)} className="self-start min-h-10 text-sm text-accent font-semibold">📋 Pegar el texto del anuncio</button>
       )}
+      <AdPhotoFetch urls={photoLinks} photos={adPhotos} onPhotos={onAdPhotos} />
       {busy && <p role="status" className="text-xs text-muted">{busy}</p>}
       {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
+    </div>
+  )
+}
+
+/** Tipo real de la imagen por sus primeros bytes (la función la manda como binario genérico) */
+async function sniff(b: Blob): Promise<string | null> {
+  const h = new Uint8Array(await b.slice(0, 12).arrayBuffer())
+  if (h[0] === 0xff && h[1] === 0xd8) return 'image/jpeg'
+  if (h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47) return 'image/png'
+  if (String.fromCharCode(...h.slice(0, 4)) === 'RIFF' && String.fromCharCode(...h.slice(8, 12)) === 'WEBP') return 'image/webp'
+  if (String.fromCharCode(...h.slice(4, 12)).startsWith('ftypavi')) return 'image/avif'
+  return null
+}
+
+/**
+ * Fotos del anuncio a partir de los enlaces que haya dado la IA: se descargan a través de la app (función
+ * «listing-photos», solo portales conocidos) y quedan listas para guardarse como fotos al pulsar «Guardar».
+ */
+export function AdPhotoFetch({ urls, photos, onPhotos }: { urls: string[]; photos: File[]; onPhotos: (f: File[]) => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [preview] = useState(() => new Map<File, string>())
+  if (!urls.length && !photos.length) return null
+
+  async function fetchAll() {
+    setNote(null)
+    const got: File[] = []
+    let failed = 0
+    for (const [i, u] of urls.entries()) {
+      setBusy(`Trayendo foto ${i + 1} de ${urls.length}…`)
+      try {
+        const { data, error } = await supabase.functions.invoke('listing-photos', { body: { url: u } })
+        if (error || !(data instanceof Blob) || data.size < 2000) { failed++; continue }
+        const type = await sniff(data)
+        if (!type) { failed++; continue }
+        got.push(new File([data], `anuncio-${i + 1}.${type.split('/')[1]}`, { type }))
+      } catch { failed++ }
+    }
+    setBusy(null)
+    onPhotos([...photos, ...got].slice(0, 20))
+    setNote(got.length
+      ? { ok: true, text: `${got.length} foto${got.length > 1 ? 's' : ''} lista${got.length > 1 ? 's' : ''}${failed ? ` (${failed} no se ha${failed > 1 ? 'n' : ''} podido traer)` : ''}. Se guardan al pulsar «Guardar».` }
+      : { ok: false, text: 'El portal no deja descargar esas fotos desde fuera, o la IA ha dado enlaces que no existen. Usa capturas de pantalla o guarda las fotos del anuncio en el móvil y súbelas.' })
+  }
+
+  const url = (f: File) => { if (!preview.has(f)) preview.set(f, URL.createObjectURL(f)); return preview.get(f)! }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl bg-bg p-2">
+      {urls.length > 0 && (
+        <button type="button" onClick={fetchAll} disabled={!!busy}
+          className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold disabled:opacity-50">
+          {busy ?? `🖼️ Traer ${urls.length} foto${urls.length > 1 ? 's' : ''} del anuncio`}
+        </button>
+      )}
+      {photos.length > 0 && (
+        <div className="grid grid-cols-4 gap-1.5">
+          {photos.map((f, i) => (
+            <div key={i} className="relative aspect-square">
+              <img src={url(f)} alt="" className="w-full h-full object-cover rounded-lg" />
+              <button type="button" onClick={() => onPhotos(photos.filter(x => x !== f))} aria-label="Quitar foto"
+                className="absolute top-0.5 right-0.5 w-7 h-7 rounded-full bg-ink/70 text-bg text-sm">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
+      {!note && urls.length > 0 && <p className="text-xs text-muted">La IA ha dado enlaces de fotos: pruébalos. Si el portal no las deja descargar, se usan capturas.</p>}
     </div>
   )
 }

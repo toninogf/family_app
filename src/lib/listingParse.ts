@@ -27,6 +27,8 @@ export type ListingData = {
   plot_m2?: number
   year_built?: number
   summary?: string
+  /** Enlaces directos a las fotos del anuncio (si la IA los da) */
+  photo_urls?: string[]
   advertiser?: 'agencia' | 'particular'
   agency?: string
   contact?: string
@@ -171,7 +173,7 @@ export function firstUrl(text: string) {
 export function filledLabels(d: ListingData) {
   const L: [keyof ListingData, string][] = [['price_eur', 'precio'], ['size_m2', 'm²'], ['rooms', 'habitaciones'], ['baths', 'baños'], ['floor', 'planta'],
     ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI'], ['power_eur', 'luz'], ['water_eur', 'agua'], ['heating_eur', 'calefacción']]
-  L.push(['useful_m2', 'm² útiles'], ['plot_m2', 'parcela'], ['year_built', 'año'], ['notes', 'notas'], ['advertiser', 'anunciante'], ['agency', 'agencia'], ['contact', 'contacto'], ['phone', 'teléfono'], ['email', 'email'], ['ref', 'referencia'])
+  L.push(['useful_m2', 'm² útiles'], ['plot_m2', 'parcela'], ['year_built', 'año'], ['notes', 'notas'], ['advertiser', 'anunciante'], ['agency', 'agencia'], ['contact', 'contacto'], ['phone', 'teléfono'], ['email', 'email'], ['ref', 'referencia'], ['photo_urls', 'enlaces de fotos'])
   return L.filter(([k]) => d[k] != null && !(Array.isArray(d[k]) && !(d[k] as unknown[]).length)).map(([, l]) => l)
 }
 
@@ -207,17 +209,38 @@ AGENCIA: (nombre de la inmobiliaria, si es agencia)
 CONTACTO: (nombre de la persona de contacto)
 TELEFONO:
 EMAIL:
-REFERENCIA: (referencia del anuncio)`
+REFERENCIA: (referencia del anuncio)
+FOTOS: (enlaces directos a las fotos del anuncio, los que veas de verdad en la página —por ejemplo https://img3.idealista.com/…jpg—, uno por línea; máximo 20; si no puedes verlos, pon «-»)`
+}
+
+// Servidores de fotos de los portales (los mismos que permite la función que las descarga)
+const PHOTO_HOSTS = ['idealista.com', 'fotocasa.es', 'pisos.com', 'imghs.net', 'habitaclia.com', 'habimg.com', 'yaencontre.com', 'milanuncios.com',
+  'tucasa.com', 'enalquiler.com', 'housfy.com', 'solvia.es', 'altamirainmuebles.com', 'servihabitat.com', 'aliseda.es', 'haya.es', 'adevinta.com']
+
+/** Enlaces a fotos de portales que aparezcan en cualquier parte del texto (sin repetir; máximo 20) */
+export function photoUrls(raw: string): string[] {
+  const out: string[] = []
+  for (const m of raw.matchAll(/https:\/\/[^\s"'<>()\[\]]+/gi)) {
+    const u = m[0].replace(/[.,;]+$/, '')
+    try {
+      const x = new URL(u)
+      const okHost = PHOTO_HOSTS.some(h => x.hostname === h || x.hostname.endsWith('.' + h))
+      const looksImage = /\.(jpe?g|png|webp|avif)$/i.test(x.pathname) || /^(img\d*|fotos?\d*|images?\d*|static\d*|media\d*|cdn\d*)\./i.test(x.hostname)
+      if (okHost && looksImage && !out.includes(u)) out.push(u)
+    } catch { /* no es un enlace válido */ }
+    if (out.length >= 20) break
+  }
+  return out
 }
 
 const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'AÑO', 'ANO', 'RESUMEN',
-  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA']
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -280,8 +303,12 @@ export function parseAiBlock(raw: string): ListingData | null {
 
 /** Lee cualquier texto: primero como respuesta de IA y, lo que falte, como texto suelto del anuncio */
 export function parseAny(raw: string): ListingData {
-  const ai = parseAiBlock(raw)
-  const free = parseListing(raw)
-  if (!ai) return free
-  return { ...free, ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v != null)) }
+  // Los enlaces de fotos se quitan antes de leer los datos (sus números confundirían precio, metros…)
+  const photos = photoUrls(raw)
+  const text = raw.replace(/https?:\/\/[^\s"'<>()]+/gi, ' ')
+  const ai = parseAiBlock(text)
+  const free = parseListing(text)
+  const extra = photos.length ? { photo_urls: photos } : {}
+  if (!ai) return { ...free, ...extra }
+  return { ...free, ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v != null)), ...extra }
 }

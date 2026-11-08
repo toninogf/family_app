@@ -24,6 +24,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const firstLink = l?.links[0]?.url ?? ''
   const [url, setUrl] = useState(firstLink)
   const [shots, setShots] = useState<File[]>([])
+  const [adPhotos, setAdPhotos] = useState<File[]>([])
   const [amount, setAmount] = useState(priceInput(l?.price_cents))
   const [published, setPublished] = useState(l?.published_on ?? '')
   const [title, setTitle] = useState(l?.title ?? '')
@@ -105,6 +106,12 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
         await m.addSalePhoto(householdId, shots[i], 'anuncio')
       }
     }
+    if (!err && adPhotos.length) {
+      for (let i = 0; i < adPhotos.length; i++) {
+        setBusy(`Guardando fotos… ${i + 1} de ${adPhotos.length}`)
+        await m.addSalePhoto(householdId, adPhotos[i], 'foto')
+      }
+    }
     setBusy(null)
     if (err) setError(err); else onClose()
   }
@@ -112,7 +119,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   return (
     <Sheet title="Ficha de nuestro anuncio" onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
-        <ListingImport url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} />
+        <ListingImport url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} adPhotos={adPhotos} onAdPhotos={setAdPhotos} />
         <TextField label="Título" value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Ej. Chalet con piscina en Las Cuestas" />
         <div className="grid grid-cols-2 gap-3">
           <TextField label="Precio publicado (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="285.000" />
