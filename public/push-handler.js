@@ -8,7 +8,8 @@ self.addEventListener('push', event => {
     badge: '/icon.svg',
     tag: data.tag,
     lang: 'es',
-    vibrate: data.vibrate,
+    // Fin de descanso: una sola vibración (el aviso del servidor puede traer un patrón más largo)
+    vibrate: data.kind === 'gym-rest' ? [1000] : data.vibrate,
     renotify: !!(data.renotify && data.tag),
     requireInteraction: !!data.requireInteraction,
     silent: false,

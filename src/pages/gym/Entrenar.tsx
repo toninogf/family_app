@@ -85,11 +85,11 @@ export default function Entrenar({ g, gymDays }: { g: Gym; gymDays: number[] }) 
 }
 
 // ---------- Aviso de fin de descanso: vibración larga, pitidos y pantalla encendida ----------
-const PULSES = 5          // vibraciones (y pitidos)
-const PULSE_MS = 700      // duración de cada vibración
+const PULSES = 1          // vibraciones (y pitidos): un solo aviso
+const PULSE_MS = 1000     // duración de la vibración
 const EVERY_MS = 950      // una cada casi un segundo
 
-/** 5 vibraciones independientes: muchos Android solo hacen el primer tramo si se manda un patrón */
+/** Vibraciones independientes (muchos Android solo hacen el primer tramo si se manda un patrón) */
 function vibratePulses(): number[] {
   const timers: number[] = []
   for (let i = 0; i < PULSES; i++) {
@@ -120,11 +120,11 @@ function beeps(times = 5) {
     const at = t0 + (i * EVERY_MS) / 1000
     gain.gain.setValueAtTime(0.0001, at)
     gain.gain.exponentialRampToValueAtTime(0.5, at + 0.02)
-    gain.gain.setValueAtTime(0.5, at + 0.55)
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.6)
+    gain.gain.setValueAtTime(0.5, at + 0.85)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.9)
     osc.connect(gain).connect(audio.destination)
     osc.start(at)
-    osc.stop(at + 0.62)
+    osc.stop(at + 0.92)
   }
 }
 
