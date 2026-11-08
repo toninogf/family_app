@@ -371,7 +371,7 @@ export function parseAiBlock(raw: string): ListingData | null {
   if (values.SOLAR) {
     const t = fold(values.SOLAR).toLowerCase()
     if (!/^no\b|no tiene|sin placas|no consta/.test(t)) {
-      const add = [/fotovolt|autoconsumo|kwp|placas solares|paneles solares/.test(t) && !/^termic/.test(t) ? 'placas_solares' : null, /termic|agua caliente|acs/.test(t) ? 'solar_termica' : null]
+      const add = [/fotovolt|autoconsumo|kwp|placas solares|paneles solares/.test(t) && !/^termic/.test(t) ? 'placas_solares' : null, /termic|agua caliente|acs/.test(t) ? 'solar_termica' : null, /bateri/.test(t) && !/sin bateri/.test(t) ? 'bateria' : null]
         .filter((x): x is string => !!x)
       if (add.length) out.features = [...new Set([...(out.features ?? []), ...add])]
       out.solar_note = values.SOLAR.slice(0, 200)
