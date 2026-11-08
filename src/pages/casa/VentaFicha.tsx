@@ -232,7 +232,9 @@ export function VentaPhotos({ m, householdId, kind }: { m: Mudanza; householdId:
   const photos = m.salePhotos.filter(p => p.kind === kind)
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
-  const [view, setView] = useState<SalePhoto | null>(null)
+  const [view, setViewRaw] = useState<SalePhoto | null>(null)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const setView = (p: SalePhoto | null) => { setConfirmDel(false); setViewRaw(p) }
   const ad = kind === 'anuncio'
   useEffect(() => {
     let alive = true
@@ -273,14 +275,18 @@ export function VentaPhotos({ m, householdId, kind }: { m: Mudanza; householdId:
       )}
       {view && (
         <div className="fixed inset-0 z-40 bg-black/90 flex flex-col" onClick={() => setView(null)}>
-          <div className="flex justify-between p-3" onClick={e => e.stopPropagation()}>
+          <div className="flex justify-between items-center px-3 pb-3 pt-[max(env(safe-area-inset-top),12px)]" onClick={e => e.stopPropagation()}>
             <div className="flex gap-1">
-              <button onClick={async () => { await m.removeSalePhoto(view); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">Borrar</button>
+              {confirmDel ? (
+                <button onClick={async () => { await m.removeSalePhoto(view); setView(null) }} className="min-h-11 px-4 rounded-xl bg-danger text-white text-sm font-bold">¿Seguro? Borrar</button>
+              ) : (
+                <button onClick={() => setConfirmDel(true)} className="min-h-11 px-4 rounded-xl bg-white/15 text-white text-sm font-semibold">🗑️ Borrar</button>
+              )}
               {urls[view.id] && <a href={urls[view.id]} download target="_blank" rel="noopener noreferrer" className="min-h-11 px-3 text-sm font-semibold text-white flex items-center">Descargar</a>}
             </div>
             <button onClick={() => setView(null)} aria-label="Cerrar" className="w-11 h-11 text-white text-2xl">×</button>
           </div>
-          <div className={`flex-1 p-2 ${ad ? 'overflow-y-auto' : 'flex items-center justify-center'}`}>
+          <div className={`flex-1 p-2 pb-[max(env(safe-area-inset-bottom),8px)] ${ad ? 'overflow-y-auto' : 'flex items-center justify-center'}`}>
             {urls[view.id] && <img src={urls[view.id]} alt="" className={ad ? 'w-full h-auto' : 'max-w-full max-h-full object-contain'} />}
           </div>
         </div>

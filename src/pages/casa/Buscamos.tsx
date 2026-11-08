@@ -505,7 +505,9 @@ function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId:
   const ad = kind === 'anuncio'
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
-  const [view, setView] = useState<Photo | null>(null)
+  const [view, setViewRaw] = useState<Photo | null>(null)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const setView = (p: Photo | null) => { setConfirmDel(false); setViewRaw(p) }
 
   useEffect(() => {
     let alive = true
@@ -538,7 +540,7 @@ function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId:
         : 'Fotos del anuncio o de la visita: se guardan en privado, solo para vosotros. La primera sale de portada (en cada foto puedes elegir otra).'}</p> : (
         <div className={`grid ${ad ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5`}>
           {photos.map(p => (
-            <button key={p.id} onClick={() => setView(p)} className={`${ad ? 'aspect-[9/16]' : 'aspect-square'} rounded-lg overflow-hidden bg-bg`}>
+            <button type="button" key={p.id} onClick={() => setView(p)} className={`${ad ? 'aspect-[9/16]' : 'aspect-square'} rounded-lg overflow-hidden bg-bg`}>
               {urls[p.id] && <img src={urls[p.id]} alt="" className={`w-full h-full ${ad ? 'object-cover object-top' : 'object-cover'}`} loading="lazy" />}
             </button>
           ))}
@@ -546,16 +548,21 @@ function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId:
       )}
       {view && (
         <div className="fixed inset-0 z-40 bg-black/90 flex flex-col" onClick={() => setView(null)}>
-          <div className="flex justify-between p-3" onClick={e => e.stopPropagation()}>
-            <button onClick={async () => { await m.removePhoto(view); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">{ad ? 'Borrar captura' : 'Borrar foto'}</button>
+          {/* Debajo de la barra de estado del móvil (la app ocupa toda la pantalla) */}
+          <div className="flex justify-between items-center gap-2 px-3 pb-3 pt-[max(env(safe-area-inset-top),12px)]" onClick={e => e.stopPropagation()}>
+            {confirmDel ? (
+              <button type="button" onClick={async () => { await m.removePhoto(view); setConfirmDel(false); setView(null) }} className="min-h-11 px-4 rounded-xl bg-danger text-white text-sm font-bold">¿Seguro? Borrar</button>
+            ) : (
+              <button type="button" onClick={() => setConfirmDel(true)} className="min-h-11 px-4 rounded-xl bg-white/15 text-white text-sm font-semibold">🗑️ {ad ? 'Borrar captura' : 'Borrar foto'}</button>
+            )}
             <span className="flex items-center">
               {coverPhoto(h, m.photos)?.id === view.id
                 ? <span className="min-h-11 px-3 text-sm font-semibold text-white/80 flex items-center">★ Es la portada</span>
-                : <button onClick={async () => { await m.write('homes', { cover_photo_id: view.id }, h.id); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">☆ Poner de portada</button>}
-              <button onClick={() => setView(null)} aria-label="Cerrar" className="w-11 h-11 text-white text-2xl">×</button>
+                : <button type="button" onClick={async () => { await m.write('homes', { cover_photo_id: view.id }, h.id); setView(null) }} className="min-h-11 px-3 text-sm font-semibold text-white">☆ Poner de portada</button>}
+              <button type="button" onClick={() => setView(null)} aria-label="Cerrar" className="w-11 h-11 text-white text-2xl">×</button>
             </span>
           </div>
-          <div className={`flex-1 p-2 ${ad ? 'overflow-y-auto' : 'flex items-center justify-center'}`}>
+          <div className={`flex-1 p-2 pb-[max(env(safe-area-inset-bottom),8px)] ${ad ? 'overflow-y-auto' : 'flex items-center justify-center'}`}>
             {urls[view.id] && <img src={urls[view.id]} alt="" className={ad ? 'w-full h-auto' : 'max-w-full max-h-full object-contain'} />}
           </div>
         </div>
@@ -1016,6 +1023,13 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           ))}
           {links.length < 10 && <button type="button" onClick={() => setLinks([...links, { label: '', url: '' }])} className="self-start min-h-10 text-sm text-accent font-semibold">+ Añadir enlace (otro portal, la inmobiliaria…)</button>}
         </fieldset>
+        {home && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-line p-3">
+            <Photos h={home} m={m} householdId={householdId} kind="foto" />
+            <Photos h={home} m={m} householdId={householdId} kind="anuncio" />
+            <p className="text-xs text-muted -mt-1">Toca una foto para verla, borrarla o ponerla de portada.</p>
+          </div>
+        )}
         <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />
         <div className="grid grid-cols-2 gap-3">
           <TextField label="Precio (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="320.000" />
