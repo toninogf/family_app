@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { HOME_STATUS, priceShort, type Home, type HomeStatus, type Mudanza } from '../../lib/mudanza'
@@ -38,14 +39,9 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('popstate', onPop); window.removeEventListener('keydown', onKey) }
   }, [])
-  // El mapa tiene que recalcular su tamaño al cambiar; se mantiene el mismo centro
   useEffect(() => {
-    const mp = map.current
-    if (!mp) return
-    const center = mp.getCenter()
     document.body.style.overflow = full ? 'hidden' : ''
-    const t = setTimeout(() => { mp.invalidateSize(); mp.setView(center, mp.getZoom(), { animate: false }) }, 60)
-    return () => { clearTimeout(t); document.body.style.overflow = '' }
+    return () => { document.body.style.overflow = '' }
   }, [full])
   // Solo se repinta (y se reencuadra) si cambian los pisos o sus datos visibles, no en cada render
   const drawKey = homes.map(h => [h.id, h.lat, h.lng, h.geo_precision, h.status, h.price_cents, h.title, h.municipality, h.zone].join(':')).join('|')
@@ -54,11 +50,7 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
   useEffect(() => {
     if (!box.current || map.current) return
     map.current = L.map(box.current, { zoomControl: true, attributionControl: true }).setView([40.42, -3.7], 9)
-    // Mapa de OpenStreetMap: exige saber desde qué web se pide (la app no envía «referer» por defecto)
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin',
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    }).addTo(map.current)
+    baseLayer().addTo(map.current)
     layer.current = L.layerGroup().addTo(map.current)
     return () => { map.current?.remove(); map.current = null }
   }, [])
@@ -85,31 +77,7 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
   // Pintar las etiquetas
   useEffect(() => {
     if (!map.current || !layer.current) return
-    layer.current.clearLayers()
-    const placed = homes.filter(h => h.lat != null && h.lng != null)
-    for (const h of placed) {
-      const approx = h.geo_precision === 'localidad' || h.geo_precision === 'zona'
-      const color = COLORS[h.status]
-      const label = `${approx ? '≈ ' : ''}${h.price_cents ? priceShort(h.price_cents) : '?'}`
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="transform:translate(-50%,-100%);display:inline-block;white-space:nowrap;padding:3px 8px;border-radius:999px;font:700 12px system-ui,sans-serif;
-          background:${approx ? '#fff' : color};color:${approx ? color : '#fff'};border:2px ${approx ? 'dashed' : 'solid'} ${color};box-shadow:0 1px 4px rgba(0,0,0,.3)">${esc(label)}</div>`,
-        iconSize: [0, 0]
-      })
-      const popup = document.createElement('div')
-      popup.style.minWidth = '170px'
-      popup.innerHTML = `<div style="font-weight:700;font-size:14px;margin-bottom:2px">${esc(h.title)}</div>
-        <div style="font-size:12px;color:#5B6662">📍 ${esc([h.municipality, h.zone].filter(Boolean).join(' · ') || 'Sin localidad')}</div>
-        <div style="font-size:12px;margin:2px 0 6px">${esc([h.price_cents ? priceShort(h.price_cents) : '', h.size_m2 ? `${Number(h.size_m2)} m²` : '', h.rooms != null ? `${h.rooms} hab.` : '', HOME_STATUS[h.status]].filter(Boolean).join(' · '))}</div>
-        ${approx ? `<div style="font-size:11px;color:#C77A12;margin-bottom:6px">Posición aproximada (${h.geo_precision === 'zona' ? 'zona' : 'centro de la localidad'}). Pon la calle o un enlace de Google Maps para afinarla.</div>` : ''}`
-      const btn = document.createElement('button')
-      btn.textContent = 'Abrir ficha'
-      btn.style.cssText = 'width:100%;min-height:36px;border-radius:10px;background:#2D4BB3;color:#fff;font-weight:700;font-size:13px;border:0'
-      btn.onclick = () => openRef.current(h.id)
-      popup.appendChild(btn)
-      L.marker([h.lat!, h.lng!], { icon, title: h.title }).bindPopup(popup).addTo(layer.current)
-    }
+    const placed = drawHomes(layer.current, homes, id => openRef.current(id))
     if (placed.length === 1) map.current.setView([placed[0].lat!, placed[0].lng!], 14)
     else if (placed.length > 1) map.current.fitBounds(L.latLngBounds(placed.map(h => [h.lat!, h.lng!] as [number, number])), { padding: [40, 40], maxZoom: 15 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,13 +88,17 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
 
   return (
     <div className="flex flex-col gap-2">
-      <div className={full ? 'fixed inset-0 z-[60] bg-bg' : 'relative'}>
-        <div ref={box} className={`w-full z-0 ${full ? 'h-full' : 'h-[62vh] rounded-2xl overflow-hidden border border-line'}`} role="region" aria-label="Mapa de pisos" />
-        <button type="button" onClick={full ? exitFull : enterFull} aria-label={full ? 'Salir de pantalla completa' : 'Ver el mapa a pantalla completa'}
-          className={`absolute right-3 z-[1001] min-h-11 px-3 rounded-xl bg-card/95 border border-line shadow text-sm font-semibold ${full ? 'top-[calc(env(safe-area-inset-top)+12px)]' : 'top-3'}`}>
-          {full ? '✕ Cerrar' : '⛶ Pantalla completa'}
-        </button>
+      <div className="relative">
+        <div ref={box} className="w-full h-[62vh] rounded-2xl overflow-hidden border border-line z-0" role="region" aria-label="Mapa de pisos" />
+        <button type="button" onClick={enterFull} aria-label="Ver el mapa a pantalla completa"
+          className="absolute right-3 top-3 z-[1001] min-h-11 px-3 rounded-xl bg-card/95 border border-line shadow text-sm font-semibold">⛶ Pantalla completa</button>
       </div>
+      {full && createPortal(
+        // Mapa aparte, creado ya a pantalla completa (así carga bien el fondo), con el mismo encuadre
+        <FullMap homes={homes} drawKey={drawKey} start={map.current ? { center: map.current.getCenter(), zoom: map.current.getZoom() } : null}
+          onOpen={id => openRef.current(id)} onClose={exitFull} />,
+        document.body
+      )}
       <p className="text-xs text-muted">
         Toca un precio para ver el piso. <span className="font-semibold">≈</span> con borde discontinuo = posición aproximada (solo zona o localidad).
       </p>
@@ -138,6 +110,84 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
           Añade la calle o un enlace de Google Maps en su ficha.
         </p>
       )}
+    </div>
+  )
+}
+
+/** Fondo de OpenStreetMap (exige saber desde qué web se pide: la app no envía «referer» por defecto) */
+function baseLayer() {
+  return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  })
+}
+
+/** Pinta los pisos como etiquetas con su precio; devuelve los que tienen posición */
+function drawHomes(layer: L.LayerGroup, homes: Home[], onOpen: (id: string) => void) {
+  layer.clearLayers()
+  const placed = homes.filter(h => h.lat != null && h.lng != null)
+  for (const h of placed) {
+    const approx = h.geo_precision === 'localidad' || h.geo_precision === 'zona'
+    const color = COLORS[h.status]
+    const label = `${approx ? '≈ ' : ''}${h.price_cents ? priceShort(h.price_cents) : '?'}`
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="transform:translate(-50%,-100%);display:inline-block;white-space:nowrap;padding:3px 8px;border-radius:999px;font:700 12px system-ui,sans-serif;
+        background:${approx ? '#fff' : color};color:${approx ? color : '#fff'};border:2px ${approx ? 'dashed' : 'solid'} ${color};box-shadow:0 1px 4px rgba(0,0,0,.3)">${esc(label)}</div>`,
+      iconSize: [0, 0]
+    })
+    const popup = document.createElement('div')
+    popup.style.minWidth = '170px'
+    popup.innerHTML = `<div style="font-weight:700;font-size:14px;margin-bottom:2px">${esc(h.title)}</div>
+      <div style="font-size:12px;color:#5B6662">📍 ${esc([h.municipality, h.zone].filter(Boolean).join(' · ') || 'Sin localidad')}</div>
+      <div style="font-size:12px;margin:2px 0 6px">${esc([h.price_cents ? priceShort(h.price_cents) : '', h.size_m2 ? `${Number(h.size_m2)} m²` : '', h.rooms != null ? `${h.rooms} hab.` : '', HOME_STATUS[h.status]].filter(Boolean).join(' · '))}</div>
+      ${approx ? `<div style="font-size:11px;color:#C77A12;margin-bottom:6px">Posición aproximada (${h.geo_precision === 'zona' ? 'zona' : 'centro de la localidad'}). Pon la calle o un enlace de Google Maps para afinarla.</div>` : ''}`
+    const btn = document.createElement('button')
+    btn.textContent = 'Abrir ficha'
+    btn.style.cssText = 'width:100%;min-height:36px;border-radius:10px;background:#2D4BB3;color:#fff;font-weight:700;font-size:13px;border:0'
+    btn.onclick = () => onOpen(h.id)
+    popup.appendChild(btn)
+    L.marker([h.lat!, h.lng!], { icon, title: h.title }).bindPopup(popup).addTo(layer)
+  }
+  return placed
+}
+
+/** El mapa a pantalla completa (encima de todo, fuera del contenido de la página) */
+function FullMap({ homes, drawKey, start, onOpen, onClose }: {
+  homes: Home[]; drawKey: string; start: { center: L.LatLng; zoom: number } | null; onOpen: (id: string) => void; onClose: () => void
+}) {
+  const box = useRef<HTMLDivElement>(null)
+  const map = useRef<L.Map | null>(null)
+  const layer = useRef<L.LayerGroup | null>(null)
+  const openRef = useRef(onOpen)
+  openRef.current = onOpen
+
+  useEffect(() => {
+    if (!box.current) return
+    const mp = L.map(box.current, { zoomControl: true }).setView(start?.center ?? [40.42, -3.7], start?.zoom ?? 9)
+    baseLayer().addTo(mp)
+    layer.current = L.layerGroup().addTo(mp)
+    map.current = mp
+    // Por si el tamaño definitivo llega un instante después (barras del navegador, giro del móvil)
+    const ro = new ResizeObserver(() => mp.invalidateSize())
+    ro.observe(box.current)
+    const t = setTimeout(() => mp.invalidateSize(), 150)
+    return () => { clearTimeout(t); ro.disconnect(); mp.remove(); map.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!layer.current) return
+    const placed = drawHomes(layer.current, homes, id => openRef.current(id))
+    if (!start && map.current && placed.length) map.current.fitBounds(L.latLngBounds(placed.map(h => [h.lat!, h.lng!] as [number, number])), { padding: [40, 40], maxZoom: 15 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawKey])
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-[#ddd]" role="dialog" aria-label="Mapa a pantalla completa">
+      <div ref={box} className="absolute inset-0" />
+      <button type="button" onClick={onClose} aria-label="Salir de pantalla completa"
+        className="absolute right-3 top-[calc(env(safe-area-inset-top)+12px)] z-[1001] min-h-11 px-4 rounded-xl bg-card border border-line shadow text-sm font-semibold">✕ Cerrar</button>
     </div>
   )
 }
