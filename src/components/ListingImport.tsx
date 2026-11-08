@@ -9,15 +9,18 @@ import { TextArea, TextField } from './Sheet'
  * «Rellenar desde el anuncio»: enlace (leer o pedírselo a una IA), pegar la respuesta o el texto del anuncio,
  * y capturas que se leen en el móvil. Llama a onApply con lo encontrado; las capturas las guarda quien lo usa.
  */
-export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos }: {
+export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos, known }: {
   url: string; onUrl: (v: string) => void
   onApply: (d: ListingData) => { filled: string[]; diffs: ImportDiff[] }
   shots: File[]; onShots: (f: File[]) => void
   adPhotos: File[]; onAdPhotos: (f: File[]) => void
+  /** Lo que ya está apuntado: la IA lo compara con el anuncio */
+  known?: Record<string, string>
 }) {
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
   const [diffs, setDiffs] = useState<ImportDiff[]>([])
   const [sources, setSources] = useState<string[]>([])
+  const [changes, setChanges] = useState<string | undefined>()
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasted, setPasted] = useState('')
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -29,6 +32,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
     const r = onApply(d)
     setDiffs(r.diffs)
     if (d.sources?.length) setSources(d.sources)
+    if (d.changes) setChanges(d.changes)
     if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
     setNote(importMessage(intro, r.filled, r.diffs.length))
   }
@@ -48,7 +52,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
 
   async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
     if (!full) return
-    const prompt = aiPrompt(full.replace(/\?.*$/, ''))
+    const prompt = aiPrompt(full.replace(/\?.*$/, ''), known)
     try { await navigator.clipboard.writeText(prompt) } catch { /* sin permiso: se abre igualmente */ }
     const q = encodeURIComponent(prompt)
     const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
@@ -128,6 +132,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
       {busy && <p role="status" className="text-xs text-muted">{busy}</p>}
       {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
       <ImportDiffs diffs={diffs} onChange={setDiffs} />
+      <AiChanges text={changes} />
       <AiSources urls={sources} />
     </div>
   )
@@ -266,4 +271,20 @@ export function AiSources({ urls }: { urls: string[] }) {
       <span className="text-[11px] text-muted">Échales un vistazo para confirmar que es la misma casa (fotos, metros, dirección) antes de guardar.</span>
     </div>
   )
+}
+
+/** Lo que la IA dice que ha cambiado respecto a lo que teníais (bajadas de precio, datos nuevos…) */
+export function AiChanges({ text }: { text?: string }) {
+  if (!text) return null
+  return (
+    <div className="flex flex-col gap-1 rounded-xl bg-bg p-2.5">
+      <span className="text-xs font-semibold">🔁 Lo que dice la IA al compararlo con lo vuestro:</span>
+      <span className="text-[13px] whitespace-pre-line">{text}</span>
+    </div>
+  )
+}
+
+/** Datos ya apuntados que se le pasan a la IA para que los compruebe (nunca notas privadas ni contactos) */
+export function knownForAi(x: Record<string, string | number | null | undefined | false>) {
+  return Object.fromEntries(Object.entries(x).filter(([, v]) => v != null && v !== false && String(v).trim()).map(([k, v]) => [k, String(v)]))
 }

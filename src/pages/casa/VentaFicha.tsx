@@ -5,7 +5,7 @@ import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
 import { Choice, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
 import Combobox from '../../components/Combobox'
-import ListingImport, { merger } from '../../components/ListingImport'
+import ListingImport, { knownForAi, merger } from '../../components/ListingImport'
 
 const TOWNS = (MUNICIPALITIES['28'] ?? []).map(p => p.name)
 const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(/\./g, '').replace(',', '.')))
@@ -130,7 +130,14 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   return (
     <Sheet title="Ficha de nuestro anuncio" onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
-        <ListingImport url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} adPhotos={adPhotos} onAdPhotos={setAdPhotos} />
+        <ListingImport url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} adPhotos={adPhotos} onAdPhotos={setAdPhotos}
+          known={knownForAi({
+            'Precio': amount && `${amount} €`, 'Título': title, 'Tipo': type, 'Dirección': address, 'Zona': zone, 'Localidad': municipality,
+            'Metros construidos': m2, 'Metros útiles': useful, 'Parcela (m²)': plot, 'Habitaciones': rooms, 'Baños': baths, 'Planta': floor,
+            'Año de construcción': year, 'Extras': features.map(f => FEATURES[f] ?? f).join(', '), 'Certificado energético': energy,
+            'Calefacción': heatType && HEATING[heatType], 'Aire acondicionado': cooling && COOLING[cooling],
+            'Comunidad (€/mes)': fee, 'IBI (€/año)': ibi, 'Luz (€/mes)': power, 'Agua (€/mes)': water, 'Calefacción (€/mes)': heating, 'Referencia': ref
+          })} />
         <TextField label="Título" value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Ej. Chalet con piscina en Las Cuestas" />
         <div className="grid grid-cols-2 gap-3">
           <TextField label="Precio publicado (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="285.000" />

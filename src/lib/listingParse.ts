@@ -33,6 +33,8 @@ export type ListingData = {
   photo_urls?: string[]
   /** Otras webs que ha usado la IA (además del anuncio) */
   sources?: string[]
+  /** Lo que la IA dice que no coincide con lo que ya teníamos */
+  changes?: string
   advertiser?: 'agencia' | 'particular'
   agency?: string
   contact?: string
@@ -189,9 +191,15 @@ export function filledLabels(d: ListingData) {
 // ---------- Respuesta de una IA (ChatGPT, Gemini, Claude) en formato «CLAVE: valor» ----------
 
 /** Lo que se le pide a la IA: leer el anuncio y contestar con un bloque fijo que la app sabe leer */
-export function aiPrompt(url: string) {
+export function aiPrompt(url: string, known?: Record<string, string>) {
+  const have = Object.entries(known ?? {}).filter(([, v]) => v && v.trim())
+  const compare = have.length ? `
+Ya tenemos apuntado esto de esta vivienda:
+${have.map(([k, v]) => `- ${k}: ${v}`).join('\n')}
+Compáralo con el anuncio (y con las otras webs, si las usas): busca sobre todo lo que nos falta y comprueba lo que ya tenemos. En el bloque pon SIEMPRE el valor que dice el anuncio ahora, no el nuestro. En CAMBIOS explica qué no coincide con lo nuestro (por ejemplo, una bajada de precio o unos metros distintos) y qué has encontrado nuevo.
+` : ''
   return `Lee este anuncio inmobiliario: ${url}
-
+${compare}
 Si en el anuncio faltan datos o hay pocas fotos, búscala también en otros sitios: la web de la inmobiliaria que la anuncia y otros portales (Idealista, Fotocasa, pisos.com, Habitaclia…). Usa esos datos y fotos SOLO si estás seguro de que es exactamente la misma vivienda: que coincidan la referencia o la dirección, y además los metros, las habitaciones, el precio (o muy parecido) y las fotos. Si tienes la más mínima duda, no los uses. Nunca mezcles datos de viviendas parecidas.
 
 Responde SOLO con este bloque, sin nada más, una línea por dato. Si un dato no aparece pon «-». No inventes nada.
@@ -224,6 +232,7 @@ TELEFONO:
 EMAIL:
 REFERENCIA: (referencia del anuncio)
 FOTOS: (enlaces directos a las fotos de esta vivienda —por ejemplo https://img3.idealista.com/…jpg—, del anuncio o de las otras webs verificadas, uno por línea; máximo 20; si no puedes verlos, pon «-»)
+CAMBIOS: (${have.length ? 'qué no coincide con lo que ya tenemos y qué has encontrado nuevo; si todo coincide, pon «todo coincide»' : 'pon «-»'})
 FUENTES: (enlaces de las otras webs que hayas usado y verificado que son la misma vivienda, uno por línea, con lo que has sacado de cada una; si solo has usado el anuncio, pon «-»)`
 }
 
@@ -265,13 +274,13 @@ export function photoUrls(raw: string): string[] {
 }
 
 const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'SISTEMA', 'CLIMA', 'AÑO', 'ANO', 'RESUMEN',
-  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES']
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -339,10 +348,14 @@ export function parseAny(raw: string): ListingData {
   // Los enlaces de fotos se quitan antes de leer los datos (sus números confundirían precio, metros…)
   const photos = photoUrls(raw)
   const sources = sourceUrls(raw)
+  const changes = raw.match(/CAMBIOS\s*:([\s\S]*?)(?:\n\s*[A-ZÁÉÍÓÚÑ]{3,15}\s*:|$)/)?.[1]?.replace(/[*`]/g, '').trim()
   const text = raw.replace(/https?:\/\/[^\s"'<>()]+/gi, ' ')
+    // Lo que la IA cuenta en CAMBIOS (precios o metros antiguos) no debe leerse como datos
+    .replace(/CAMBIOS\s*:[\s\S]*?(?=\n\s*[A-ZÁÉÍÓÚÑ]{3,15}\s*:|$)/, ' ')
   const ai = parseAiBlock(text)
   const free = parseListing(text)
-  const extra = { ...(photos.length ? { photo_urls: photos } : {}), ...(sources.length ? { sources } : {}) }
+  const extra = { ...(photos.length ? { photo_urls: photos } : {}), ...(sources.length ? { sources } : {}),
+    ...(changes && !/^[-–—]$/.test(changes) ? { changes: changes.slice(0, 1500) } : {}) }
   if (!ai) return { ...free, ...extra }
   return { ...free, ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v != null)), ...extra }
 }

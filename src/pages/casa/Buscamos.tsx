@@ -19,7 +19,7 @@ import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
-import { AdPhotoFetch, AiSources, ImportDiffs, importMessage, merger, type ImportDiff } from '../../components/ListingImport'
+import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, type ImportDiff } from '../../components/ListingImport'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
 type Sort = 'estado' | 'recientes' | 'precio' | 'm2'
@@ -690,6 +690,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
   const [diffs, setDiffs] = useState<ImportDiff[]>([])
   const [sources, setSources] = useState<string[]>([])
+  const [changes, setChanges] = useState<string | undefined>()
   const [adPhotos, setAdPhotos] = useState<File[]>([])
   const [ocr, setOcr] = useState<string | null>(null)
   const [title, setTitle] = useState(home?.title ?? '')
@@ -736,6 +737,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   function apply(d: ListingData) {
     if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
     if (d.sources?.length) setSources(d.sources)
+    if (d.changes) setChanges(d.changes)
     const f = merger()
     const eur = (v?: number) => (v ? priceInput(Math.round(v * 100)) : null)
     f.put('nombre', title, d.title, setTitle, { diff: false })
@@ -800,7 +802,14 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
     const full = url.trim() && (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`)
     if (!full) return
-    const prompt = aiPrompt(full.replace(/\?.*$/, ''))
+    const prompt = aiPrompt(full.replace(/\?.*$/, ''), knownForAi({
+      'Precio': amount && `${amount} €`, 'Tipo y nombre': title, 'Dirección': address, 'Zona': zone, 'Localidad': municipality,
+      'Metros construidos': m2, 'Metros útiles': useful, 'Parcela (m²)': plot, 'Habitaciones': rooms, 'Baños': baths, 'Planta': floor,
+      'Año de construcción': year, 'Extras': features.map(f => FEATURES[f] ?? f).join(', '), 'Certificado energético': energy,
+      'Calefacción': heatType && HEATING[heatType], 'Aire acondicionado': cooling && COOLING[cooling],
+      'Comunidad (€/mes)': fee, 'IBI (€/año)': ibi, 'Luz (€/mes)': power, 'Agua (€/mes)': water, 'Calefacción (€/mes)': heating,
+      'Anunciante': advertiser, 'Agencia': agency, 'Referencia': listingRef
+    }))
     try { await navigator.clipboard.writeText(prompt) } catch { /* sin permiso: se abre igualmente */ }
     const q = encodeURIComponent(prompt)
     const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
@@ -950,6 +959,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           <AdPhotoFetch urls={photoLinks} photos={adPhotos} onPhotos={setAdPhotos} />
           {importNote && <p role="status" className={`text-xs ${importNote.ok ? 'text-accent' : 'text-danger'}`}>{importNote.text}</p>}
           <ImportDiffs diffs={diffs} onChange={setDiffs} />
+          <AiChanges text={changes} />
           <AiSources urls={sources} />
         </div>
         <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />
