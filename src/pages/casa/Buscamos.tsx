@@ -126,12 +126,10 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
           {nextVisits.map(v => {
             const h = m.homes.find(x => x.id === v.home_id)
             return (
-              <button key={v.id} onClick={() => setOpenId(v.home_id)} className="bg-card rounded-2xl p-4 text-left flex justify-between items-baseline gap-2">
-                <span className="flex flex-col">
-                  <span className="text-[15px] font-bold">{h?.title}</span>
-                  <span className="text-[13px] text-muted">{v.attendee_id ? `Va ${nameOf(v.attendee_id, members)}` : 'Vais los dos'}{h?.zone ? ` · ${h.zone}` : ''}</span>
-                </span>
-                <span className="text-sm font-semibold shrink-0">{relativeDay(v.visit_date)} · {hhmm(v.start_time)}</span>
+              <button key={v.id} onClick={() => setOpenId(v.home_id)} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1 min-w-0">
+                <span className="text-sm font-semibold text-accent">📅 {relativeDay(v.visit_date)} · {hhmm(v.start_time)}</span>
+                <span className="text-[15px] font-bold break-words">{h?.title}</span>
+                <span className="text-[13px] text-muted">{v.attendee_id ? `Va ${nameOf(v.attendee_id, members)}` : 'Vais los dos'}{h?.zone ? ` · ${h.zone}` : ''}</span>
               </button>
             )
           })}

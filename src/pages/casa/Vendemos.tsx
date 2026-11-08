@@ -259,10 +259,8 @@ function VisitRow({ v, members, onOpen, highlight }: { v: BuyerVisit; members: M
   const host = nameOf(v.host_id, members)
   return (
     <button onClick={onOpen} className={`bg-card rounded-2xl p-4 text-left flex flex-col gap-1 ${highlight ? 'ring-2 ring-accent' : ''}`}>
-      <span className="flex justify-between items-baseline gap-2">
-        <span className="text-[16px] font-bold">{v.contact_name || 'Comprador'}</span>
-        <span className="text-sm font-semibold shrink-0">{relativeDay(v.visit_date)} · {hhmm(v.start_time)}</span>
-      </span>
+      <span className="text-sm font-semibold text-accent">📅 {relativeDay(v.visit_date)} · {hhmm(v.start_time)}</span>
+      <span className="text-[16px] font-bold break-words">{v.contact_name || 'Comprador'}</span>
       <span className="text-[13px] text-muted">
         {[v.source && SOURCES[v.source], host && `Atiende ${host}`, v.status !== 'scheduled' && VISIT_STATUS[v.status]].filter(Boolean).join(' · ')}
       </span>
