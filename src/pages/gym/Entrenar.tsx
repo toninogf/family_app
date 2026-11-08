@@ -111,7 +111,16 @@ function unlockAudio() {
 
 function beeps(times = 5) {
   if (!audio) return
-  const t0 = audio.currentTime + 0.05
+  if (audio.state === 'suspended') void audio.resume()
+  // El altavoz (o los auriculares bluetooth) tarda un instante en despertar y se come el principio del sonido:
+  // primero un tono inaudible que lo despierta y el pitido de verdad un poco después
+  const wake = audio.createOscillator()
+  const quiet = audio.createGain()
+  quiet.gain.value = 0.0001
+  wake.connect(quiet).connect(audio.destination)
+  wake.start(audio.currentTime)
+  wake.stop(audio.currentTime + 0.45)
+  const t0 = audio.currentTime + 0.45
   for (let i = 0; i < times; i++) {
     const osc = audio.createOscillator()
     const gain = audio.createGain()
