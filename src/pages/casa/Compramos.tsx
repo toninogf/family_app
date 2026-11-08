@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { addDays, hhmm, parseISO, relativeDay, shortDate, today } from '../../lib/dates'
-import { OFFER_STATUS, parsePrice, price, priceInput, type Mudanza } from '../../lib/mudanza'
+import { OFFER_STATUS, parsePrice, price, priceInput, type Home, type Mudanza } from '../../lib/mudanza'
+import { STATUS_LABEL, cadastreCheck, floodCheck, type Health, type HealthItem } from '../../lib/health'
 import {
   ARRAS, CONTACT_ROLES, GROUP_TEMPLATES, PCOST_TEMPLATE, PHASES, PSTEP_TEMPLATE, monthlyPayment,
   type ArrasType, type Compra, type Contact, type Cost, type DocGroup, type MortgageOffer, type PDocStatus, type PStepKind,
@@ -56,7 +57,7 @@ export default function Compramos({ m, c, householdId }: { m: Mudanza; c: Compra
 
       <div className="flex flex-col gap-2">
         <Fold title="🔍 Comprobaciones antes de ofertar" summary={docsSummary(group('comprobacion'), 'Nota simple, cargas, comunidad, obras…')} open={fold === 'check'} onToggle={() => toggle('check')}>
-          <PDocs c={c} householdId={householdId} grp="comprobacion" />
+          <PDocs c={c} householdId={householdId} grp="comprobacion" home={home} />
         </Fold>
         <Fold title="🤝 Oferta y condiciones" summary={[offers.length ? `${offers.length} oferta${offers.length > 1 ? 's' : ''}` : 'Sin ofertas', p?.arras_type && `arras ${ARRAS[p.arras_type].label.toLowerCase()}`].filter(Boolean).join(' · ')} open={fold === 'oferta'} onToggle={() => toggle('oferta')}>
           <Condiciones m={m} c={c} householdId={householdId} homeId={home.id} />
@@ -215,6 +216,30 @@ function docsSummary(docs: PurchaseDoc[], empty: string) {
 }
 
 // ---------- Comprobaciones y documentos ----------
+/** Lo que ya se sabe del piso en Buscamos («Estado y riesgos») para cada comprobación de la compra */
+function fromBuscamos(key: string, h: Home): { status: PDocStatus; notes: string } | null {
+  const hl = (h.health ?? {}) as Health
+  const pick = (items: (HealthItem | undefined)[]) => {
+    const known = items.filter((x): x is HealthItem => !!x && x.s !== 'unknown')
+    if (!known.length) return null
+    const worst = known.find(x => x.s === 'bad') ?? known.find(x => x.s === 'warn') ?? known[0]
+    const notes = known.map(x => x.n).filter(Boolean).join(' · ')
+    const src = known.some(x => x.src === 'ia') ? ' (según la IA, a confirmar)' : ''
+    return { status: (worst.s === 'ok' ? 'ok' : worst.s === 'bad' ? 'problema' : 'pendiente') as PDocStatus, notes: `De Buscamos: ${notes || STATUS_LABEL[worst.s]}${src}`.slice(0, 500) }
+  }
+  const cad = h.cadastre ? cadastreCheck(h as never) : undefined
+  switch (key) {
+    case 'nota_simple': return pick([hl.nota_simple])
+    case 'catastro': return pick([cad])
+    case 'comunidad': return pick([hl.comunidad])
+    case 'ite': return pick([hl.ite])
+    case 'obras': return pick([cad && cad.s === 'warn' ? cad : undefined, hl.ite?.s === 'warn' || hl.ite?.s === 'bad' ? hl.ite : undefined])
+    case 'urbanismo': return pick([hl.urbanizacion, hl.vpo, h.flood ? floodCheck(h as never) : undefined])
+    case 'ocupacion': return pick([hl.ocupacion])
+    default: return null
+  }
+}
+
 const STATUS: Record<PDocStatus, { label: string; cls: string }> = {
   pendiente: { label: 'Pendiente', cls: 'bg-bg text-muted border border-line' },
   pedido: { label: 'Pedido', cls: 'bg-[#C77A12] text-white' },
@@ -228,7 +253,7 @@ const GROUP_INTRO: Record<DocGroup, string> = {
   final: 'Los papeles que hay que guardar después de comprar.'
 }
 
-function PDocs({ c, householdId, grp }: { c: Compra; householdId: string; grp: DocGroup }) {
+function PDocs({ c, householdId, grp, home }: { c: Compra; householdId: string; grp: DocGroup; home?: Home }) {
   const [edit, setEdit] = useState<PurchaseDoc | 'new' | null>(null)
   const [busy, setBusy] = useState(false)
   const docs = c.docs.filter(d => d.grp === grp)
@@ -238,7 +263,18 @@ function PDocs({ c, householdId, grp }: { c: Compra; householdId: string; grp: D
 
   async function addTemplate() {
     setBusy(true)
-    for (const [i, x] of tpl.entries()) if (!docs.some(d => d.doc_key === x.key)) await c.write('purchase_docs', { grp, doc_key: x.key, title: x.title, position: i })
+    for (const [i, x] of tpl.entries()) {
+      if (docs.some(d => d.doc_key === x.key)) continue
+      const pre = home ? fromBuscamos(x.key, home) : null
+      await c.write('purchase_docs', { grp, doc_key: x.key, title: x.title, position: i, ...(pre ?? {}) })
+    }
+    setBusy(false)
+  }
+  // Lo comprobado en Buscamos («Estado y riesgos») pasa a las comprobaciones que sigan pendientes y sin notas
+  const pending = home ? docs.filter(d => d.status === 'pendiente' && !d.notes && d.doc_key && fromBuscamos(d.doc_key, home)) : []
+  async function bringFromHome() {
+    setBusy(true)
+    for (const d of pending) await c.write('purchase_docs', fromBuscamos(d.doc_key!, home!)!, d.id)
     setBusy(false)
   }
 
@@ -278,6 +314,11 @@ function PDocs({ c, householdId, grp }: { c: Compra; householdId: string; grp: D
         <button onClick={() => setEdit('new')} className="flex-1 min-h-11 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir</button>
         {docs.length > 0 && missing.length > 0 && <button onClick={addTemplate} disabled={busy} className="min-h-11 px-3 rounded-xl border border-line text-sm font-semibold">+ {missing.length} de la lista</button>}
       </div>
+      {pending.length > 0 && (
+        <button onClick={bringFromHome} disabled={busy} className="min-h-11 rounded-xl bg-accent-soft text-accent text-sm font-semibold disabled:opacity-50">
+          🩺 Traer lo comprobado en Buscamos ({pending.length})
+        </button>
+      )}
       {edit && <PDocSheet doc={edit === 'new' ? undefined : edit} grp={grp} c={c} householdId={householdId} onClose={() => setEdit(null)} />}
     </>
   )
