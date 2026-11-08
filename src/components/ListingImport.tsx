@@ -9,7 +9,7 @@ import { TextArea, TextField } from './Sheet'
  * «Rellenar desde el anuncio»: enlace (leer o pedírselo a una IA), pegar la respuesta o el texto del anuncio,
  * y capturas que se leen en el móvil. Llama a onApply con lo encontrado; las capturas las guarda quien lo usa.
  */
-export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos, known, onLinks, ourPrice }: {
+export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos, known, onLinks, ourPrice, missing, bare }: {
   url: string; onUrl: (v: string) => void
   onApply: (d: ListingData) => { filled: string[]; diffs: ImportDiff[] }
   shots: File[]; onShots: (f: File[]) => void
@@ -19,6 +19,10 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
   /** Webs marcadas para guardarse como enlaces extra */
   onLinks?: (links: Link[]) => void
   ourPrice?: number | null
+  /** Datos que faltan: botón para pedir a la IA solo eso */
+  missing?: string[]
+  /** Sin marco ni título (va dentro de un bloque de la edición) */
+  bare?: boolean
 }) {
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
   const [diffs, setDiffs] = useState<ImportDiff[]>([])
@@ -59,9 +63,9 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
     fromText([res.title, res.description, res.text].filter(Boolean).join('\n'), 'Leído del anuncio')
   }
 
-  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
+  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude', onlyMissing = false) {
     if (!full) return
-    const prompt = aiPrompt(full.replace(/\?.*$/, ''), known)
+    const prompt = aiPrompt(full.replace(/\?.*$/, ''), known, onlyMissing ? missing : undefined)
     try { await navigator.clipboard.writeText(prompt) } catch { /* sin permiso: se abre igualmente */ }
     const q = encodeURIComponent(prompt)
     const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
@@ -99,8 +103,8 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-line p-3">
-      <p className="text-sm font-bold">📥 Rellenar desde el anuncio</p>
+    <div className={bare ? 'flex flex-col gap-2' : 'flex flex-col gap-2 rounded-2xl border border-line p-3'}>
+      {!bare && <p className="text-sm font-bold">📥 Rellenar desde el anuncio</p>}
       <div className="flex items-end gap-2">
         <div className="flex-1 min-w-0">
           <TextField label="Enlace del anuncio" type="url" inputMode="url" value={url} onChange={e => onUrl(e.target.value)} placeholder="https://www.idealista.com/inmueble/…" />
@@ -120,6 +124,16 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
             ))}
           </div>
           <button type="button" onClick={pasteClipboard} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold">📋 Pegar respuesta de la IA</button>
+          {!!missing?.length && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted">🎯 Pedir solo lo que falta ({missing.length}: {missing.slice(0, 4).join(', ')}{missing.length > 4 ? '…' : ''}):</span>
+              <div className="grid grid-cols-3 gap-2">
+                {([['chatgpt', 'ChatGPT'], ['gemini', 'Gemini'], ['claude', 'Claude']] as const).map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => askAi(k, true)} className="min-h-10 rounded-xl border border-dashed border-line bg-card text-[13px] font-semibold">{l} ↗</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
       <label className={`min-h-11 rounded-xl border border-dashed border-line flex items-center justify-center gap-2 text-sm font-semibold text-accent cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>

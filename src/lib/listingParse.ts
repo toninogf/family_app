@@ -205,15 +205,16 @@ export function filledLabels(d: ListingData) {
 // ---------- Respuesta de una IA (ChatGPT, Gemini, Claude) en formato «CLAVE: valor» ----------
 
 /** Lo que se le pide a la IA: leer el anuncio y contestar con un bloque fijo que la app sabe leer */
-export function aiPrompt(url: string, known?: Record<string, string>) {
+export function aiPrompt(url: string, known?: Record<string, string>, missing?: string[]) {
   const have = Object.entries(known ?? {}).filter(([, v]) => v && v.trim())
+  const focus = missing?.length ? `\nNos faltan sobre todo estos datos: ${missing.join(', ')}. Búscalos a fondo (en el anuncio, en la web de la inmobiliaria y en otros portales), sin inventar nada.\n` : ''
   const compare = have.length ? `
 Ya tenemos apuntado esto de esta vivienda:
 ${have.map(([k, v]) => `- ${k}: ${v}`).join('\n')}
 Compáralo con el anuncio (y con las otras webs, si las usas): busca sobre todo lo que nos falta y comprueba lo que ya tenemos. En el bloque pon SIEMPRE el valor que dice el anuncio ahora, no el nuestro. En CAMBIOS explica qué no coincide con lo nuestro (por ejemplo, una bajada de precio o unos metros distintos) y qué has encontrado nuevo.
 ` : ''
   return `Lee este anuncio inmobiliario: ${url}
-${compare}
+${compare}${focus}
 Si en el anuncio faltan datos o hay pocas fotos, búscala también en otros sitios: la web de la inmobiliaria que la anuncia y otros portales (Idealista, Fotocasa, pisos.com, Habitaclia…). Usa esos datos y fotos SOLO si estás seguro de que es exactamente la misma vivienda: que coincidan la referencia o la dirección, y además los metros, las habitaciones, el precio (o muy parecido) y las fotos. Si tienes la más mínima duda, no los uses. Nunca mezcles datos de viviendas parecidas.
 
 Responde SOLO con este bloque, sin nada más, una línea por dato. Si un dato no aparece pon «-». No inventes nada.

@@ -22,6 +22,7 @@ import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
 import { aiStatus, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
+import { EditSection, Field, FEATURE_ICON, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
@@ -859,12 +860,17 @@ type Shared = { url?: string | null; text?: string | null; files?: File[] }
 function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focus }: {
   home?: Home; initial?: Shared; m: Mudanza; householdId: string; onClose: () => void; onCreated: () => void; focus?: EditFocus
 }) {
-  // Al abrir desde el ✏️ de un bloque de la ficha, se va directo a esa parte
+  // Bloques: en un piso nuevo, abiertos «anuncio» y «lo básico»; al venir del ✏️ de la ficha, solo ese bloque
+  const focusSection = focus ? ({ datos: 'basico', gastos: 'gastos', contacto: 'contacto', fotos: 'enlaces' } as const)[focus] : null
+  const sections = useSections(home ? (focusSection ? [focusSection] : []) : ['anuncio', 'basico'])
   useEffect(() => {
-    if (!focus) return
-    const t = setTimeout(() => document.getElementById(`edit-${focus}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120)
+    if (!focusSection) return
+    const t = setTimeout(() => document.getElementById(`edit-${focusSection}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150)
     return () => clearTimeout(t)
-  }, [focus])
+  }, [focusSection])
+  const { flash, show: showFlash } = useFlash()
+  const [summary, setSummary] = useState<{ filled: number; diffs: number } | null>(null)
+  const [leaving, setLeaving] = useState(false)
   // Capturas del anuncio: se leen en el móvil para rellenar la ficha y se guardan con el piso al guardar
   const [shots, setShots] = useState<File[]>([])
   // Fotos traídas desde los enlaces que dé la IA (se guardan como fotos del piso)
@@ -978,8 +984,31 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
     const newF = (d.features ?? []).filter(x => !features.includes(x))
     if (newF.length) { setFeatures([...features, ...newF]); f.filled.push('características') }
     setDiffs(f.diffs)
+    const touched = [...f.filled, ...f.diffs.map(x => x.label)]
+    showFlash(f.filled, f.diffs.map(x => x.label))
+    sections.reveal(SECTIONS.filter(sec => fieldsOf(sec.id).some(([k]) => touched.includes(k))).map(sec => sec.id))
+    if (touched.length) setSummary({ filled: f.filled.length, diffs: f.diffs.length })
     return f
   }
+
+  // Qué datos tiene cada bloque (para el contador, el resumen y «pedir solo lo que falta»)
+  function fieldsOf(id: string): [string, string][] {
+    switch (id) {
+      case 'basico': return [['precio', amount], ['m²', m2], ['parcela', plot], ['m² útiles', useful], ['año', year], ['habitaciones', rooms], ['baños', baths], ['planta', floor]]
+      case 'ubicacion': return [['localidad', municipality ?? ''], ['zona', zone], ['dirección', address], ['mapa', maps]]
+      case 'equip': return [['características', features.length ? 'x' : ''], ['certificado', energy ?? ''], ['tipo de calefacción', heatType ?? ''], ['aire', cooling ?? ''], ['minutos al cole', minutes]]
+      case 'gastos': return [['comunidad', fee], ['IBI', ibi], ['luz', power], ['agua', water], ['calefacción', heating]]
+      case 'contacto': return [['anunciante', advertiser ?? ''], ['agencia', advertiser === 'particular' ? 'x' : agency || contact], ['teléfono', phone], ['email', email], ['referencia', listingRef]]
+      default: return []
+    }
+  }
+  const countOf = (id: string) => { const f = fieldsOf(id); return { filled: f.filter(([, v]) => v.trim()).length, total: f.length } }
+  const flashedIn = (id: string) => fieldsOf(id).some(([k]) => flash[k])
+  const missingForAi = SECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([k, v]) => !v.trim() && !['mapa', 'minutos al cole', 'anunciante'].includes(k)).map(([k]) => k)
+
+  const dirty = useDirty({ title, url, amount, m2, useful, plot, year, rooms, baths, floor, zone, province, municipality, address, maps, features, fee, ibi, power, water, heating,
+    energy, heatType, cooling, minutes, contact, advertiser, agency, phone, email, listingRef, notes, links, shots: shots.length, ad: adPhotos.length, picked, health, cadRef, market })
+  const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
   function fromText(text: string, intro = 'Rellenado') {
     const r = apply(parseAny(text))
@@ -1006,7 +1035,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   }
 
   /** Abre ChatGPT, Gemini o Claude con la petición ya escrita (y copiada, por si la app no la recoge) */
-  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
+  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude', onlyMissing = false) {
     const full = url.trim() && (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`)
     if (!full) return
     const prompt = aiPrompt(full.replace(/\?.*$/, ''), knownForAi({
@@ -1016,7 +1045,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
       'Calefacción': heatType && HEATING[heatType], 'Aire acondicionado': cooling && COOLING[cooling],
       'Comunidad (€/mes)': fee, 'IBI (€/año)': ibi, 'Luz (€/mes)': power, 'Agua (€/mes)': water, 'Calefacción (€/mes)': heating,
       'Anunciante': advertiser, 'Agencia': agency, 'Referencia': listingRef
-    }))
+    }), onlyMissing ? missingForAi : undefined)
     try { await navigator.clipboard.writeText(prompt) } catch { /* sin permiso: se abre igualmente */ }
     const q = encodeURIComponent(prompt)
     const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
@@ -1120,11 +1149,19 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
     if (err) setError(err); else if (home) onClose(); else onCreated()
   }
 
+  const fl = (k: string) => flash[k]
+  const cnt = (id: string) => countOf(id)
   return (
-    <Sheet title={home ? 'Editar piso' : 'Nuevo piso'} onClose={onClose}>
-      <form onSubmit={submit} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-2 rounded-2xl border border-line p-3">
-          <p className="text-sm font-bold">📥 Rellenar desde el anuncio</p>
+    <Sheet title={home ? 'Editar piso' : 'Nuevo piso'} onClose={requestClose}>
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <Field label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home && !initial} flash={fl('nombre')} />
+        {summary && (
+          <ImportSummary filled={summary.filled} diffs={summary.diffs}
+            missing={SECTIONS.map(sec => ({ id: sec.id, title: sec.title, n: cnt(sec.id).total - cnt(sec.id).filled }))}
+            onGo={id => sections.reveal([id], id)} />
+        )}
+
+        <EditSection id="anuncio" icon="📥" title="Rellenar desde el anuncio" open={sections.isOpen('anuncio')} onToggle={() => sections.toggle('anuncio')}>
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-0">
               <TextField label="Enlace del anuncio" type="url" inputMode="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.idealista.com/inmueble/…" />
@@ -1136,8 +1173,8 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             const full = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`
             const portal = portalName(full)
             return portal
-              ? <a href={full} target="_blank" rel="noopener noreferrer" className="text-xs text-accent font-semibold">✓ Anuncio de {portal} · abrir ↗</a>
-              : <span className="text-xs text-danger">Ese enlace no parece válido</span>
+              ? <a href={full} target="_blank" rel="noopener noreferrer" className="text-xs text-accent font-semibold -mt-2">✓ Anuncio de {portal} · abrir ↗</a>
+              : <span className="text-xs text-danger -mt-2">Ese enlace no parece válido</span>
           })()}
           {url.trim() && (
             <div className="flex flex-col gap-1.5">
@@ -1148,13 +1185,23 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
                 ))}
               </div>
               <button type="button" onClick={pasteFromClipboard} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold">📋 Pegar respuesta de la IA</button>
+              {home && missingForAi.length > 0 && (
+                <div className="flex flex-col gap-1 mt-1">
+                  <span className="text-xs text-muted">🎯 Pedir solo lo que falta ({missingForAi.length}: {missingForAi.slice(0, 4).join(', ')}{missingForAi.length > 4 ? '…' : ''}):</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([['chatgpt', 'ChatGPT'], ['gemini', 'Gemini'], ['claude', 'Claude']] as const).map(([k, l]) => (
+                      <button key={k} type="button" onClick={() => askAi(k, true)} className="min-h-10 rounded-xl border border-dashed border-line bg-card text-[13px] font-semibold">{l} ↗</button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <label className={`min-h-11 rounded-xl border border-dashed border-line flex items-center justify-center gap-2 text-sm font-semibold text-accent cursor-pointer ${ocr ? 'opacity-50 pointer-events-none' : ''}`}>
             📸 {shots.length ? `Añadir más capturas (${shots.length})` : 'Subir capturas del anuncio'}
             <input type="file" accept="image/*" multiple className="sr-only" onChange={e => { void addShots(Array.from(e.target.files ?? [])); e.target.value = '' }} />
           </label>
-          {shots.length > 0 && !ocr && <p className="text-xs text-muted">Las capturas se guardan con el piso al pulsar «Guardar», por si borran el anuncio.</p>}
+          {shots.length > 0 && !ocr && <p className="text-xs text-muted -mt-2">Las capturas se guardan con el piso al pulsar «Guardar», por si borran el anuncio.</p>}
           {ocr && <p role="status" className="text-xs text-muted">{ocr}</p>}
           {pasteOpen ? (
             <div className="flex flex-col gap-2">
@@ -1164,110 +1211,132 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
                 className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold disabled:opacity-40">Rellenar con este texto</button>
             </div>
           ) : (
-            <button type="button" onClick={() => setPasteOpen(true)} className="self-start min-h-10 text-sm text-accent font-semibold">📋 Pegar el texto del anuncio</button>
+            <button type="button" onClick={() => setPasteOpen(true)} className="self-start min-h-10 text-sm text-accent font-semibold -mt-2">📋 Pegar el texto del anuncio</button>
           )}
           <AdPhotoFetch urls={photoLinks} photos={adPhotos} onPhotos={setAdPhotos} />
           {importNote && <p role="status" className={`text-xs ${importNote.ok ? 'text-accent' : 'text-danger'}`}>{importNote.text}</p>}
           <ImportDiffs diffs={diffs} onChange={setDiffs} />
           <AiChanges text={changes} />
           <AiSources sources={sources} picked={picked} onPicked={setPicked} ourPrice={amount.trim() ? parsePrice(amount) : null} />
-        </div>
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-medium text-muted mb-1">Otros enlaces de este piso</legend>
-          {links.map((l, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <input value={l.label} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, label: e.target.value.slice(0, 40) } : x)))} placeholder="Nombre"
-                aria-label="Nombre del enlace" className="w-28 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold" />
-              <input value={l.url} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} placeholder="https://…" inputMode="url"
-                aria-label="Enlace" className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px]" />
-              {l.price_cents ? <span className="text-[12px] text-muted shrink-0">{priceShort(l.price_cents)}</span> : null}
-              <button type="button" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Quitar enlace" className="w-9 text-muted text-xl">×</button>
-            </div>
-          ))}
-          {links.length < 10 && <button type="button" onClick={() => setLinks([...links, { label: '', url: '' }])} className="self-start min-h-10 text-sm text-accent font-semibold">+ Añadir enlace (otro portal, la inmobiliaria…)</button>}
-        </fieldset>
-        {home && (
-          <div id="edit-fotos" className="flex flex-col gap-3 rounded-2xl border border-line p-3 scroll-mt-4">
-            <Photos h={home} m={m} householdId={householdId} kind="foto" />
-            <Photos h={home} m={m} householdId={householdId} kind="anuncio" />
-            <p className="text-xs text-muted -mt-1">Toca una foto para verla, borrarla o ponerla de portada.</p>
+        </EditSection>
+
+        <EditSection id="basico" icon="🏠" title="Lo básico" {...cnt('basico')} flashed={flashedIn('basico')} open={sections.isOpen('basico')} onToggle={() => sections.toggle('basico')}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Precio" suffix="€" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} onBlur={() => setAmount(thousands)} placeholder="320.000" flash={fl('precio')} />
+            <Field label="Construidos" suffix="m²" inputMode="decimal" value={m2} onChange={e => setM2(e.target.value)} placeholder="95" flash={fl('m²')} />
           </div>
-        )}
-        <div id="edit-datos" className="scroll-mt-4" />
-        <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />
-        <div className="grid grid-cols-2 gap-3">
-          <TextField label="Precio (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="320.000" />
-          <TextField label="Metros (m²)" inputMode="decimal" value={m2} onChange={e => setM2(e.target.value)} placeholder="95" />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="Parcela (m²)" inputMode="decimal" value={plot} onChange={e => setPlot(e.target.value)} placeholder="800" />
-          <TextField label="Útiles (m²)" inputMode="decimal" value={useful} onChange={e => setUseful(e.target.value)} />
-          <TextField label="Año constr." inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="Habitaciones" inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} />
-          <TextField label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} />
-          <TextField label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} placeholder="3º" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Parcela" suffix="m²" inputMode="decimal" value={plot} onChange={e => setPlot(e.target.value)} flash={fl('parcela')} />
+            <Field label="Útiles" suffix="m²" inputMode="decimal" value={useful} onChange={e => setUseful(e.target.value)} flash={fl('m² útiles')} />
+            <Field label="Año" inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} flash={fl('año')} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Habitaciones" inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} flash={fl('habitaciones')} />
+            <Field label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} flash={fl('baños')} />
+            <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} placeholder="3º" flash={fl('planta')} />
+          </div>
+        </EditSection>
+
+        <EditSection id="ubicacion" icon="📍" title="Ubicación" {...cnt('ubicacion')} flashed={flashedIn('ubicacion')} open={sections.isOpen('ubicacion')} onToggle={() => sections.toggle('ubicacion')}>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-muted">Provincia</span>
+              <select value={province ?? ''} onChange={e => { setProvince(e.target.value || null); setMunicipality(null) }}
+                className="min-h-12 px-3 rounded-xl border border-line bg-card text-[16px]">
+                <option value="">—</option>
+                {PROVINCE_NAMES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </label>
+            <div className={`rounded-xl ${fl('localidad') ? 'ring-2 ring-accent' : ''}`}>
+              <Combobox key={province ?? 'none'} label="Localidad" value={municipality} onChange={setMunicipality} options={municipalitiesOf(province)} placeholder="Escribe: Alcob…" />
+            </div>
+          </div>
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-muted">Provincia</span>
-            <select value={province ?? ''} onChange={e => { setProvince(e.target.value || null); setMunicipality(null) }}
-              className="min-h-12 px-3 rounded-xl border border-line bg-card text-[16px]">
-              <option value="">—</option>
-              {PROVINCE_NAMES.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <span className="text-sm font-medium text-muted">{municipality === 'Madrid' ? 'Distrito o barrio' : 'Zona, urbanización o barrio'}{fl('zona') ? ' ✨' : ''}</span>
+            <input value={zone} onChange={e => setZone(e.target.value)} maxLength={60} list={municipality === 'Madrid' ? 'distritos-madrid' : undefined}
+              placeholder={municipality === 'Madrid' ? 'Elige un distrito o escribe el barrio' : 'Ej. Casco antiguo'}
+              className={`w-full min-h-12 px-3 rounded-xl border border-line bg-card text-[16px] outline-none focus:border-accent ${fl('zona') ? 'ring-2 ring-accent' : ''}`} />
+            {municipality === 'Madrid' && <datalist id="distritos-madrid">{MADRID_DISTRICTS.map(d => <option key={d} value={d} />)}</datalist>}
           </label>
-          <Combobox key={province ?? 'none'} label="Localidad" value={municipality} onChange={setMunicipality} options={municipalitiesOf(province)} placeholder="Escribe: Alcob…" />
-        </div>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-muted">{municipality === 'Madrid' ? 'Distrito o barrio' : 'Zona o barrio'}</span>
-          <input value={zone} onChange={e => setZone(e.target.value)} maxLength={60} list={municipality === 'Madrid' ? 'distritos-madrid' : undefined}
-            placeholder={municipality === 'Madrid' ? 'Elige un distrito o escribe el barrio' : 'Ej. Casco antiguo'}
-            className="w-full min-h-12 px-4 rounded-xl border border-line bg-card text-[16px] outline-none focus:border-accent" />
-          {municipality === 'Madrid' && <datalist id="distritos-madrid">{MADRID_DISTRICTS.map(d => <option key={d} value={d} />)}</datalist>}
-        </label>
-        <TextField label="Dirección (opcional)" value={address} onChange={e => setAddress(e.target.value)} maxLength={120} />
-        <TextField label="Enlace de Google Maps (opcional)" type="url" inputMode="url" value={maps} onChange={e => setMaps(e.target.value)} placeholder="https://maps.app.goo.gl/…" />
-        <MultiChips label="Tiene" value={features} onChange={setFeatures} options={Object.entries(FEATURES).map(([value, label]) => ({ value, label }))} />
-        <div id="edit-gastos" className="grid grid-cols-2 gap-3 scroll-mt-4">
-          <TextField label="Comunidad (€/mes)" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} />
-          <TextField label="IBI (€/año)" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="Luz (€/mes)" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} />
-          <TextField label="Agua (€/mes)" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} />
-          <TextField label="Calefacción (€/mes)" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} />
-        </div>
-        <p className="text-xs text-muted -mt-3">Gasto medio al mes; si es bimestral, divide la factura entre dos.</p>
-        <Choice<string | null> label="Certificado energético" value={energy} onChange={setEnergy}
-          options={[...'ABCDEFG'.split('').map(l => ({ value: l as string | null, label: l })), { value: null, label: '?' }]} />
-        <Choice<HeatingType | null> label="Calefacción" value={heatType} onChange={setHeatType}
-          options={[...(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k as HeatingType | null, label: HEATING[k] })), { value: null, label: '?' }]} />
-        <Choice<Cooling | null> label="Aire acondicionado" value={cooling} onChange={setCooling}
-          options={[...(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k as Cooling | null, label: COOLING[k] })), { value: null, label: '?' }]} />
-        <TextField label="Minutos al cole" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="Ej. 10 (andando o en coche, como lo midáis)" />
-        <fieldset id="edit-contacto" className="flex flex-col gap-3 rounded-2xl border border-line p-3 scroll-mt-4">
-          <legend className="text-sm font-bold px-1">Contacto del anuncio</legend>
+          <Field label="Dirección" value={address} onChange={e => setAddress(e.target.value)} maxLength={120} flash={fl('dirección')} />
+          <Field label="Enlace de Google Maps" type="url" inputMode="url" value={maps} onChange={e => setMaps(e.target.value)} placeholder="https://maps.app.goo.gl/…" />
+          <p className="text-xs text-muted -mt-2">Con la dirección o el enlace de Maps, el piso sale bien situado en el mapa y se pueden comprobar el Catastro y las zonas inundables.</p>
+        </EditSection>
+
+        <EditSection id="equip" icon="🔧" title="Equipamiento" {...cnt('equip')} flashed={flashedIn('equip')} open={sections.isOpen('equip')} onToggle={() => sections.toggle('equip')}>
+          <MultiChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures} options={Object.entries(FEATURES).map(([value, label]) => ({ value, label: `${FEATURE_ICON[value] ?? ''} ${label}` }))} />
+          <div className="grid grid-cols-2 gap-3">
+            <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
+              options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
+            <Field label="Minutos al cole" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="10" />
+            <SelectField<HeatingType> label="Calefacción" value={heatType} onChange={setHeatType} flash={fl('tipo de calefacción')}
+              options={(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k, label: HEATING[k] }))} />
+            <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
+              options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
+          </div>
+        </EditSection>
+
+        <EditSection id="gastos" icon="💶" title="Gastos" {...cnt('gastos')} flashed={flashedIn('gastos')} open={sections.isOpen('gastos')} onToggle={() => sections.toggle('gastos')}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
+            <Field label="IBI" suffix="€/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} onBlur={() => setIbi(thousands)} flash={fl('IBI')} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Luz" suffix="€" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} flash={fl('luz')} />
+            <Field label="Agua" suffix="€" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} flash={fl('agua')} />
+            <Field label="Calefacción" suffix="€" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} flash={fl('calefacción')} />
+          </div>
+          <p className="text-xs text-muted -mt-2">Luz, agua y calefacción: gasto medio al mes (si la factura es bimestral, divídela entre dos).</p>
+        </EditSection>
+
+        <EditSection id="contacto" icon="📞" title="Contacto" {...cnt('contacto')} flashed={flashedIn('contacto')} open={sections.isOpen('contacto')} onToggle={() => sections.toggle('contacto')}>
           <Choice<'agencia' | 'particular' | null> label="¿Quién lo anuncia?" value={advertiser} onChange={setAdvertiser}
             options={[{ value: 'agencia', label: '🏢 Agencia' }, { value: 'particular', label: '🙋 Particular' }, { value: null, label: '?' }]} />
-          {advertiser !== 'particular' && <TextField label="Agencia" value={agency} onChange={e => setAgency(e.target.value)} maxLength={120} placeholder="Nombre de la inmobiliaria" />}
-          <TextField label="Persona de contacto" value={contact} onChange={e => setContact(e.target.value)} maxLength={120} />
+          {advertiser !== 'particular' && <Field label="Agencia" value={agency} onChange={e => setAgency(e.target.value)} maxLength={120} placeholder="Nombre de la inmobiliaria" flash={fl('agencia')} />}
+          <Field label="Persona de contacto" value={contact} onChange={e => setContact(e.target.value)} maxLength={120} flash={fl('contacto')} />
           <div className="grid grid-cols-2 gap-3">
-            <TextField label="Teléfono" type="tel" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} maxLength={30} placeholder="600 000 000" />
-            <TextField label="Referencia" value={listingRef} onChange={e => setListingRef(e.target.value)} maxLength={60} placeholder="Ref. del anuncio" />
+            <Field label="Teléfono" type="tel" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} maxLength={30} placeholder="600 000 000" flash={fl('teléfono')} />
+            <Field label="Referencia" value={listingRef} onChange={e => setListingRef(e.target.value)} maxLength={60} placeholder="Ref. del anuncio" flash={fl('referencia')} />
           </div>
-          <TextField label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} />
-        </fieldset>
+          <Field label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} flash={fl('email')} />
+        </EditSection>
+
+        <EditSection id="enlaces" icon="🔗" title={home ? 'Enlaces y fotos' : 'Otros enlaces'} open={sections.isOpen('enlaces')} onToggle={() => sections.toggle('enlaces')}>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium text-muted mb-1">Otros enlaces de este piso</legend>
+            {links.map((l, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input value={l.label} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, label: e.target.value.slice(0, 40) } : x)))} placeholder="Nombre"
+                  aria-label="Nombre del enlace" className="w-28 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold" />
+                <input value={l.url} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} placeholder="https://…" inputMode="url"
+                  aria-label="Enlace" className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px]" />
+                {l.price_cents ? <span className="text-[12px] text-muted shrink-0">{priceShort(l.price_cents)}</span> : null}
+                <button type="button" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Quitar enlace" className="w-9 text-muted text-xl">×</button>
+              </div>
+            ))}
+            {links.length < 10 && <button type="button" onClick={() => setLinks([...links, { label: '', url: '' }])} className="self-start min-h-10 text-sm text-accent font-semibold">+ Añadir enlace (otro portal, la inmobiliaria…)</button>}
+          </fieldset>
+          {home && (
+            <>
+              <Photos h={home} m={m} householdId={householdId} kind="foto" />
+              <Photos h={home} m={m} householdId={householdId} kind="anuncio" />
+              <p className="text-xs text-muted -mt-2">Toca una foto para verla, borrarla o ponerla de portada.</p>
+            </>
+          )}
+        </EditSection>
+
         <TextArea label="Notas y comentarios" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} />
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        <button type="submit" disabled={busy} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">
-          {busy ? 'Guardando…' : home ? 'Guardar' : 'Guardar piso'}
-        </button>
+        <SaveBar dirty={dirty} busy={busy} label={home ? 'Guardar' : 'Guardar piso'} status={ocr} error={error}
+          leaving={leaving} onStay={() => setLeaving(false)} onLeave={onClose} />
       </form>
     </Sheet>
   )
 }
+
+const SECTIONS = [
+  { id: 'basico', title: 'Lo básico' }, { id: 'ubicacion', title: 'Ubicación' }, { id: 'equip', title: 'Equipamiento' },
+  { id: 'gastos', title: 'Gastos' }, { id: 'contacto', title: 'Contacto' }
+]
 
 function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: string; onClose: () => void }) {
   const c = m.criteria
