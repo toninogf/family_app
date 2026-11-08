@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { COOLING, FEATURES, HEATING, photoUrls, price, type Mudanza } from '../../lib/mudanza'
+import { FEATURE_ICON } from '../../components/FormKit'
 
 /** Fotos de nuestra casa, deslizables (bucket house-photos, carpeta <hogar>/venta/) */
 export function SaleGallery({ m, onAdd }: { m: Mudanza; onAdd: () => void }) {
@@ -48,7 +49,6 @@ export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
   const l = m.listing
   const [costsOpen, setCostsOpen] = useState(false)
   if (!l) return null
-  const icons: Record<string, string> = { piscina: '🏊', garaje: '🚗', jardin: '🌿', trastero: '📦', terraza: '☀️', ascensor: '🛗', reformado: '✨', exterior: '🪟', placas_solares: '🔆', solar_termica: '♨️', transporte: '🚌', cerca_cole: '🏫', calefaccion: '🔥', aire: '❄️' }
   const facts = ([
     l.size_m2 && ['🏠', `${Number(l.size_m2)} m²${l.useful_m2 ? ` (${Number(l.useful_m2)} útiles)` : ''}`],
     l.plot_m2 && ['🌳', `parcela ${Number(l.plot_m2)} m²`],
@@ -76,7 +76,7 @@ export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
       ) : <p className="text-sm text-muted">Rellena la ficha desde vuestro anuncio con «✏️».</p>}
       {extras.length > 0 && (
         <span className="flex gap-1 flex-wrap">
-          {extras.map(f => <span key={f} className="px-2 py-0.5 rounded-lg bg-bg text-[12px]">{icons[f] ?? '•'} {FEATURES[f] ?? f}</span>)}
+          {extras.map(f => <span key={f} className="px-2 py-0.5 rounded-lg bg-bg text-[12px]">{FEATURE_ICON[f] ?? '•'} {FEATURES[f] ?? f}</span>)}
         </span>
       )}
       <button onClick={() => (monthly != null ? setCostsOpen(!costsOpen) : onEdit())} className="flex justify-between items-center text-left border-t border-line pt-2">

@@ -1,5 +1,5 @@
 // Resumen en texto de las diferencias importantes entre los pisos que se comparan (sin IA: reglas a partir de los datos)
-import { FEATURES, VISIT_CHECKLIST, mustHaveCheck, perM2, price, type Criteria, type Home, type HomeVisit } from './mudanza'
+import { FEATURES, VISIT_CHECKLIST, mustHaveCheck, niceCount, perM2, price, type Criteria, type Home, type HomeVisit } from './mudanza'
 
 /** Nombre corto para el texto: barrio o calle y localidad */
 export const shortName = (h: Home) => [h.zone ?? h.address, h.municipality].filter(Boolean).join(' · ') || h.title
@@ -93,6 +93,10 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
     }
     const all = homes.filter(h => { const c = mustHaveCheck(h, criteria); return c.length > 0 && c.every(x => x.ok) })
     if (all.length && all.length < homes.length) out.push(`✅ Cumple${all.length > 1 ? 'n' : ''} todos los imprescindibles: ${list(all.map(h => `**${n(h)}**`))}.`)
+    if (criteria.nice_to_haves?.length) {
+      const sc = homes.map(h => ({ h, k: niceCount(h, criteria).got.length })).sort((a, b) => b.k - a.k)
+      if (sc[0].k > sc[sc.length - 1].k) out.push(`⭐ Más de lo que valoramos: **${n(sc[0].h)}** (${sc[0].k} de ${criteria.nice_to_haves.length}).`)
+    }
   }
   // Certificado energético
   const en = homes.filter(h => h.energy).sort((a, b) => ENERGY.indexOf(a.energy!) - ENERGY.indexOf(b.energy!))

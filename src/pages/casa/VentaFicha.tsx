@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { COOLING, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
+import { COOLING, FEATURE_GROUPS, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
-import { MultiChips, Sheet, TextArea } from '../../components/Sheet'
+import { Sheet, TextArea } from '../../components/Sheet'
 import Combobox from '../../components/Combobox'
 import ListingImport, { knownForAi, merger } from '../../components/ListingImport'
-import { EditSection, Field, FEATURE_ICON, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
+import { EditSection, Field, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 
 const VSECTIONS = [
   { id: 'basico', title: 'Lo básico' }, { id: 'ubicacion', title: 'Ubicación' }, { id: 'equip', title: 'Equipamiento' },
@@ -217,8 +217,8 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
         </EditSection>
 
         <EditSection id="equip" icon="🔧" title="Equipamiento" {...cnt('equip')} flashed={flashedIn('equip')} open={sections.isOpen('equip')} onToggle={() => sections.toggle('equip')}>
-          <MultiChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
-            options={Object.entries(FEATURES).filter(([k]) => k !== 'cerca_cole').map(([value, label]) => ({ value, label: `${FEATURE_ICON[value] ?? ''} ${label}` }))} />
+          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
+            groups={FEATURE_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => k !== 'cerca_cole') }))} labels={k => FEATURES[k] ?? k} />
           <div className="grid grid-cols-2 gap-3">
             <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
               options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />

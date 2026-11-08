@@ -68,7 +68,7 @@ export type BuyerOffer = {
   notes: string | null
 }
 
-export type Criteria = { household_id: string; max_price_cents: number | null; min_rooms: number | null; min_m2: number | null; zones: string[]; municipalities: string[]; must_haves: string[] }
+export type Criteria = { household_id: string; max_price_cents: number | null; min_rooms: number | null; min_m2: number | null; zones: string[]; municipalities: string[]; must_haves: string[]; nice_to_haves: string[] }
 export type HomeStatus = 'interesa' | 'llamar' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta'
 export type Home = {
   id: string
@@ -169,19 +169,60 @@ export const PREP_ITEMS = [
   'Juguetes recogidos', 'Guardar papeles y objetos de valor', 'Plan para los niños'
 ]
 /** Tipo de calefacción y de aire acondicionado */
-export type HeatingType = 'gas_natural' | 'gasoil' | 'propano' | 'electrica' | 'aerotermia' | 'biomasa' | 'central' | 'ninguna'
+export type HeatingType = 'gas_natural' | 'gasoil' | 'propano' | 'electrica' | 'aerotermia' | 'geotermia' | 'biomasa' | 'central' | 'ninguna'
 export type Cooling = 'no' | 'si' | 'splits' | 'conductos' | 'aerotermia'
 export const HEATING: Record<HeatingType, string> = {
-  gas_natural: 'Gas natural', gasoil: 'Gasóleo', propano: 'Propano', electrica: 'Eléctrica', aerotermia: 'Aerotermia',
+  gas_natural: 'Gas natural', gasoil: 'Gasóleo', propano: 'Propano', electrica: 'Eléctrica', aerotermia: 'Aerotermia', geotermia: 'Geotermia',
   biomasa: 'Biomasa / pellets', central: 'Central (comunidad)', ninguna: 'Sin calefacción'
 }
 export const COOLING: Record<Cooling, string> = { no: 'Sin aire', si: 'Sí', splits: 'Splits', conductos: 'Por conductos', aerotermia: 'Aerotermia' }
 
 export const FEATURES: Record<string, string> = {
-  ascensor: 'Ascensor', garaje: 'Garaje', trastero: 'Trastero', terraza: 'Terraza', exterior: 'Exterior',
-  calefaccion: 'Calefacción', aire: 'Aire acondicionado', jardin: 'Jardín', piscina: 'Piscina',
-  reformado: 'Reformado', placas_solares: 'Placas solares', solar_termica: 'Solar térmica (agua)',
-  cerca_cole: 'Cerca del cole', transporte: 'Transporte cerca'
+  // Piscina y exterior
+  piscina: 'Piscina propia', piscina_comunitaria: 'Piscina comunitaria', jardin: 'Jardín', terraza: 'Terraza', porche: 'Porche',
+  barbacoa: 'Barbacoa', riego: 'Riego automático', huerto: 'Huerto', zona_juegos: 'Zona de juegos',
+  parcela_llana: 'Parcela llana', parcela_pendiente: 'Parcela en pendiente', orientacion_sur: 'Orientación sur', vistas: 'Vistas', exterior: 'Exterior',
+  // Energía y confort
+  calefaccion: 'Calefacción', aire: 'Aire acondicionado', placas_solares: 'Placas solares', bateria: 'Batería (placas)',
+  solar_termica: 'Solar térmica (agua)', suelo_radiante: 'Suelo radiante', chimenea: 'Chimenea o estufa', aislamiento: 'Buen aislamiento / doble cristal',
+  cargador: 'Punto de carga (coche)',
+  // La casa
+  reformado: 'Reformado', sotano: 'Sótano', buhardilla: 'Buhardilla', dormitorio_pb: 'Dormitorio en planta baja',
+  garaje: 'Garaje', garaje_cerrado: 'Garaje cerrado', trastero: 'Trastero', armarios: 'Armarios empotrados', ascensor: 'Ascensor',
+  // Urbanización y servicios
+  urb_cerrada: 'Urbanización cerrada / vigilancia', zonas_comunes: 'Zonas comunes (pádel, parque)', fibra: 'Fibra óptica',
+  gas_natural: 'Gas natural', transporte: 'Transporte cerca', cerca_cole: 'Cerca del cole'
+}
+/** Los extras agrupados, para elegirlos sin una lista enorme */
+export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
+  { title: '🏊 Piscina y exterior', keys: ['piscina', 'piscina_comunitaria', 'jardin', 'terraza', 'porche', 'barbacoa', 'riego', 'huerto', 'zona_juegos', 'parcela_llana', 'parcela_pendiente', 'orientacion_sur', 'vistas', 'exterior'] },
+  { title: '⚡ Energía y confort', keys: ['calefaccion', 'aire', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
+  { title: '🏠 La casa', keys: ['reformado', 'sotano', 'buhardilla', 'dormitorio_pb', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'ascensor'] },
+  { title: '🏘️ Urbanización y servicios', keys: ['urb_cerrada', 'zonas_comunes', 'fibra', 'gas_natural', 'transporte', 'cerca_cole'] }
+]
+/** Opciones extra solo para lo que buscamos (no se marcan en la ficha: se deducen) */
+export const CRITERIA_EXTRA: Record<string, string> = {
+  piscina_cualquiera: 'Piscina (propia o comunitaria)', geotermia: 'Geotermia', aerotermia: 'Aerotermia'
+}
+export const criteriaLabel = (k: string) => CRITERIA_EXTRA[k] ?? FEATURES[k] ?? k
+/** Grupos para elegir en lo que buscamos (con las opciones deducidas al principio de cada grupo) */
+export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map((g, i) =>
+  i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: [...g.keys, 'aerotermia', 'geotermia'] } : g)
+/** ¿Cumple el piso esta característica de lo que buscamos? */
+export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string) {
+  if (k === 'calefaccion') return h.features.includes(k) || (!!h.heating_type && h.heating_type !== 'ninguna')
+  if (k === 'aire') return h.features.includes(k) || (!!h.cooling && h.cooling !== 'no')
+  if (k === 'piscina_cualquiera') return h.features.includes('piscina') || h.features.includes('piscina_comunitaria')
+  if (k === 'geotermia' || k === 'aerotermia') return h.heating_type === k
+  if (k === 'garaje') return h.features.includes('garaje') || h.features.includes('garaje_cerrado')
+  if (k === 'placas_solares') return h.features.includes('placas_solares') || h.features.includes('bateria')
+  return h.features.includes(k)
+}
+/** Cuántos de los «Valoramos» tiene un piso */
+export function niceCount(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, c: { nice_to_haves?: string[] } | null) {
+  const want = c?.nice_to_haves ?? []
+  const got = want.filter(k => meets(h, k))
+  return { got, want }
 }
 export const HOME_STATUS: Record<HomeStatus, string> = {
   interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',
@@ -238,7 +279,7 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
   if (c.min_rooms) out.push({ label: `${c.min_rooms}+ hab.`, ok: h.rooms == null ? null : h.rooms >= c.min_rooms })
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
   if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2 })
-  for (const k of c.must_haves) out.push({ label: FEATURES[k] ?? k, ok: h.features.includes(k) })
+  for (const k of c.must_haves) out.push({ label: criteriaLabel(k), ok: meets(h, k) })
   return out
 }
 
@@ -268,7 +309,7 @@ export function useMudanza() {
       supabase.from('sale_price_history').select('id, price_cents, changed_on, changed_at').order('changed_at'),
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
-      supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves').maybeSingle(),
+      supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves, nice_to_haves').maybeSingle(),
       supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, plot_m2, useful_m2, year_built, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),

@@ -67,16 +67,40 @@ function toNumber(s: string) {
 const FEATURE_PATTERNS: [string, RegExp][] = [
   ['ascensor', /\bascensor\b/i],
   ['garaje', /\bgaraje\b|\bplaza de (garaje|aparcamiento|parking)\b|\bparking\b/i],
+  ['garaje_cerrado', /\bgaraje (cerrado|cubierto|privado)\b|\bcochera\b/i],
   ['trastero', /\btrastero\b/i],
   ['terraza', /\bterraza\b/i],
   ['exterior', /\bexterior\b/i],
   ['calefaccion', /\bcalefacci[oó]n\b/i],
   ['aire', /\baire acondicionado\b/i],
   ['jardin', /\bjard[ií]n\b/i],
-  ['piscina', /\bpiscina\b/i],
+  ['piscina', /\bpiscina\b(?!\s+(comunitaria|com[uú]n|de la (urbanizaci[oó]n|comunidad)))/i],
+  ['piscina_comunitaria', /\bpiscinas? (comunitarias?|com[uú]n(es)?|de la (urbanizaci[oó]n|comunidad))\b/i],
   ['reformado', /\breformad[oa]\b|\bobra nueva\b/i],
   ['placas_solares', /\b(placas|paneles) (solares|fotovoltaic[oa]s)\b|\bfotovoltaic[oa]s?\b|\bautoconsumo\b/i],
-  ['solar_termica', /\bsolar t[eé]rmica\b|\bpaneles? solares? (para|de) (agua|acs)\b|\bcaptadores solares\b/i]
+  ['solar_termica', /\bsolar t[eé]rmica\b|\bpaneles? solares? (para|de) (agua|acs)\b|\bcaptadores solares\b/i],
+  ['bateria', /\bbater[ií]as?\b/i],
+  ['suelo_radiante', /\bsuelo radiante\b/i],
+  ['chimenea', /\bchimenea\b|\bestufa de (le[nñ]a|pellets?)\b|\bcassette\b/i],
+  ['aislamiento', /\bdoble (acristalamiento|cristal)\b|\bclimalit\b|\bventanas? de (pvc|aluminio con rotura)\b|\brotura de puente t[eé]rmico\b|\baislamiento\b/i],
+  ['cargador', /\bpunto de carga\b|\bcargador (para|de) (coche|veh[ií]culo)/i],
+  ['porche', /\bporche\b/i],
+  ['barbacoa', /\bbarbacoa\b/i],
+  ['riego', /\briego (autom[aá]tico|por goteo)\b/i],
+  ['huerto', /\bhuerto\b/i],
+  ['zona_juegos', /\b(zona|parque) (de juegos|infantil)\b/i],
+  ['parcela_llana', /\bparcela (llana|plana)\b|\bterreno llano\b/i],
+  ['parcela_pendiente', /\b(parcela|terreno|finca) (en|con) pendiente\b|\bparcela en pendiente\b|\bterrazas escalonadas\b|\bdesnivel\b/i],
+  ['orientacion_sur', /\borientaci[oó]n (sur|sureste|suroeste)\b|\borientad[oa] al sur\b/i],
+  ['vistas', /\bvistas\b/i],
+  ['sotano', /\bs[oó]tano\b|\bsemis[oó]tano\b/i],
+  ['buhardilla', /\bbuhardilla\b|\babuhardillad[oa]\b/i],
+  ['dormitorio_pb', /\b(dormitorio|habitaci[oó]n) en (la )?planta baja\b/i],
+  ['armarios', /\barmarios? empotrados?\b/i],
+  ['urb_cerrada', /\burbanizaci[oó]n (cerrada|privada)\b|\bvigilancia\b|\bseguridad 24\b|\bgarita\b/i],
+  ['zonas_comunes', /\bzonas? comunes\b|\bpista de (p[aá]del|tenis)\b/i],
+  ['fibra', /\bfibra( [oó]ptica)?\b/i],
+  ['gas_natural', /\bgas natural\b|\bgas ciudad\b/i]
 ]
 // Frases que niegan una característica («sin ascensor», «no tiene garaje»)
 const NEGATED = (key: string, text: string) => {
@@ -123,7 +147,7 @@ export function parseListing(raw: string): ListingData {
   const energy = text.match(/(?:[Cc]onsumo|[Cc]alificaci[oó]n energ[eé]tica|[Cc]ertificado energ[eé]tico)[^\n]{0,40}?\b([A-G])\b(?![a-záéíóúñ])/)
   if (energy) out.energy = energy[1]
   // Calefacción y aire, si el anuncio lo dice con palabras
-  const heatTxt = text.match(/calefacci[oó]n[^.\n]{0,60}/i)?.[0] ?? (/aerotermia|bomba de calor/i.test(text) ? 'aerotermia' : '')
+  const heatTxt = text.match(/calefacci[oó]n[^.\n]{0,60}/i)?.[0] ?? (/geoterm/i.test(text) ? 'geotermia' : /aerotermia|bomba de calor/i.test(text) ? 'aerotermia' : '')
   const hType = heatTxt && heatingFrom(heatTxt); if (hType && hType !== 'ninguna') out.heating_type = hType
   const coolTxt = text.match(/aire acondicionado[^.\n]{0,40}|climatizaci[oó]n[^.\n]{0,40}|splits?\b/i)?.[0]
   const cType = coolTxt && coolingFrom(coolTxt); if (cType && cType !== 'no') out.cooling = cType
@@ -229,7 +253,7 @@ PARCELA: (m² de parcela, solo el número)
 HABITACIONES:
 BANOS:
 PLANTA:
-EXTRAS: (elige entre: ascensor, garaje, trastero, terraza, exterior, calefaccion, aire, jardin, piscina, reformado)
+EXTRAS: (los que tenga, separados por comas: piscina propia, piscina comunitaria, jardín, terraza, porche, barbacoa, riego automático, huerto, zona de juegos, parcela llana, parcela en pendiente, orientación sur, vistas, exterior, calefacción, aire acondicionado, suelo radiante, chimenea, doble acristalamiento, batería, punto de carga, reformado, sótano, buhardilla, dormitorio en planta baja, garaje, garaje cerrado, trastero, armarios empotrados, ascensor, urbanización cerrada, vigilancia, zonas comunes, pista de pádel, fibra óptica, gas natural)
 SOLAR: (placas solares: «no», «fotovoltaicas» —con la potencia en kWp y si tienen batería, si aparece— o «térmicas» para agua caliente; NO CONSTA si no se sabe)
 CERTIFICADO: (letra de consumo, A-G)
 COMUNIDAD: (€/mes, solo el número)
@@ -237,7 +261,7 @@ IBI: (€/año, solo el número)
 LUZ: (gasto medio de luz en €/mes, solo el número, si aparece)
 AGUA: (gasto medio de agua en €/mes, solo el número, si aparece)
 CALEFACCION: (gasto medio de calefacción en €/mes, solo el número, si aparece)
-SISTEMA: (tipo de calefacción: gas natural, gasóleo, propano, eléctrica, aerotermia, biomasa/pellets, central de la comunidad o ninguna)
+SISTEMA: (tipo de calefacción: gas natural, gasóleo, propano, eléctrica, aerotermia, geotermia, biomasa/pellets, central de la comunidad o ninguna)
 CLIMA: (aire acondicionado: no, splits, por conductos o aerotermia)
 AÑO: (de construcción)
 RESUMEN: (dos frases con lo más destacable)
@@ -340,7 +364,8 @@ export function parseAiBlock(raw: string): ListingData | null {
   }
   if (values.EXTRAS) {
     const f = fold(values.EXTRAS)
-    const keys = ['ascensor', 'garaje', 'trastero', 'terraza', 'exterior', 'calefaccion', 'aire', 'jardin', 'piscina', 'reformado'].filter(k => f.includes(k))
+    // La lista de la IA se lee con las mismas reglas que el texto del anuncio (así «piscina comunitaria» no cuenta como propia)
+    const keys = FEATURE_PATTERNS.filter(([, re]) => re.test(f)).map(([k]) => k)
     if (keys.length) out.features = keys
   }
   if (values.SOLAR) {
@@ -422,6 +447,7 @@ export function parseAny(raw: string): ListingData {
 /** «gas natural», «caldera de gasoil», «bomba de calor»… → tipo de calefacción */
 export function heatingFrom(v: string): import('./mudanza').HeatingType | undefined {
   const t = fold(v).toLowerCase()
+  if (/geoterm/.test(t)) return 'geotermia'
   if (/aerotermia|bomba de calor/.test(t)) return 'aerotermia'
   if (/gas natural/.test(t)) return 'gas_natural'
   if (/gasoil|gasoleo|gas oil/.test(t)) return 'gasoil'

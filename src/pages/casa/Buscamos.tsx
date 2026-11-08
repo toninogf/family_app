@@ -12,22 +12,22 @@ import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
-  coverPhoto, mergeLinks, mustHaveCheck, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
+  CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
   type CheckValue, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
-import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
+import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
 import { aiStatus, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
-import { EditSection, Field, FEATURE_ICON, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
+import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
-type Sort = 'estado' | 'recientes' | 'precio' | 'm2'
+type Sort = 'estado' | 'recientes' | 'precio' | 'm2' | 'valoramos'
 const PROVINCE_NAMES = PROVINCES.map(p => p.name)
 const municipalitiesOf = (province: string | null) => {
   const code = PROVINCES.find(p => p.name === province)?.code
@@ -92,9 +92,10 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
       sort === 'recientes' ? b.created_at.localeCompare(a.created_at)
         : sort === 'precio' ? nullsLast(a.price_cents) - nullsLast(b.price_cents)
           : sort === 'm2' ? nullsLast(perM2(a)) - nullsLast(perM2(b))
+            : sort === 'valoramos' ? niceCount(b, m.criteria).got.length - niceCount(a, m.criteria).got.length || HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status)
               : HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [m.homes, filter, town, minP, maxP, sort])
+  }, [m.homes, m.criteria, filter, town, minP, maxP, sort])
 
   const nextVisits = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t)
   // Portadas de los pisos de la lista (enlaces temporales pedidos de una vez)
@@ -118,16 +119,17 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
           <span className="text-[15px] font-bold">Qué buscamos</span>
           <span className="text-sm text-accent font-semibold">Editar</span>
         </span>
-        {c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length) ? (
+        {c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length || c.nice_to_haves?.length) ? (
           <span className="flex gap-1.5 flex-wrap">
             {c.max_price_cents && <Chip>Hasta {priceShort(c.max_price_cents)}</Chip>}
             {c.min_rooms ? <Chip>{c.min_rooms}+ hab.</Chip> : null}
             {c.min_m2 ? <Chip>{c.min_m2}+ m²</Chip> : null}
             {(c.municipalities ?? []).map(z => <Chip key={`m-${z}`}>📍 {z}</Chip>)}
             {c.zones.map(z => <Chip key={z}>{z}</Chip>)}
-            {c.must_haves.map(k => <Chip key={k}>{FEATURES[k] ?? k}</Chip>)}
+            {c.must_haves.map(k => <Chip key={k}>🎯 {criteriaLabel(k)}</Chip>)}
+            {(c.nice_to_haves ?? []).map(k => <Chip key={`n-${k}`}>⭐ {criteriaLabel(k)}</Chip>)}
           </span>
-        ) : <span className="text-sm text-muted">Presupuesto, zonas e imprescindibles. Cada piso marcará cuáles cumple.</span>}
+        ) : <span className="text-sm text-muted">Presupuesto, zonas, imprescindibles y lo que valoramos. Cada piso marcará cuáles cumple.</span>}
       </button>
 
       {nextVisits.length > 0 && (
@@ -191,6 +193,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
               <option value="recientes">Guardados más recientes</option>
               <option value="precio">Precio, de menor a mayor</option>
               <option value="m2">€/m², de menor a mayor</option>
+              {(m.criteria?.nice_to_haves?.length ?? 0) > 0 && <option value="valoramos">Lo que valoramos (más primero)</option>}
             </select>
           </label>
         </Card>
@@ -535,8 +538,9 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
   const [mustOpen, setMustOpen] = useState(false)
   const checks = mustHaveCheck(h, m.criteria)
   const met = checks.filter(c => c.ok).length
+  const nice = niceCount(h, m.criteria)
+  const [niceOpen, setNiceOpen] = useState(false)
   const monthly = monthlyCost(h)
-  const icons: Record<string, string> = { piscina: '🏊', garaje: '🚗', jardin: '🌿', trastero: '📦', terraza: '☀️', ascensor: '🛗', reformado: '✨', exterior: '🪟', placas_solares: '🔆', solar_termica: '♨️', transporte: '🚌', cerca_cole: '🏫', calefaccion: '🔥', aire: '❄️' }
   const facts: [string, string][] = ([
     h.size_m2 && ['🏠', `${Number(h.size_m2)} m²${h.useful_m2 ? ` (${Number(h.useful_m2)} útiles)` : ''}`],
     h.plot_m2 && ['🌳', `parcela ${Number(h.plot_m2)} m²`],
@@ -564,7 +568,7 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
       ) : <p className="text-sm text-muted">Sin datos todavía: rellénalos desde el anuncio con «✏️».</p>}
       {extras.length > 0 && (
         <span className="flex gap-1 flex-wrap">
-          {extras.map(f => <span key={f} className="px-2 py-0.5 rounded-lg bg-bg text-[12px]">{icons[f] ?? '•'} {FEATURES[f] ?? f}</span>)}
+          {extras.map(f => <span key={f} className="px-2 py-0.5 rounded-lg bg-bg text-[12px]">{FEATURE_ICON[f] ?? '•'} {FEATURES[f] ?? f}</span>)}
         </span>
       )}
       {h.features.includes('placas_solares') && h.health?.solar?.n && <span className="text-[12px] text-muted -mt-1">🔆 {h.health.solar.n}</span>}
@@ -591,6 +595,19 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
           {mustOpen && (
             <span className="flex gap-1 flex-wrap -mt-1">
               {checks.map(c => <Chip key={c.label} tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>)}
+            </span>
+          )}
+        </>
+      )}
+      {nice.want.length > 0 && (
+        <>
+          <button onClick={() => setNiceOpen(!niceOpen)} className="flex justify-between items-center text-left border-t border-line pt-2">
+            <span className="text-[13px] text-muted">⭐ Lo que valoramos</span>
+            <span className="text-[14px] font-semibold">{nice.got.length} de {nice.want.length} <span className="text-muted">{niceOpen ? '▾' : '▸'}</span></span>
+          </button>
+          {niceOpen && (
+            <span className="flex gap-1 flex-wrap -mt-1">
+              {nice.want.map(k => <Chip key={k} tone={nice.got.includes(k) ? 'ok' : 'unknown'}>{nice.got.includes(k) ? '✓' : '·'} {criteriaLabel(k)}</Chip>)}
             </span>
           )}
         </>
@@ -1264,7 +1281,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
         </EditSection>
 
         <EditSection id="equip" icon="🔧" title="Equipamiento" {...cnt('equip')} flashed={flashedIn('equip')} open={sections.isOpen('equip')} onToggle={() => sections.toggle('equip')}>
-          <MultiChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures} options={Object.entries(FEATURES).map(([value, label]) => ({ value, label: `${FEATURE_ICON[value] ?? ''} ${label}` }))} />
+          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} groups={FEATURE_GROUPS} labels={k => FEATURES[k] ?? k} value={features} onChange={setFeatures} />
           <div className="grid grid-cols-2 gap-3">
             <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
               options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
@@ -1347,6 +1364,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   const [towns, setTowns] = useState<string[]>(c?.municipalities ?? [])
   const [pick, setPick] = useState(0)
   const [must, setMust] = useState<string[]>(c?.must_haves ?? [])
+  const [nice, setNice] = useState<string[]>(c?.nice_to_haves ?? [])
   const [error, setError] = useState('')
 
   async function submit(e: FormEvent) {
@@ -1356,7 +1374,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
     const err = await m.write('search_criteria', {
       household_id: householdId, max_price_cents: maxCents,
       min_rooms: rooms.trim() ? parseInt(rooms, 10) : null, min_m2: m2.trim() ? parseInt(m2, 10) : null,
-      zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must
+      zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k)).slice(0, 40)
     }, undefined, 'household_id')
     if (err) setError(err); else onClose()
   }
@@ -1383,7 +1401,16 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
           )}
         </div>
         <TextField label="Zonas o barrios (separados por comas)" value={zones} onChange={e => setZones(e.target.value)} placeholder="Ej. Chamberí, Salamanca" />
-        <MultiChips label="Imprescindibles" value={must} onChange={setMust} options={Object.entries(FEATURES).map(([value, label]) => ({ value, label }))} />
+        <details className="rounded-2xl border border-line p-3" open={must.length > 0}>
+          <summary className="font-bold text-[15px] cursor-pointer">🎯 Imprescindibles{must.length ? ` · ${must.length}` : ''}</summary>
+          <p className="text-[12px] text-muted mt-1 mb-2">Sin esto no nos interesa. Cada piso dirá si lo cumple.</p>
+          <GroupedChips label="" groups={CRITERIA_GROUPS} labels={criteriaLabel} value={must} onChange={v => { setMust(v); setNice(n => n.filter(k => !v.includes(k))) }} />
+        </details>
+        <details className="rounded-2xl border border-line p-3" open={nice.length > 0}>
+          <summary className="font-bold text-[15px] cursor-pointer">⭐ Valoramos{nice.length ? ` · ${nice.length}` : ''}</summary>
+          <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Puedes ordenar la lista por esto.</p>
+          <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} value={nice} onChange={setNice} />
+        </details>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Guardar</button>
       </form>
@@ -1416,6 +1443,8 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Zona', show: h => h.zone ?? '—' },
     { label: 'Extras', show: h => (h.features.length ? h.features.map(f => FEATURES[f] ?? f).join(', ') : '—'), value: h => h.features.length, better: 'high' },
     { label: 'Imprescindibles', show: h => { const c = mustHaveCheck(h, m.criteria); return c.length ? `${c.filter(x => x.ok).length}/${c.length}` : '—' }, value: musts, better: 'high' },
+    { label: 'Valoramos', show: h => { const n = niceCount(h, m.criteria); return n.want.length ? `${n.got.length}/${n.want.length}` : '—' }, value: h => (m.criteria?.nice_to_haves?.length ? niceCount(h, m.criteria).got.length : null), better: 'high' },
+    { label: 'Piscina', show: h => (h.features.includes('piscina') ? 'Propia' : h.features.includes('piscina_comunitaria') ? 'Comunitaria' : '—'), value: h => (h.features.includes('piscina') ? 2 : h.features.includes('piscina_comunitaria') ? 1 : 0), better: 'high' },
     { label: 'Comunidad', show: h => (h.community_fee_cents != null ? `${price(h.community_fee_cents)}/mes` : '—'), value: h => h.community_fee_cents, better: 'low' },
     { label: 'IBI', show: h => (h.ibi_cents != null ? `${price(h.ibi_cents)}/año` : '—'), value: h => h.ibi_cents, better: 'low' },
     { label: 'Luz', show: h => (h.electricity_cents != null ? `${price(h.electricity_cents)}/mes` : '—'), value: h => h.electricity_cents, better: 'low' },

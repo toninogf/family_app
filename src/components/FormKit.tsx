@@ -135,7 +135,43 @@ export function ImportSummary({ filled, diffs, missing, onGo }: {
 /** Iconos de los extras */
 export const FEATURE_ICON: Record<string, string> = {
   ascensor: '🛗', garaje: '🚗', trastero: '📦', terraza: '☀️', exterior: '🪟', calefaccion: '🔥', aire: '❄️', jardin: '🌿',
-  piscina: '🏊', reformado: '✨', placas_solares: '🔆', solar_termica: '♨️', cerca_cole: '🏫', transporte: '🚌'
+  piscina: '🏊', reformado: '✨', placas_solares: '🔆', solar_termica: '♨️', cerca_cole: '🏫', transporte: '🚌',
+  piscina_comunitaria: '🏊‍♂️', piscina_cualquiera: '🏊', porche: '⛱️', barbacoa: '🍖', riego: '💧', huerto: '🥕', zona_juegos: '🛝',
+  parcela_llana: '➖', parcela_pendiente: '⛰️', orientacion_sur: '🧭', vistas: '🏞️',
+  bateria: '🔋', suelo_radiante: '♨️', chimenea: '🪵', aislamiento: '🧱', cargador: '🔌', aerotermia: '🌬️', geotermia: '🌍',
+  sotano: '⬇️', buhardilla: '🔼', dormitorio_pb: '🛏️', garaje_cerrado: '🚘', armarios: '🚪',
+  urb_cerrada: '🛡️', zonas_comunes: '🎾', fibra: '📶', gas_natural: '🔵'
+}
+
+/** Chips de selección múltiple agrupados por tema (para que una lista larga se lea bien) */
+export function GroupedChips({ label, groups, labels, value, onChange, counts = true }: {
+  label: string; groups: { title: string; keys: string[] }[]; labels: (k: string) => string
+  value: string[]; onChange: (v: string[]) => void; counts?: boolean
+}) {
+  return (
+    <fieldset className="flex flex-col gap-3">
+      {label && <legend className="text-sm font-medium text-muted mb-1.5">{label}</legend>}
+      {groups.map(g => {
+        const n = g.keys.filter(k => value.includes(k)).length
+        return (
+          <div key={g.title} className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-semibold">{g.title}{counts && n ? <span className="text-accent"> · {n}</span> : null}</span>
+            <div className="flex gap-1.5 flex-wrap">
+              {g.keys.map(k => {
+                const on = value.includes(k)
+                return (
+                  <button type="button" key={k} aria-pressed={on} onClick={() => onChange(on ? value.filter(x => x !== k) : [...value, k])}
+                    className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>
+                    {FEATURE_ICON[k] ? `${FEATURE_ICON[k]} ` : ''}{labels(k)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </fieldset>
+  )
 }
 
 /** Importe con puntos de miles al salir del campo («650000» → «650.000») */
