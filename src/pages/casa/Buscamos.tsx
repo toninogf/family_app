@@ -364,8 +364,16 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
         <button onClick={onEdit} className="min-h-11 px-4 rounded-xl bg-card border border-line text-sm font-semibold">Editar datos</button>
       </div>
 
-      <Choice<HomeStatus> label="Estado" value={h.status} onChange={s => (s === 'descartado' ? setDiscarding(true) : setStatus(s, { discard_reason: null }))}
-        options={(['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(s => ({ value: s, label: HOME_STATUS[s] }))} />
+      <label className="flex items-center gap-3">
+        <span className="text-sm font-medium text-muted shrink-0">Estado</span>
+        <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
+          onChange={e => { const s = e.target.value as HomeStatus; if (s === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(s, { discard_reason: null }) } }}
+          className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[15px] font-semibold">
+          {(['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(s => (
+            <option key={s} value={s}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</option>
+          ))}
+        </select>
+      </label>
       {discarding && (
         <div className="flex flex-col gap-2 bg-card rounded-2xl p-4">
           <TextField label="¿Por qué lo descartáis?" value={reason} onChange={e => setReason(e.target.value)} maxLength={200} placeholder="Ej. demasiado ruido, reforma cara" autoFocus />
