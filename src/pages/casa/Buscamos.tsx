@@ -37,7 +37,12 @@ const STATUS_FILTERS: HomeStatus[] = ['interesa', 'llamar', 'visita_pedida', 'vi
 /** Número para WhatsApp: con prefijo de España si no lo trae */
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.length === 9 ? `34${d}` : d.replace(/^00/, '') }
 const nameOf = (id: string | null, members: Member[]) => (id ? members.find(x => x.id === id)?.display_name ?? '' : '')
-const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')))
+// Admite «1.200» (miles con punto) y «95,5» (decimales con coma)
+const num = (s: string) => {
+  const t = s.trim().replace(/\s|m²|m2/gi, '')
+  if (!t) return null
+  return Number(/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(',', '.'))
+}
 
 export default function Buscamos({ m, members, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
   const [filter, setFilter] = useState<Filter>('activos')
@@ -274,7 +279,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
       <span className="text-[14px]">
         <b>{price(h.price_cents)}</b>
         <span className="text-muted">
-          {[h.size_m2 && `${Number(h.size_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`].filter(Boolean).map(x => ` · ${x}`).join('')}
+          {[h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`].filter(Boolean).map(x => ` · ${x}`).join('')}
         </span>
       </span>
       {checks.length > 0 && (
@@ -337,7 +342,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       <div className="flex flex-col gap-1 -mt-3">
         <span className="text-[22px] font-bold">{price(h.price_cents)}</span>
         <span className="text-sm text-muted">
-          {[h.size_m2 && `${Number(h.size_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`, h.floor && `planta ${h.floor}`].filter(Boolean).join(' · ')}
+          {[h.size_m2 && `${Number(h.size_m2)} m² construidos`, h.useful_m2 && `${Number(h.useful_m2)} m² útiles`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`, h.floor && `planta ${h.floor}`, h.year_built && `de ${h.year_built}`].filter(Boolean).join(' · ')}
         </span>
         {(h.address || h.zone || h.municipality) && <span className="text-sm">{[h.address, h.zone, h.municipality, h.province].filter(Boolean).join(' · ')}</span>}
         {h.url && (
@@ -693,6 +698,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [importNote, setImportNote] = useState<{ ok: boolean; text: string } | null>(null)
   const [amount, setAmount] = useState(priceInput(home?.price_cents))
   const [m2, setM2] = useState(home?.size_m2 != null ? String(Number(home.size_m2)).replace('.', ',') : '')
+  const [useful, setUseful] = useState(home?.useful_m2 != null ? String(Number(home.useful_m2)).replace('.', ',') : '')
+  const [plot, setPlot] = useState(home?.plot_m2 != null ? String(Number(home.plot_m2)).replace('.', ',') : '')
+  const [year, setYear] = useState(home?.year_built?.toString() ?? '')
   const [rooms, setRooms] = useState(home?.rooms?.toString() ?? '')
   const [baths, setBaths] = useState(home?.baths?.toString() ?? '')
   const [floor, setFloor] = useState(home?.floor ?? '')
@@ -728,6 +736,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     f.put('nombre', title, d.title, setTitle, { diff: false })
     f.put('precio', amount, eur(d.price_eur), setAmount)
     f.put('m²', m2, d.size_m2 ? String(d.size_m2).replace('.', ',') : null, setM2)
+    f.put('m² útiles', useful, d.useful_m2 ? String(d.useful_m2).replace('.', ',') : null, setUseful)
+    f.put('parcela', plot, d.plot_m2 ? String(d.plot_m2).replace('.', ',') : null, setPlot)
+    f.put('año', year, d.year_built ? String(d.year_built) : null, setYear)
     f.put('habitaciones', rooms, d.rooms != null ? String(d.rooms) : null, setRooms)
     f.put('baños', baths, d.baths != null ? String(d.baths) : null, setBaths)
     f.put('planta', floor, d.floor, setFloor)
@@ -845,9 +856,13 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     if (ints.some(x => x != null && (isNaN(x) || x < 0))) { setError('Revisa habitaciones, baños y minutos'); return }
     const size = num(m2)
     if (size != null && (isNaN(size) || size <= 0)) { setError('Los metros no son válidos'); return }
+    const usefulM2 = num(useful), plotM2 = num(plot)
+    if ([usefulM2, plotM2].some(x => x != null && (isNaN(x) || x <= 0))) { setError('Revisa los metros útiles y de parcela'); return }
+    const yearN = year.trim() ? parseInt(year, 10) : null
+    if (yearN != null && (isNaN(yearN) || yearN < 1700 || yearN > 2100)) { setError('El año de construcción no es válido'); return }
     setBusy(true); setError('')
     const data = {
-      title: title.trim(), url: cleanUrl, price_cents: priceCents, size_m2: size, rooms: ints[0], baths: ints[1], floor: floor.trim() || null,
+      title: title.trim(), url: cleanUrl, price_cents: priceCents, size_m2: size, useful_m2: usefulM2, plot_m2: plotM2, year_built: yearN, rooms: ints[0], baths: ints[1], floor: floor.trim() || null,
       zone: zone.trim() || null, province, municipality, address: address.trim() || null, maps_url: maps.trim() || null, features,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null, energy,
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
@@ -933,6 +948,11 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
         <div className="grid grid-cols-2 gap-3">
           <TextField label="Precio (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="320.000" />
           <TextField label="Metros (m²)" inputMode="decimal" value={m2} onChange={e => setM2(e.target.value)} placeholder="95" />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <TextField label="Parcela (m²)" inputMode="decimal" value={plot} onChange={e => setPlot(e.target.value)} placeholder="800" />
+          <TextField label="Útiles (m²)" inputMode="decimal" value={useful} onChange={e => setUseful(e.target.value)} />
+          <TextField label="Año constr." inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} />
         </div>
         <div className="grid grid-cols-3 gap-3">
           <TextField label="Habitaciones" inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} />
@@ -1063,6 +1083,8 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
   const rows: Row[] = [
     { label: 'Precio', show: h => price(h.price_cents), value: h => h.price_cents, better: 'low' },
     { label: 'm²', show: h => (h.size_m2 != null ? Number(h.size_m2) : '—'), value: h => (h.size_m2 != null ? Number(h.size_m2) : null), better: 'high' },
+    { label: 'Parcela', show: h => (h.plot_m2 != null ? `${Number(h.plot_m2)} m²` : '—'), value: h => (h.plot_m2 != null ? Number(h.plot_m2) : null), better: 'high' },
+    { label: 'Año', show: h => h.year_built ?? '—', value: h => h.year_built, better: 'high' },
     { label: '€/m²', show: h => price(perM2(h)), value: perM2, better: 'low' },
     { label: 'Habitaciones', show: h => h.rooms ?? '—', value: h => h.rooms, better: 'high' },
     { label: 'Baños', show: h => h.baths ?? '—', value: h => h.baths, better: 'high' },

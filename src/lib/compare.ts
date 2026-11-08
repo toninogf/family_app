@@ -50,6 +50,13 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
     const d = Number(big.size_m2) - Number(small.size_m2)
     if (d >= 10) out.push(`📏 **${n(big)}** es el más grande: ${Number(big.size_m2)} m², ${d} m² más que **${n(small)}**.`)
   }
+  // Parcela (chalets)
+  const plots = homes.filter(h => h.plot_m2 != null).sort((a, b) => Number(b.plot_m2) - Number(a.plot_m2))
+  if (plots.length >= 2) {
+    const big = plots[0], small = plots[plots.length - 1]
+    const d = Math.round(Number(big.plot_m2) - Number(small.plot_m2))
+    if (d >= 50) out.push(`🌳 Más parcela: **${n(big)}** (${Number(big.plot_m2)} m²), ${d} m² más que **${n(small)}**.`)
+  } else if (plots.length === 1 && homes.length > 1) out.push(`🌳 Solo **${n(plots[0])}** tiene parcela apuntada (${Number(plots[0].plot_m2)} m²).`)
   // Habitaciones y baños
   const rooms = homes.filter(h => h.rooms != null)
   if (rooms.length >= 2 && new Set(rooms.map(h => h.rooms)).size > 1) {
