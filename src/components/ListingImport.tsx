@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { aiPrompt, filledLabels, parseAny, type ListingData } from '../lib/listingParse'
+import { aiPrompt, parseAny, type ListingData } from '../lib/listingParse'
 import { readImages } from '../lib/ocr'
 import { portalName } from '../lib/mudanza'
 import { TextArea, TextField } from './Sheet'
@@ -11,11 +11,12 @@ import { TextArea, TextField } from './Sheet'
  */
 export default function ListingImport({ url, onUrl, onApply, shots, onShots, adPhotos, onAdPhotos }: {
   url: string; onUrl: (v: string) => void
-  onApply: (d: ListingData) => void
+  onApply: (d: ListingData) => { filled: string[]; diffs: ImportDiff[] }
   shots: File[]; onShots: (f: File[]) => void
   adPhotos: File[]; onAdPhotos: (f: File[]) => void
 }) {
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
+  const [diffs, setDiffs] = useState<ImportDiff[]>([])
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasted, setPasted] = useState('')
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -24,12 +25,10 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
 
   function fromText(text: string, intro = 'Rellenado') {
     const d = parseAny(text)
-    const got = filledLabels(d)
-    onApply(d)
+    const r = onApply(d)
+    setDiffs(r.diffs)
     if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
-    setNote(got.length
-      ? { ok: true, text: `${intro}: ${got.join(', ')}. Revísalo antes de guardar.` }
-      : { ok: false, text: 'No he encontrado datos en ese texto. Prueba a copiar el bloque de precio y características del anuncio.' })
+    setNote(importMessage(intro, r.filled, r.diffs.length))
   }
 
   async function read() {
@@ -126,6 +125,7 @@ export default function ListingImport({ url, onUrl, onApply, shots, onShots, adP
       <AdPhotoFetch urls={photoLinks} photos={adPhotos} onPhotos={onAdPhotos} />
       {busy && <p role="status" className="text-xs text-muted">{busy}</p>}
       {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
+      <ImportDiffs diffs={diffs} onChange={setDiffs} />
     </div>
   )
 }
@@ -194,6 +194,56 @@ export function AdPhotoFetch({ urls, photos, onPhotos }: { urls: string[]; photo
       )}
       {note && <p role="status" className={`text-xs ${note.ok ? 'text-accent' : 'text-danger'}`}>{note.text}</p>}
       {!note && urls.length > 0 && <p className="text-xs text-muted">La IA ha dado enlaces de fotos: pruébalos. Si el portal no las deja descargar, se usan capturas.</p>}
+    </div>
+  )
+}
+
+/** Un dato del anuncio que no coincide con lo que ya teníais: se ofrece, no se machaca */
+export type ImportDiff = { label: string; now: string; next: string; use: () => void }
+
+/**
+ * Prepara la fusión con la ficha: rellena lo vacío y apunta como diferencia lo que ya tenía otro valor.
+ * Uso: const f = merger(); f.put('precio', amount, nuevo, setAmount); … luego f.filled y f.diffs
+ */
+export function merger() {
+  const filled: string[] = []
+  const diffs: ImportDiff[] = []
+  const norm = (v: string) => v.trim().toLowerCase().replace(/\s+/g, ' ')
+  function put(label: string, now: string | null | undefined, next: string | null | undefined, set: (v: string) => void, opts: { diff?: boolean } = {}) {
+    if (next == null || !String(next).trim()) return
+    const cur = now ?? ''
+    if (!cur.trim()) { set(next); filled.push(label) }
+    else if (opts.diff !== false && norm(cur) !== norm(next)) diffs.push({ label, now: cur, next, use: () => set(next) })
+  }
+  return { put, filled, diffs }
+}
+
+/** Mensaje tras leer el anuncio */
+export function importMessage(intro: string, filled: string[], diffs: number) {
+  if (!filled.length && !diffs) return { ok: false, text: 'No he encontrado datos nuevos en ese texto. Prueba a copiar el bloque de precio y características del anuncio.' }
+  const a = filled.length ? `${intro}: ${filled.join(', ')}.` : 'Lo que ya teníais no se ha tocado.'
+  const b = diffs ? ` ${diffs} dato${diffs > 1 ? 's' : ''} del anuncio no coincide${diffs > 1 ? 'n' : ''} con lo que teníais: míralos abajo.` : ''
+  return { ok: true, text: `${a}${b} Revísalo antes de guardar.` }
+}
+
+/** Datos del anuncio distintos de los que ya había: se puede usar cada uno o todos */
+export function ImportDiffs({ diffs, onChange }: { diffs: ImportDiff[]; onChange: (d: ImportDiff[]) => void }) {
+  if (!diffs.length) return null
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl bg-bg p-2.5">
+      <span className="text-xs font-semibold">El anuncio dice otra cosa (lo vuestro no se ha cambiado):</span>
+      {diffs.map(d => (
+        <div key={d.label} className="flex items-center gap-2 text-[13px]">
+          <span className="flex-1 min-w-0">
+            <b>{d.label}</b>: <span className="text-muted line-through">{d.now}</span> → {d.next}
+          </span>
+          <button type="button" onClick={() => { d.use(); onChange(diffs.filter(x => x !== d)) }} className="min-h-9 px-3 rounded-lg border border-line bg-card text-[13px] font-semibold shrink-0">Usar</button>
+        </div>
+      ))}
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={() => onChange([])} className="min-h-9 px-3 text-[13px] text-muted">Dejar lo nuestro</button>
+        {diffs.length > 1 && <button type="button" onClick={() => { diffs.forEach(d => d.use()); onChange([]) }} className="min-h-9 px-3 rounded-lg bg-accent text-white dark:text-bg text-[13px] font-semibold">Usar todos</button>}
+      </div>
     </div>
   )
 }

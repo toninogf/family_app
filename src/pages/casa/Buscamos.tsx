@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase, type Member } from '../../lib/supabase'
-import { aiPrompt, filledLabels, parseAny, type ListingData } from '../../lib/listingParse'
+import { aiPrompt, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
 import { locateHome } from '../../lib/geo'
 import { badPoints, compareSummary, monthlyCost, shortName, supplyCost } from '../../lib/compare'
@@ -19,7 +19,7 @@ import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
-import { AdPhotoFetch } from '../../components/ListingImport'
+import { AdPhotoFetch, ImportDiffs, importMessage, merger, type ImportDiff } from '../../components/ListingImport'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
 type Sort = 'estado' | 'recientes' | 'precio' | 'm2'
@@ -684,6 +684,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [shots, setShots] = useState<File[]>([])
   // Fotos traídas desde los enlaces que dé la IA (se guardan como fotos del piso)
   const [photoLinks, setPhotoLinks] = useState<string[]>([])
+  const [diffs, setDiffs] = useState<ImportDiff[]>([])
   const [adPhotos, setAdPhotos] = useState<File[]>([])
   const [ocr, setOcr] = useState<string | null>(null)
   const [title, setTitle] = useState(home?.title ?? '')
@@ -721,40 +722,44 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [busy, setBusy] = useState(false)
 
   /** Rellena la ficha con lo que se haya sacado del anuncio (solo los datos encontrados) */
+  /** Rellena solo lo vacío; lo que ya tenía otro valor se ofrece aparte (no se machaca) */
   function apply(d: ListingData) {
     if (d.photo_urls?.length) setPhotoLinks(l => [...new Set([...l, ...d.photo_urls!])].slice(0, 20))
-    if (d.title) setTitle(t => t.trim() ? t : d.title!)
-    if (d.price_eur) setAmount(priceInput(Math.round(d.price_eur * 100)))
-    if (d.size_m2) setM2(String(d.size_m2).replace('.', ','))
-    if (d.rooms != null) setRooms(String(d.rooms))
-    if (d.baths != null) setBaths(String(d.baths))
-    if (d.floor) setFloor(d.floor)
-    if (d.municipality) { setProvince('Madrid'); setMunicipality(d.municipality) }
-    if (d.zone) setZone(d.zone.slice(0, 60))
-    if (d.address) setAddress(d.address.slice(0, 120))
-    if (d.features?.length) setFeatures(f => [...new Set([...f, ...d.features!])])
-    if (d.energy) setEnergy(d.energy)
-    if (d.community_eur) setFee(priceInput(Math.round(d.community_eur * 100)))
-    if (d.ibi_eur) setIbi(priceInput(Math.round(d.ibi_eur * 100)))
-    if (d.power_eur) setPower(priceInput(Math.round(d.power_eur * 100)))
-    if (d.water_eur) setWater(priceInput(Math.round(d.water_eur * 100)))
-    if (d.heating_eur) setHeating(priceInput(Math.round(d.heating_eur * 100)))
-    if (d.notes) setNotes(n => n.trim() ? n : d.notes!)
-    if (d.advertiser) setAdvertiser(d.advertiser)
-    if (d.agency) setAgency(d.agency.slice(0, 120))
-    if (d.contact) setContact(d.contact.slice(0, 120))
-    if (d.phone) setPhone(d.phone.slice(0, 30))
-    if (d.email) setEmail(d.email.slice(0, 120))
-    if (d.ref) setListingRef(d.ref.slice(0, 60))
-    return filledLabels(d)
+    const f = merger()
+    const eur = (v?: number) => (v ? priceInput(Math.round(v * 100)) : null)
+    f.put('nombre', title, d.title, setTitle, { diff: false })
+    f.put('precio', amount, eur(d.price_eur), setAmount)
+    f.put('m²', m2, d.size_m2 ? String(d.size_m2).replace('.', ',') : null, setM2)
+    f.put('habitaciones', rooms, d.rooms != null ? String(d.rooms) : null, setRooms)
+    f.put('baños', baths, d.baths != null ? String(d.baths) : null, setBaths)
+    f.put('planta', floor, d.floor, setFloor)
+    f.put('localidad', municipality, d.municipality, v => { setProvince('Madrid'); setMunicipality(v) })
+    f.put('zona', zone, d.zone?.slice(0, 60), setZone)
+    f.put('dirección', address, d.address?.slice(0, 120), setAddress)
+    f.put('certificado', energy, d.energy, setEnergy)
+    f.put('comunidad', fee, eur(d.community_eur), setFee)
+    f.put('IBI', ibi, eur(d.ibi_eur), setIbi)
+    f.put('luz', power, eur(d.power_eur), setPower)
+    f.put('agua', water, eur(d.water_eur), setWater)
+    f.put('calefacción', heating, eur(d.heating_eur), setHeating)
+    f.put('notas', notes, d.notes, setNotes, { diff: false })
+    f.put('anunciante', advertiser, d.advertiser, v => setAdvertiser(v as 'agencia' | 'particular'))
+    f.put('agencia', agency, d.agency?.slice(0, 120), setAgency)
+    f.put('contacto', contact, d.contact?.slice(0, 120), setContact)
+    f.put('teléfono', phone, d.phone?.slice(0, 30), setPhone)
+    f.put('email', email, d.email?.slice(0, 120), setEmail)
+    f.put('referencia', listingRef, d.ref?.slice(0, 60), setListingRef)
+    // Las características solo se añaden (nunca se quita ninguna)
+    const newF = (d.features ?? []).filter(x => !features.includes(x))
+    if (newF.length) { setFeatures([...features, ...newF]); f.filled.push('características') }
+    setDiffs(f.diffs)
+    return f
   }
 
   function fromText(text: string, intro = 'Rellenado') {
-    const got = apply(parseAny(text))
-    setImportNote(got.length
-      ? { ok: true, text: `${intro}: ${got.join(', ')}. Revísalo antes de guardar.` }
-      : { ok: false, text: 'No he encontrado datos en ese texto. Prueba a copiar el bloque de precio y características del anuncio.' })
-    return got
+    const r = apply(parseAny(text))
+    setImportNote(importMessage(intro, r.filled, r.diffs.length))
+    return r.filled
   }
 
   /** Intenta leer el anuncio desde el servidor; muchos portales (Idealista sobre todo) solo dejan ver la vista previa */
@@ -770,7 +775,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
       return
     }
     const got = fromText([res.title, res.description, res.text].filter(Boolean).join('\n'), 'Leído del anuncio')
-    if (got.length && !got.includes('precio')) {
+    if (got.length && !got.includes('precio') && !amount.trim()) {
       setImportNote({ ok: true, text: `Leído del anuncio: ${got.join(', ')}. El portal no deja ver el resto: para el precio y la ficha completa, pídeselo a una IA con los botones de abajo.` })
     }
   }
@@ -924,6 +929,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           )}
           <AdPhotoFetch urls={photoLinks} photos={adPhotos} onPhotos={setAdPhotos} />
           {importNote && <p role="status" className={`text-xs ${importNote.ok ? 'text-accent' : 'text-danger'}`}>{importNote.text}</p>}
+          <ImportDiffs diffs={diffs} onChange={setDiffs} />
         </div>
         <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />
         <div className="grid grid-cols-2 gap-3">

@@ -5,7 +5,7 @@ import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
 import { Choice, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
 import Combobox from '../../components/Combobox'
-import ListingImport from '../../components/ListingImport'
+import ListingImport, { merger } from '../../components/ListingImport'
 
 const TOWNS = (MUNICIPALITIES['28'] ?? []).map(p => p.name)
 const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(/\./g, '').replace(',', '.')))
@@ -52,30 +52,37 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
 
+  /** Rellena solo lo vacío; lo que ya tenía otro valor se ofrece aparte (no se machaca) */
   function apply(d: ListingData) {
-    if (d.price_eur) setAmount(priceInput(Math.round(d.price_eur * 100)))
-    if (d.property_type) setType(d.property_type)
-    if (d.title) setTitle(t => t.trim() ? t : d.title!)
-    if (d.address) setAddress(d.address.slice(0, 120))
-    if (d.zone) setZone(d.zone.slice(0, 60))
-    if (d.municipality) setMunicipality(d.municipality)
-    if (d.size_m2) setM2(m2Input(d.size_m2))
-    if (d.useful_m2) setUseful(m2Input(d.useful_m2))
-    if (d.plot_m2) setPlot(m2Input(d.plot_m2))
-    if (d.rooms != null) setRooms(String(d.rooms))
-    if (d.baths != null) setBaths(String(d.baths))
-    if (d.floor) setFloor(d.floor.slice(0, 20))
-    if (d.features?.length) setFeatures(f => [...new Set([...f, ...d.features!])])
-    if (d.energy) setEnergy(d.energy)
-    if (d.community_eur) setFee(priceInput(Math.round(d.community_eur * 100)))
-    if (d.ibi_eur) setIbi(priceInput(Math.round(d.ibi_eur * 100)))
-    if (d.power_eur) setPower(priceInput(Math.round(d.power_eur * 100)))
-    if (d.water_eur) setWater(priceInput(Math.round(d.water_eur * 100)))
-    if (d.heating_eur) setHeating(priceInput(Math.round(d.heating_eur * 100)))
-    if (d.year_built) setYear(String(d.year_built))
-    if (d.ref) setRef(d.ref.slice(0, 60))
-    if (d.summary) setDescription(x => x.trim() ? x : d.summary!.slice(0, 5000))
+    const f = merger()
+    const eur = (v?: number) => (v ? priceInput(Math.round(v * 100)) : null)
+    f.put('precio', amount, eur(d.price_eur), setAmount)
+    f.put('tipo', type, d.property_type, setType)
+    f.put('título', title, d.title, setTitle, { diff: false })
+    f.put('dirección', address, d.address?.slice(0, 120), setAddress)
+    f.put('zona', zone, d.zone?.slice(0, 60), setZone)
+    f.put('localidad', municipality, d.municipality, setMunicipality)
+    f.put('m²', m2, d.size_m2 ? m2Input(d.size_m2) : null, setM2)
+    f.put('m² útiles', useful, d.useful_m2 ? m2Input(d.useful_m2) : null, setUseful)
+    f.put('parcela', plot, d.plot_m2 ? m2Input(d.plot_m2) : null, setPlot)
+    f.put('habitaciones', rooms, d.rooms != null ? String(d.rooms) : null, setRooms)
+    f.put('baños', baths, d.baths != null ? String(d.baths) : null, setBaths)
+    f.put('planta', floor, d.floor?.slice(0, 20), setFloor)
+    f.put('certificado', energy, d.energy, setEnergy)
+    f.put('comunidad', fee, eur(d.community_eur), setFee)
+    f.put('IBI', ibi, eur(d.ibi_eur), setIbi)
+    f.put('luz', power, eur(d.power_eur), setPower)
+    f.put('agua', water, eur(d.water_eur), setWater)
+    f.put('calefacción', heating, eur(d.heating_eur), setHeating)
+    f.put('año', year, d.year_built ? String(d.year_built) : null, setYear)
+    f.put('referencia', ref, d.ref?.slice(0, 60), setRef)
+    f.put('descripción', description, d.summary?.slice(0, 5000), setDescription, { diff: false })
+    // Las características solo se añaden (nunca se quita ninguna)
+    const newF = (d.features ?? []).filter(x => !features.includes(x))
+    if (newF.length) { setFeatures([...features, ...newF]); f.filled.push('características') }
+    return { filled: f.filled, diffs: f.diffs }
   }
+
 
   async function submit(e: FormEvent) {
     e.preventDefault()
