@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FEATURES, photoUrl, price, saleDocUrl, type Mudanza } from '../../lib/mudanza'
+import { COOLING, FEATURES, HEATING, photoUrl, price, saleDocUrl, type Mudanza } from '../../lib/mudanza'
 import { Sheet } from '../../components/Sheet'
 
 // Las fuentes estándar del PDF solo tienen letras latinas: se quitan emojis y símbolos raros
@@ -88,6 +88,8 @@ export function DossierSheet({ m, onClose }: { m: Mudanza; onClose: () => void }
         ['Planta', l.floor],
         ['Año de construcción', l.year_built ? String(l.year_built) : null],
         ['Certificado energético', l.energy ? `Letra ${l.energy}` : null],
+        ['Calefacción', l.heating_type ? HEATING[l.heating_type] : null],
+        ['Aire acondicionado', l.cooling ? COOLING[l.cooling] : null],
         ['Comunidad', l.community_fee_cents != null ? `${price(l.community_fee_cents)}/mes` : null],
         ['IBI', l.ibi_cents != null ? `${price(l.ibi_cents)}/año` : null],
         ['Luz (media)', l.electricity_cents != null ? `${price(l.electricity_cents)}/mes` : null],

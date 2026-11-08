@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { FEATURES, parsePrice, perM2, photoUrl, price, priceInput, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
+import { COOLING, FEATURES, HEATING, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
 import { Choice, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -40,6 +40,8 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [floor, setFloor] = useState(l?.floor ?? '')
   const [features, setFeatures] = useState<string[]>(l?.features ?? [])
   const [energy, setEnergy] = useState<string | null>(l?.energy ?? null)
+  const [heatType, setHeatType] = useState<HeatingType | null>(l?.heating_type ?? null)
+  const [cooling, setCooling] = useState<Cooling | null>(l?.cooling ?? null)
   const [fee, setFee] = useState(priceInput(l?.community_fee_cents))
   const [ibi, setIbi] = useState(priceInput(l?.ibi_cents))
   const [power, setPower] = useState(priceInput(l?.electricity_cents))
@@ -69,6 +71,8 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
     f.put('baños', baths, d.baths != null ? String(d.baths) : null, setBaths)
     f.put('planta', floor, d.floor?.slice(0, 20), setFloor)
     f.put('certificado', energy, d.energy, setEnergy)
+    f.put('tipo de calefacción', heatType ? HEATING[heatType] : null, d.heating_type ? HEATING[d.heating_type] : null, () => setHeatType(d.heating_type!))
+    f.put('aire', cooling ? COOLING[cooling] : null, d.cooling ? COOLING[d.cooling] : null, () => setCooling(d.cooling!))
     f.put('comunidad', fee, eur(d.community_eur), setFee)
     f.put('IBI', ibi, eur(d.ibi_eur), setIbi)
     f.put('luz', power, eur(d.power_eur), setPower)
@@ -101,7 +105,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
       household_id: householdId, price_cents: cents, published_on: published || null, links: links.slice(0, 10),
       title: title.trim() || null, property_type: type.trim() || null, address: address.trim() || null, zone: zone.trim() || null,
       municipality, province: municipality ? 'Madrid' : null, size_m2: sizes[0], useful_m2: sizes[1], plot_m2: sizes[2],
-      rooms: ints[0], baths: ints[1], floor: floor.trim() || null, features, energy,
+      rooms: ints[0], baths: ints[1], floor: floor.trim() || null, features, energy, heating_type: heatType, cooling,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null,
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
       year_built: ints[2], listing_ref: ref.trim() || null, description: description.trim() || null,
@@ -155,6 +159,10 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
         <MultiChips label="Tiene" value={features} onChange={setFeatures} options={Object.entries(FEATURES).filter(([k]) => k !== 'cerca_cole').map(([value, label]) => ({ value, label }))} />
         <Choice<string | null> label="Certificado energético" value={energy} onChange={setEnergy}
           options={[...'ABCDEFG'.split('').map(x => ({ value: x as string | null, label: x })), { value: null, label: '?' }]} />
+        <Choice<HeatingType | null> label="Calefacción" value={heatType} onChange={setHeatType}
+          options={[...(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k as HeatingType | null, label: HEATING[k] })), { value: null, label: '?' }]} />
+        <Choice<Cooling | null> label="Aire acondicionado" value={cooling} onChange={setCooling}
+          options={[...(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k as Cooling | null, label: COOLING[k] })), { value: null, label: '?' }]} />
         <div className="grid grid-cols-3 gap-3">
           <TextField label="Comunidad €/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} />
           <TextField label="IBI €/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} />

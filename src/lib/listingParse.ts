@@ -11,6 +11,8 @@ export type ListingData = {
   floor?: string
   features?: string[]
   energy?: string
+  heating_type?: import('./mudanza').HeatingType
+  cooling?: import('./mudanza').Cooling
   community_eur?: number
   ibi_eur?: number
   /** Suministros, media €/mes */
@@ -102,6 +104,11 @@ export function parseListing(raw: string): ListingData {
   // Certificado energético: «Consumo: E», «Calificación energética: D», «Certificado energético ... C»
   const energy = text.match(/(?:[Cc]onsumo|[Cc]alificaci[oó]n energ[eé]tica|[Cc]ertificado energ[eé]tico)[^\n]{0,40}?\b([A-G])\b(?![a-záéíóúñ])/)
   if (energy) out.energy = energy[1]
+  // Calefacción y aire, si el anuncio lo dice con palabras
+  const heatTxt = text.match(/calefacci[oó]n[^.\n]{0,60}/i)?.[0] ?? (/aerotermia|bomba de calor/i.test(text) ? 'aerotermia' : '')
+  const hType = heatTxt && heatingFrom(heatTxt); if (hType && hType !== 'ninguna') out.heating_type = hType
+  const coolTxt = text.match(/aire acondicionado[^.\n]{0,40}|climatizaci[oó]n[^.\n]{0,40}|splits?\b/i)?.[0]
+  const cType = coolTxt && coolingFrom(coolTxt); if (cType && cType !== 'no') out.cooling = cType
 
   const fee = text.match(/(?:comunidad|gastos de comunidad)[^\d\n]{0,30}(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|euros)/i)
   if (fee) out.community_eur = toNumber(fee[1])
@@ -172,7 +179,7 @@ export function firstUrl(text: string) {
 /** Nombres legibles de lo que se ha encontrado, para decir qué se ha rellenado */
 export function filledLabels(d: ListingData) {
   const L: [keyof ListingData, string][] = [['price_eur', 'precio'], ['size_m2', 'm²'], ['rooms', 'habitaciones'], ['baths', 'baños'], ['floor', 'planta'],
-    ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI'], ['power_eur', 'luz'], ['water_eur', 'agua'], ['heating_eur', 'calefacción']]
+    ['municipality', 'localidad'], ['zone', 'zona'], ['address', 'dirección'], ['features', 'características'], ['energy', 'certificado'], ['community_eur', 'comunidad'], ['ibi_eur', 'IBI'], ['power_eur', 'luz'], ['water_eur', 'agua'], ['heating_eur', 'calefacción'], ['heating_type', 'tipo de calefacción'], ['cooling', 'aire']]
   L.push(['useful_m2', 'm² útiles'], ['plot_m2', 'parcela'], ['year_built', 'año'], ['notes', 'notas'], ['advertiser', 'anunciante'], ['agency', 'agencia'], ['contact', 'contacto'], ['phone', 'teléfono'], ['email', 'email'], ['ref', 'referencia'], ['photo_urls', 'enlaces de fotos'])
   return L.filter(([k]) => d[k] != null && !(Array.isArray(d[k]) && !(d[k] as unknown[]).length)).map(([, l]) => l)
 }
@@ -202,6 +209,8 @@ IBI: (€/año, solo el número)
 LUZ: (gasto medio de luz en €/mes, solo el número, si aparece)
 AGUA: (gasto medio de agua en €/mes, solo el número, si aparece)
 CALEFACCION: (gasto medio de calefacción en €/mes, solo el número, si aparece)
+SISTEMA: (tipo de calefacción: gas natural, gasóleo, propano, eléctrica, aerotermia, biomasa/pellets, central de la comunidad o ninguna)
+CLIMA: (aire acondicionado: no, splits, por conductos o aerotermia)
 AÑO: (de construcción)
 RESUMEN: (dos frases con lo más destacable)
 ANUNCIANTE: (agencia o particular)
@@ -233,14 +242,14 @@ export function photoUrls(raw: string): string[] {
   return out
 }
 
-const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'AÑO', 'ANO', 'RESUMEN',
+const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'SISTEMA', 'CLIMA', 'AÑO', 'ANO', 'RESUMEN',
   'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -271,6 +280,8 @@ export function parseAiBlock(raw: string): ListingData | null {
     if (keys.length) out.features = keys
   }
   const cert = values.CERTIFICADO?.match(/\b([A-G])\b/i); if (cert) out.energy = cert[1].toUpperCase()
+  const hType = values.SISTEMA && heatingFrom(values.SISTEMA); if (hType) out.heating_type = hType
+  const cType = values.CLIMA && coolingFrom(values.CLIMA); if (cType) out.cooling = cType
   const fee = n('COMUNIDAD'); if (fee) out.community_eur = fee
   const ibi = n('IBI'); if (ibi) out.ibi_eur = ibi
   const pw = n('LUZ'); if (pw) out.power_eur = pw
@@ -311,4 +322,30 @@ export function parseAny(raw: string): ListingData {
   const extra = photos.length ? { photo_urls: photos } : {}
   if (!ai) return { ...free, ...extra }
   return { ...free, ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v != null)), ...extra }
+}
+
+/** «gas natural», «caldera de gasoil», «bomba de calor»… → tipo de calefacción */
+export function heatingFrom(v: string): import('./mudanza').HeatingType | undefined {
+  const t = fold(v).toLowerCase()
+  if (/aerotermia|bomba de calor/.test(t)) return 'aerotermia'
+  if (/gas natural/.test(t)) return 'gas_natural'
+  if (/gasoil|gasoleo|gas oil/.test(t)) return 'gasoil'
+  if (/propano|butano|glp/.test(t)) return 'propano'
+  if (/pellet|biomasa|lena/.test(t)) return 'biomasa'
+  if (/central|comunitaria/.test(t)) return 'central'
+  if (/electric|acumulador|radiadores? de aceite|emisores/.test(t)) return 'electrica'
+  if (/^(no|sin|ninguna|no tiene)\b/.test(t)) return 'ninguna'
+  if (/\bgas\b/.test(t)) return 'gas_natural'
+  return undefined
+}
+
+/** «aire por conductos», «splits», «no»… → aire acondicionado */
+export function coolingFrom(v: string): import('./mudanza').Cooling | undefined {
+  const t = fold(v).toLowerCase()
+  if (/aerotermia|bomba de calor/.test(t)) return 'aerotermia'
+  if (/conducto/.test(t)) return 'conductos'
+  if (/split/.test(t)) return 'splits'
+  if (/^(no|sin|ninguno|no tiene)\b/.test(t)) return 'no'
+  if (/^s[ií]\b|aire acondicionado|climatizaci/.test(t)) return 'si'
+  return undefined
 }

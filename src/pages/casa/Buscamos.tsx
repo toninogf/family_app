@@ -11,9 +11,9 @@ const HomesMap = lazy(() => import('./HomesMap'))
 import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
-  FEATURES, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
+  COOLING, FEATURES, HEATING, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
   coverPhoto, mustHaveCheck, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
-  type CheckValue, type Home, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
+  type CheckValue, type Cooling, type HeatingType, type Home, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -450,7 +450,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
         </section>
       )}
 
-      {(h.community_fee_cents != null || h.ibi_cents != null || supplyCost(h) != null || h.energy || h.minutes_to_school != null || h.features.length > 0) && (
+      {(h.community_fee_cents != null || h.ibi_cents != null || supplyCost(h) != null || h.energy || h.heating_type || h.cooling || h.minutes_to_school != null || h.features.length > 0) && (
         <section className="flex flex-col gap-1 text-sm">
           <h3 className="font-bold text-[15px]">Más datos</h3>
           {h.features.length > 0 && <p>{h.features.map(k => FEATURES[k] ?? k).join(' · ')}</p>}
@@ -458,6 +458,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
           {h.ibi_cents != null && <p>IBI: {price(h.ibi_cents)}/año</p>}
           {supplyCost(h) != null && <p>Suministros: {[h.electricity_cents != null && `luz ${price(h.electricity_cents)}`, h.water_cents != null && `agua ${price(h.water_cents)}`, h.heating_cents != null && `calefacción ${price(h.heating_cents)}`].filter(Boolean).join(' · ')} al mes</p>}
           {h.energy && <p>Certificado energético: {h.energy}</p>}
+          {(h.heating_type || h.cooling) && <p>{[h.heating_type && `Calefacción: ${HEATING[h.heating_type]}`, h.cooling && `Aire: ${COOLING[h.cooling]}`].filter(Boolean).join(' · ')}</p>}
           {h.minutes_to_school != null && <p>{h.minutes_to_school} min al cole</p>}
         </section>
       )}
@@ -716,6 +717,8 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
   const [water, setWater] = useState(priceInput(home?.water_cents))
   const [heating, setHeating] = useState(priceInput(home?.heating_cents))
   const [energy, setEnergy] = useState<string | null>(home?.energy ?? null)
+  const [heatType, setHeatType] = useState<HeatingType | null>(home?.heating_type ?? null)
+  const [cooling, setCooling] = useState<Cooling | null>(home?.cooling ?? null)
   const [minutes, setMinutes] = useState(home?.minutes_to_school?.toString() ?? '')
   const [contact, setContact] = useState(home?.contact ?? '')
   const [advertiser, setAdvertiser] = useState<'agencia' | 'particular' | null>(home?.advertiser ?? null)
@@ -746,6 +749,8 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     f.put('zona', zone, d.zone?.slice(0, 60), setZone)
     f.put('dirección', address, d.address?.slice(0, 120), setAddress)
     f.put('certificado', energy, d.energy, setEnergy)
+    f.put('tipo de calefacción', heatType ? HEATING[heatType] : null, d.heating_type ? HEATING[d.heating_type] : null, () => setHeatType(d.heating_type!))
+    f.put('aire', cooling ? COOLING[cooling] : null, d.cooling ? COOLING[d.cooling] : null, () => setCooling(d.cooling!))
     f.put('comunidad', fee, eur(d.community_eur), setFee)
     f.put('IBI', ibi, eur(d.ibi_eur), setIbi)
     f.put('luz', power, eur(d.power_eur), setPower)
@@ -864,7 +869,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
     const data = {
       title: title.trim(), url: cleanUrl, price_cents: priceCents, size_m2: size, useful_m2: usefulM2, plot_m2: plotM2, year_built: yearN, rooms: ints[0], baths: ints[1], floor: floor.trim() || null,
       zone: zone.trim() || null, province, municipality, address: address.trim() || null, maps_url: maps.trim() || null, features,
-      community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null, energy,
+      community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null, energy, heating_type: heatType, cooling,
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
       advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
@@ -992,6 +997,10 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
         <p className="text-xs text-muted -mt-3">Gasto medio al mes; si es bimestral, divide la factura entre dos.</p>
         <Choice<string | null> label="Certificado energético" value={energy} onChange={setEnergy}
           options={[...'ABCDEFG'.split('').map(l => ({ value: l as string | null, label: l })), { value: null, label: '?' }]} />
+        <Choice<HeatingType | null> label="Calefacción" value={heatType} onChange={setHeatType}
+          options={[...(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k as HeatingType | null, label: HEATING[k] })), { value: null, label: '?' }]} />
+        <Choice<Cooling | null> label="Aire acondicionado" value={cooling} onChange={setCooling}
+          options={[...(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k as Cooling | null, label: COOLING[k] })), { value: null, label: '?' }]} />
         <TextField label="Minutos al cole" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="Ej. 10 (andando o en coche, como lo midáis)" />
         <fieldset className="flex flex-col gap-3 rounded-2xl border border-line p-3">
           <legend className="text-sm font-bold px-1">Contacto del anuncio</legend>
@@ -1099,6 +1108,8 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Agua', show: h => (h.water_cents != null ? `${price(h.water_cents)}/mes` : '—'), value: h => h.water_cents, better: 'low' },
     { label: 'Calefacción', show: h => (h.heating_cents != null ? `${price(h.heating_cents)}/mes` : '—'), value: h => h.heating_cents, better: 'low' },
     { label: 'Gastos fijos', show: h => (monthlyCost(h) != null ? `${price(monthlyCost(h))}/mes` : '—'), value: monthlyCost, better: 'low' },
+    { label: 'Calefacción', show: h => (h.heating_type ? HEATING[h.heating_type] : '—'), value: () => null, better: 'high' },
+    { label: 'Aire', show: h => (h.cooling ? COOLING[h.cooling] : '—'), value: () => null, better: 'high' },
     { label: 'Energía', show: h => h.energy ?? '—', value: h => (h.energy ? ENERGY.indexOf(h.energy) : null), better: 'low' },
     { label: 'Al cole', show: h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—'), value: h => h.minutes_to_school, better: 'low' },
     { label: 'Puntos malos', show: h => badPoints(h, m.homeVisits).length || '—', value: h => badPoints(h, m.homeVisits).length, better: 'low' }
