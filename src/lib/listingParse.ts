@@ -42,6 +42,9 @@ export type ListingData = {
   /** Precio medio del m² en la zona (€/m²) y su fuente */
   zone_m2_eur?: number
   zone_m2_note?: string
+  /** Precio medio del m² que se pide en portales (€/m²) y su fuente */
+  asking_m2_eur?: number
+  asking_m2_note?: string
   advertiser?: 'agencia' | 'particular'
   agency?: string
   contact?: string
@@ -246,7 +249,8 @@ VPO: (BIEN si es vivienda libre; PROBLEMA si es de protección oficial; NO CONST
 OCUPACION: (BIEN si se entrega libre; PROBLEMA si está alquilada, ocupada o es nuda propiedad; NO CONSTA si no se sabe)
 SANEAMIENTO: (BIEN si tiene alcantarillado y agua de red; REVISAR si es fosa séptica, pozo o depuradora propia; NO CONSTA)
 RUIDO: (BIEN, REVISAR o NO CONSTA: autopistas, aeropuerto, tren o zonas de ocio cerca)
-MERCADO: (precio medio del m² de vivienda en esa zona o municipio según penotariado.com u otra estadística oficial: el número en €/m² y de dónde sale)
+MERCADO: (precio medio del m² que se PAGA en compraventas reales de esa zona o municipio, según penotariado.com u otra estadística oficial: el número en €/m² y de dónde sale)
+PORTALES: (precio medio del m² que se PIDE en los anuncios de esa zona o municipio según los informes de Idealista o Fotocasa: el número en €/m² y de dónde sale)
 CAMBIOS: (${have.length ? 'qué no coincide con lo que ya tenemos y qué has encontrado nuevo; si todo coincide, pon «todo coincide»' : 'pon «-»'})
 FUENTES: (una línea por cada web donde esté publicada ESTA MISMA vivienda —otros portales o la web de la inmobiliaria—, solo si lo has verificado, con este formato: enlace | precio que pone esa web, solo el número | qué has sacado de ella; si no la has encontrado en otras webs, pon «-»)`
 }
@@ -297,13 +301,13 @@ export function photoUrls(raw: string): string[] {
 }
 
 const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'SISTEMA', 'CLIMA', 'AÑO', 'ANO', 'RESUMEN',
-  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO']
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO', 'PORTALES']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO|PORTALES'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -342,6 +346,11 @@ export function parseAiBlock(raw: string): ListingData | null {
     if (values[k]) checks[key] = values[k].slice(0, 400)
   }
   if (Object.keys(checks).length) out.checks = checks
+  if (values.PORTALES) {
+    const z = values.PORTALES.match(/(\d{1,2}[.\s]?\d{3}|\d{3,5})(?:,\d+)?\s*(?:€|euros)?/)
+    const v = z ? Number(z[1].replace(/[.\s]/g, '')) : NaN
+    if (v >= 300 && v <= 30000) { out.asking_m2_eur = v; out.asking_m2_note = values.PORTALES.slice(0, 200) }
+  }
   if (values.MERCADO) {
     const z = values.MERCADO.match(/(\d{1,2}[.\s]?\d{3}|\d{3,5})(?:,\d+)?\s*(?:€|euros)?/)
     const v = z ? Number(z[1].replace(/[.\s]/g, '')) : NaN

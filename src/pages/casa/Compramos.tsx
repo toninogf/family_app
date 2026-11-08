@@ -10,6 +10,7 @@ import {
 import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../components/Sheet'
 import DocFiles, { openDocFile } from '../../components/DocFiles'
 import { Fold, saleNet } from './VentaGestion'
+import { HomePrice } from './HomePrice'
 
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const pct = (n: number) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 2 })} %`
@@ -44,6 +45,7 @@ export default function Compramos({ m, c, householdId }: { m: Mudanza; c: Compra
           {accepted ? `Oferta aceptada el ${shortDate(accepted.offer_date)}` : offers[0] ? `Oferta ${OFFER_STATUS[offers[0].status].toLowerCase()} · ${shortDate(offers[0].offer_date)}` : `Precio del anuncio · aún sin oferta`}
           {home.price_cents && buyPrice && buyPrice !== home.price_cents ? ` · ${Math.round((buyPrice / home.price_cents - 1) * 1000) / 10} % sobre el anuncio` : ''}
         </span>
+        {!accepted && <HomePrice h={home} m={m} compact />}
         {firma?.step_date && !firma.done && <span className="text-[13px] opacity-90">Firma en notaría: {relativeDay(firma.step_date).toLowerCase()} ({daysBetween(t, firma.step_date)} días)</span>}
       </div>
       {home.url && <a href={home.url} target="_blank" rel="noopener noreferrer" className="-mt-3 self-start min-h-9 px-3 rounded-full bg-card border border-line text-[13px] font-semibold text-accent flex items-center">Ver el anuncio ↗</a>}

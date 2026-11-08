@@ -11,6 +11,8 @@ export type Cadastre = {
   kind: string | null; parts?: { use: string; m2: number | null }[]; map?: string | null; rural?: boolean; at: string
 }
 export type Flood = { t100: number | null; t500: number | null; at: string }
+/** Precios de la zona: lo que se paga en notaría y lo que se pide en portales (€/m²) */
+export type Market = { paid_m2?: number | null; asking_m2?: number | null; paid_note?: string; asking_note?: string; at: string }
 
 export const STATUS_ICON: Record<HealthStatus, string> = { ok: '✅', warn: '⚠️', bad: '⛔', unknown: '❓' }
 export const STATUS_LABEL: Record<HealthStatus, string> = { ok: 'Bien', warn: 'Revisar', bad: 'Problema', unknown: 'Sin datos' }
@@ -100,15 +102,21 @@ export function cadastreCheck(h: Pick<Home, 'size_m2' | 'plot_m2' | 'year_built'
   return { s, n: notes.length ? notes.join('. ') : 'Coincide con el anuncio', src: 'auto' }
 }
 
-export function marketCheck(h: Pick<Home, 'created_at' | 'price_cents' | 'links' | 'size_m2'>, health: Health): HealthItem {
+export function marketCheck(h: Pick<Home, 'created_at' | 'price_cents' | 'links' | 'size_m2' | 'market'>, health: Health): HealthItem {
   const notes: string[] = []
   let s: HealthStatus = 'ok'
   const days = Math.floor((Date.now() - new Date(h.created_at).getTime()) / 86400000)
   if (days >= 1) notes.push(`Lo guardasteis hace ${days} día${days === 1 ? '' : 's'}`)
   const cheaper = (h.links ?? []).filter(l => l.price_cents != null && h.price_cents != null && l.price_cents < h.price_cents)
   if (cheaper.length) { s = 'warn'; notes.push(`Más barato en ${cheaper.map(l => l.label || 'otra web').join(', ')}`) }
-  const zone = health.precio_zona
-  if (zone?.n) { notes.push(zone.n); if (zone.s === 'warn') s = 'warn' }
+  const mk = h.market
+  const ours = h.price_cents && h.size_m2 ? h.price_cents / 100 / Number(h.size_m2) : null
+  if (mk && (mk.paid_m2 || mk.asking_m2)) {
+    const fmt = (n: number) => `${Math.round(n).toLocaleString('es-ES')} €/m²`
+    notes.push(['Zona:', mk.asking_m2 && `se pide ~${fmt(mk.asking_m2)} en portales`, mk.paid_m2 && `se paga ~${fmt(mk.paid_m2)} en notaría`, ours && `este piso ${fmt(ours)}`].filter(Boolean).join(' '))
+    const ref = mk.paid_m2 ?? (mk.asking_m2 ? mk.asking_m2 * 0.9 : null)
+    if (ours && ref && ours > ref * 1.2) s = 'warn'
+  } else if (health.precio_zona?.n) notes.push(health.precio_zona.n)
   return { s: notes.length ? s : 'unknown', n: notes.join(' · ') || 'Sin datos', src: 'auto' }
 }
 
