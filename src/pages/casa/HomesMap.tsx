@@ -15,8 +15,38 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
   const map = useRef<L.Map | null>(null)
   const layer = useRef<L.LayerGroup | null>(null)
   const [locating, setLocating] = useState<string | null>(null)
+  const [full, setFull] = useState(false)
   const openRef = useRef(onOpen)
-  openRef.current = onOpen
+  // Al abrir una ficha desde el mapa a pantalla completa, se sale primero para que se vea la ficha
+  openRef.current = (id: string) => { if (fullRef.current) exitFull(); onOpen(id) }
+  const fullRef = useRef(false)
+  fullRef.current = full
+
+  /** Pantalla completa: el botón «atrás» del móvil también la cierra */
+  function enterFull() {
+    setFull(true)
+    try { history.pushState({ ...history.state, mapFull: true }, '') } catch { /* sin historial: solo con el botón */ }
+  }
+  function exitFull() {
+    if (history.state?.mapFull) history.back()
+    else setFull(false)
+  }
+  useEffect(() => {
+    const onPop = () => { if (fullRef.current) setFull(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && fullRef.current) exitFull() }
+    window.addEventListener('popstate', onPop)
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('popstate', onPop); window.removeEventListener('keydown', onKey) }
+  }, [])
+  // El mapa tiene que recalcular su tamaño al cambiar; se mantiene el mismo centro
+  useEffect(() => {
+    const mp = map.current
+    if (!mp) return
+    const center = mp.getCenter()
+    document.body.style.overflow = full ? 'hidden' : ''
+    const t = setTimeout(() => { mp.invalidateSize(); mp.setView(center, mp.getZoom(), { animate: false }) }, 60)
+    return () => { clearTimeout(t); document.body.style.overflow = '' }
+  }, [full])
   // Solo se repinta (y se reencuadra) si cambian los pisos o sus datos visibles, no en cada render
   const drawKey = homes.map(h => [h.id, h.lat, h.lng, h.geo_precision, h.status, h.price_cents, h.title, h.municipality, h.zone].join(':')).join('|')
 
@@ -90,7 +120,13 @@ export default function HomesMap({ homes, m, onOpen }: { homes: Home[]; m: Mudan
 
   return (
     <div className="flex flex-col gap-2">
-      <div ref={box} className="w-full h-[62vh] rounded-2xl overflow-hidden border border-line z-0" role="region" aria-label="Mapa de pisos" />
+      <div className={full ? 'fixed inset-0 z-[60] bg-bg' : 'relative'}>
+        <div ref={box} className={`w-full z-0 ${full ? 'h-full' : 'h-[62vh] rounded-2xl overflow-hidden border border-line'}`} role="region" aria-label="Mapa de pisos" />
+        <button type="button" onClick={full ? exitFull : enterFull} aria-label={full ? 'Salir de pantalla completa' : 'Ver el mapa a pantalla completa'}
+          className={`absolute right-3 z-[1001] min-h-11 px-3 rounded-xl bg-card/95 border border-line shadow text-sm font-semibold ${full ? 'top-[calc(env(safe-area-inset-top)+12px)]' : 'top-3'}`}>
+          {full ? '✕ Cerrar' : '⛶ Pantalla completa'}
+        </button>
+      </div>
       <p className="text-xs text-muted">
         Toca un precio para ver el piso. <span className="font-semibold">≈</span> con borde discontinuo = posición aproximada (solo zona o localidad).
       </p>
