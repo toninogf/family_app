@@ -15,6 +15,7 @@ const pct = (n: number) => `${n.toLocaleString('es-ES', { maximumFractionDigits:
 
 export default function Compramos({ m, c, householdId }: { m: Mudanza; c: Compra; householdId: string }) {
   const [fold, setFold] = useState<string | null>(null)
+  const [leaving, setLeaving] = useState(false)
   const toggle = (k: string) => setFold(f => (f === k ? null : k))
   const p = c.purchase
   const home = m.homes.find(h => h.id === p?.home_id) ?? null
@@ -82,8 +83,68 @@ export default function Compramos({ m, c, householdId }: { m: Mudanza; c: Compra
         </Fold>
       </div>
 
-      <button onClick={() => c.savePurchase(householdId, { home_id: null })} className="self-center min-h-10 px-3 text-sm text-muted">Cambiar de piso</button>
+      <button onClick={() => setLeaving(true)} className="self-center min-h-10 px-3 text-sm text-muted">No sigue adelante / cambiar de piso</button>
+      {leaving && <LeaveSheet m={m} c={c} householdId={householdId} homeId={home.id} homeTitle={home.title} onClose={() => setLeaving(false)} />}
     </div>
+  )
+}
+
+// ---------- La compra no sigue adelante ----------
+function LeaveSheet({ m, c, householdId, homeId, homeTitle, onClose }: { m: Mudanza; c: Compra; householdId: string; homeId: string; homeTitle: string; onClose: () => void }) {
+  const [keepBank, setKeepBank] = useState(true)
+  const [discard, setDiscard] = useState(true)
+  const [reason, setReason] = useState('')
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const own = c.docs.filter(d => d.grp !== 'banco').length
+  const fileCount = c.docs.filter(d => d.grp !== 'banco' || !keepBank).reduce((s, d) => s + d.files.length, 0)
+
+  async function wipe() {
+    setBusy(true); setError('')
+    const err = await c.resetPurchase(householdId, keepBank)
+    if (!err && discard) await m.write('homes', { status: 'descartado', discard_reason: reason.trim() || 'La compra no salió adelante' }, homeId)
+    setBusy(false)
+    if (err) setError(err); else onClose()
+  }
+
+  return (
+    <Sheet title="¿No sigue adelante?" onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <div className="bg-card rounded-2xl p-4 flex flex-col gap-2">
+          <span className="text-[15px] font-bold">Solo cambiar de piso</span>
+          <span className="text-sm text-muted">Se conserva todo lo apuntado (comprobaciones, pasos, cuentas…) y eliges otro piso.</span>
+          <button onClick={async () => { await c.savePurchase(householdId, { home_id: null }); onClose() }} className="min-h-11 rounded-xl border border-line text-sm font-semibold">Cambiar de piso</button>
+        </div>
+        <div className="bg-card rounded-2xl p-4 flex flex-col gap-3 ring-1 ring-danger">
+          <span className="text-[15px] font-bold">Borrar los datos de esta compra</span>
+          <span className="text-sm text-muted">
+            Se borran las comprobaciones y documentos de «{homeTitle}» ({own}), las condiciones, los pasos ({c.steps.length}) y sus actividades de la Agenda,
+            los gastos, los contactos y la fase de la hipoteca{fileCount ? `, con ${fileCount} archivo${fileCount > 1 ? 's' : ''}` : ''}.
+            Se conservan las ofertas de los bancos ({c.banks.length}) y los ahorros.
+          </span>
+          <label className="flex items-start gap-3 min-h-11">
+            <input type="checkbox" checked={keepBank} onChange={() => setKeepBank(!keepBank)} className="mt-0.5 w-5 h-5 accent-[var(--app-accent)] shrink-0" />
+            <span className="text-[15px]">Conservar los papeles del banco <span className="block text-xs text-muted">Nóminas, IRPF, vida laboral…: os servirán para otro piso.</span></span>
+          </label>
+          <label className="flex items-start gap-3 min-h-11">
+            <input type="checkbox" checked={discard} onChange={() => setDiscard(!discard)} className="mt-0.5 w-5 h-5 accent-[var(--app-accent)] shrink-0" />
+            <span className="text-[15px]">Marcar el piso como descartado en Buscamos <span className="block text-xs text-muted">Su ficha, fotos, visitas y ofertas siguen guardadas allí.</span></span>
+          </label>
+          {discard && <TextField label="Motivo (opcional)" value={reason} onChange={e => setReason(e.target.value)} maxLength={200} placeholder="No aceptaron la oferta, cargas en la nota simple…" />}
+          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          {confirm ? (
+            <div className="flex gap-2">
+              <button onClick={() => setConfirm(false)} className="flex-1 min-h-11 rounded-xl border border-line text-sm font-semibold">Cancelar</button>
+              <button onClick={wipe} disabled={busy} className="flex-1 min-h-11 rounded-xl bg-danger text-white dark:text-bg text-sm font-semibold disabled:opacity-50">{busy ? 'Borrando…' : 'Sí, borrar'}</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="min-h-11 rounded-xl bg-danger text-white dark:text-bg text-sm font-semibold">Borrar los datos de esta compra</button>
+          )}
+          <p className="text-xs text-muted">No se puede deshacer.</p>
+        </div>
+      </div>
+    </Sheet>
   )
 }
 

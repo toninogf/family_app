@@ -113,7 +113,28 @@ export function useCompra() {
     return write('mortgage_offers', { chosen: true }, id)
   }
 
-  return { purchase, docs, steps, banks, loading, error, clearError: () => setError(''), write, remove, savePurchase, uploadDoc, removeDocFile, removeDoc, chooseBank }
+  /**
+   * La compra no sigue adelante: borra lo propio de ese piso (comprobaciones, condiciones, pasos y sus actividades
+   * de la Agenda, gastos, contactos, documentos finales y la fase de la hipoteca). Se conservan las ofertas de los
+   * bancos, los ahorros y, si se quiere, los papeles del banco (nóminas, IRPF…), que sirven para otro piso.
+   */
+  async function resetPurchase(householdId: string, keepBankDocs: boolean) {
+    const gone = docs.filter(d => d.grp !== 'banco' || !keepBankDocs)
+    const paths = gone.flatMap(d => d.files.map(f => f.path))
+    if (paths.length) await supabase.storage.from('sale-docs').remove(paths)
+    const results = await Promise.all([
+      gone.length ? supabase.from('purchase_docs').delete().in('id', gone.map(d => d.id)) : Promise.resolve({ error: null }),
+      steps.length ? supabase.from('purchase_steps').delete().in('id', steps.map(s => s.id)) : Promise.resolve({ error: null })
+    ])
+    const failed = results.find(r => r.error)?.error
+    if (failed) { setError(failed.message); await load(); return failed.message }
+    return write('purchase', {
+      household_id: householdId, home_id: null, conditions: null, subject_to_mortgage: false, subject_to_sale: false, arras_type: null,
+      delivery_date: null, loan_cents: null, costs: [], contacts: [], mortgage_phase: null, fein_date: null
+    })
+  }
+
+  return { purchase, docs, steps, banks, loading, error, clearError: () => setError(''), write, remove, savePurchase, uploadDoc, removeDocFile, removeDoc, chooseBank, resetPurchase }
 }
 export type Compra = ReturnType<typeof useCompra>
 
