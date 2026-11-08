@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
-import { uploadDocFiles, type Home, type Mudanza } from '../../lib/mudanza'
+import { saleDocUrl, uploadDocFiles, type DocFile, type Home, type Mudanza } from '../../lib/mudanza'
+import { NOTA_PROMPT, notaStatus, parseNota, pdfText } from '../../lib/notaSimple'
 import {
   AI_CHECKS, MANUAL_CHECKS, STATUS_ICON, STATUS_LABEL, cadastreCheck, floodCheck, healthCounts, marketCheck, radonCheck,
   type Cadastre, type Health, type HealthItem, type HealthStatus
@@ -77,6 +78,7 @@ export default function HomeHealth({ h, m, householdId }: { h: Home; m: Mudanza;
                 <a href="https://www.sedecatastro.gob.es/" target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">Valor de referencia (con Cl@ve) ↗</a>
               </div>
             )}
+            {(cd || h.registry) && <SourcesTable h={h} />}
             <Row icon={flood.s} title="Zona inundable" detail={flood.n}>
               <button onClick={checkFlood} disabled={!!busy} className="min-h-9 px-3 rounded-lg border border-line text-[13px] font-semibold disabled:opacity-50">{h.flood ? 'Repetir' : 'Comprobar'}</button>
             </Row>
@@ -168,6 +170,7 @@ function HealthSheet({ h, m, householdId, check, onClose }: {
         <Choice<HealthStatus> label="Estado" value={s} onChange={setS}
           options={(['ok', 'warn', 'bad', 'unknown'] as HealthStatus[]).map(x => ({ value: x, label: `${STATUS_ICON[x]} ${STATUS_LABEL[x]}` }))} />
         <TextArea label="Notas" value={n} onChange={e => setN(e.target.value)} maxLength={500} />
+        {check.key === 'nota_simple' && <NotaReader h={h} m={m} files={files} onDone={onClose} />}
         <DocFiles files={files}
           onAdd={async (list, onProgress) => {
             const { added, error: e } = await uploadDocFiles(`${householdId}/pisos/${h.id}`, list, 10 - files.length, onProgress)
@@ -249,3 +252,104 @@ function CatastroSheet({ h, m, onClose }: { h: Home; m: Mudanza; onClose: () => 
   )
 }
 
+
+/** Anuncio, Catastro y Registro lado a lado; lo que no cuadra, marcado */
+function SourcesTable({ h }: { h: Home }) {
+  const c = h.cadastre, r = h.registry
+  const fmt = (v?: number | null) => (v ? `${Math.round(v).toLocaleString('es-ES')}` : '—')
+  const off = (a?: number | null, b?: number | null, tol = 0.15) => !!a && !!b && Math.abs(a - b) / b > tol
+  const ad = h.size_m2 ? Number(h.size_m2) : null, adPlot = h.plot_m2 ? Number(h.plot_m2) : null
+  const flat = /division horizontal/i.test(c?.kind ?? '')
+  const rows: [string, string, string, string, boolean][] = [
+    ['Construidos (m²)', fmt(ad), fmt(c?.built_m2), fmt(r?.built_m2), off(ad, c?.built_m2) || off(ad, r?.built_m2)],
+    ['Parcela (m²)', fmt(adPlot), flat ? 'edificio' : fmt(c?.plot_m2), fmt(r?.plot_m2), (!flat && off(adPlot, c?.plot_m2, 0.1)) || off(adPlot, r?.plot_m2, 0.1)],
+    ['Útiles (m²)', fmt(h.useful_m2 ? Number(h.useful_m2) : null), '—', fmt(r?.useful_m2), false],
+    ['Año', h.year_built ? String(h.year_built) : '—', c?.year ? String(c.year) : '—', '—', false],
+    ['Ref. catastral', '', c?.rc ? '✓' : '—', r?.rc ? (c?.rc && r.rc.slice(0, 14) !== c.rc.slice(0, 14) ? 'otra ⚠️' : '✓') : '—', !!(c?.rc && r?.rc && r.rc.slice(0, 14) !== c.rc.slice(0, 14))]
+  ]
+  return (
+    <div className="pl-7 -mt-1">
+      <table className="w-full text-[12px]">
+        <thead><tr className="text-muted"><th className="text-left font-medium py-1"></th><th className="font-medium">Anuncio</th><th className="font-medium">Catastro</th><th className="font-medium">Registro</th></tr></thead>
+        <tbody>
+          {rows.map(([label, a, b, c2, bad]) => (
+            <tr key={label} className={bad ? 'text-[#C77A12] font-semibold' : ''}>
+              <td className="py-0.5">{bad ? '⚠️ ' : ''}{label}</td><td className="text-center">{a}</td><td className="text-center">{b}</td><td className="text-center">{c2}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!r && <p className="text-[11px] text-muted mt-1">Sube la nota simple en «Nota simple (cargas)» para completar la columna del Registro.</p>}
+      {r && <p className="text-[11px] text-muted mt-1">Lo que cuenta para la hipoteca y para vender en el futuro es lo <b>registrado</b>.</p>}
+    </div>
+  )
+}
+
+/** Leer la nota simple subida (PDF con texto) o, si es escaneada, la respuesta de una IA */
+function NotaReader({ h, m, files, onDone }: { h: Home; m: Mudanza; files: DocFile[]; onDone: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [pasted, setPasted] = useState('')
+  const pdfs = files.filter(f => /\.pdf$/i.test(f.path))
+
+  async function apply(text: string) {
+    const r = parseNota(text)
+    if (!r) { setMsg({ ok: false, text: 'No he encontrado los datos de la nota en ese texto.' }); return false }
+    const st = notaStatus(r)
+    const extra: string[] = []
+    if (r.built_m2 && h.size_m2 && Number(h.size_m2) > r.built_m2 * 1.15) extra.push(`el anuncio dice ${Number(h.size_m2)} m² y el Registro ${r.built_m2} m²`)
+    const health = { ...((m.homes.find(x => x.id === h.id)?.health ?? {}) as Health) }
+    health.nota_simple = { s: extra.length && st.s === 'ok' ? 'warn' : st.s, n: [st.n, ...extra].join(' · ').slice(0, 480), src: 'auto', files }
+    const err = await m.write('homes', { registry: r, health, ...(!h.cadastral_ref && r.rc ? { cadastral_ref: r.rc } : {}) }, h.id)
+    if (err) { setMsg({ ok: false, text: err }); return false }
+    onDone()
+    return true
+  }
+
+  async function readPdf() {
+    if (!pdfs.length) return
+    setBusy('Leyendo la nota simple…'); setMsg(null)
+    try {
+      const url = await saleDocUrl(pdfs[0].path)
+      if (!url) throw new Error('sin enlace')
+      const text = await pdfText(await (await fetch(url)).blob())
+      setBusy(null)
+      if (text.replace(/\s/g, '').length < 200) { setAiOpen(true); setMsg({ ok: false, text: 'Esta nota parece escaneada (sin texto). Pásasela a una IA con los botones de abajo.' }); return }
+      await apply(text)
+    } catch {
+      setBusy(null)
+      setMsg({ ok: false, text: 'No se ha podido leer el PDF. Pásaselo a una IA con los botones de abajo.' }); setAiOpen(true)
+    }
+  }
+
+  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
+    try { await navigator.clipboard.writeText(NOTA_PROMPT) } catch { /* se abre igualmente */ }
+    const q = encodeURIComponent(NOTA_PROMPT)
+    window.open(ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app', '_blank', 'noopener')
+    setMsg({ ok: true, text: 'Adjunta allí el PDF de la nota simple. Cuando conteste, copia la respuesta y pégala aquí.' })
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-line p-3">
+      <span className="text-sm font-bold">📖 Leer la nota simple</span>
+      <span className="text-xs text-muted">Saca metros, parcela, referencia catastral, cargas y cuántos titulares hay, y los compara con el anuncio y el Catastro. No se guardan nombres ni DNI.</span>
+      <button type="button" onClick={readPdf} disabled={!pdfs.length || !!busy} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold disabled:opacity-40">
+        {busy ?? (pdfs.length ? 'Leer el PDF subido' : 'Sube primero el PDF (abajo)')}
+      </button>
+      {!aiOpen && <button type="button" onClick={() => setAiOpen(true)} className="self-start min-h-10 text-sm text-accent font-semibold">¿Es una foto o un escaneo? Usar una IA</button>}
+      {aiOpen && (
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            {([['chatgpt', 'ChatGPT'], ['gemini', 'Gemini'], ['claude', 'Claude']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => askAi(k)} className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold">{l} ↗</button>
+            ))}
+          </div>
+          <TextArea label="Respuesta de la IA" value={pasted} onChange={e => setPasted(e.target.value)} maxLength={5000} placeholder="Pega aquí lo que conteste…" />
+          <button type="button" onClick={() => apply(pasted)} disabled={!pasted.trim()} className="min-h-11 rounded-xl border border-line bg-card text-sm font-semibold disabled:opacity-40">Usar esta respuesta</button>
+        </div>
+      )}
+      {msg && <p role="status" className={`text-xs ${msg.ok ? 'text-accent' : 'text-danger'}`}>{msg.text}</p>}
+    </div>
+  )
+}

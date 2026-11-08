@@ -11,6 +11,8 @@ export default defineConfig({
   define: {
     __APP_BUILD__: JSON.stringify(build)
   },
+  // El lector de PDF (notas simples) usa JavaScript moderno: los móviles de casa lo soportan de sobra
+  build: { target: 'es2022' },
   plugins: [
     react(),
     tailwindcss(),

@@ -81,7 +81,7 @@ export function floodCheck(h: Pick<Home, 'lat' | 'lng' | 'geo_precision'> & { fl
 
 const pctDiff = (a: number, b: number) => Math.round(((a - b) / b) * 100)
 /** Catastro frente al anuncio: diferencias de metros suelen ser ampliaciones sin legalizar */
-export function cadastreCheck(h: Pick<Home, 'size_m2' | 'plot_m2' | 'year_built'> & { cadastre: Cadastre | null }): HealthItem {
+export function cadastreCheck(h: Pick<Home, 'size_m2' | 'plot_m2' | 'year_built' | 'features'> & { cadastre: Cadastre | null }): HealthItem {
   const c = h.cadastre
   if (!c) return { s: 'unknown', n: 'Sin consultar', src: 'auto' }
   const notes: string[] = []
@@ -99,6 +99,9 @@ export function cadastreCheck(h: Pick<Home, 'size_m2' | 'plot_m2' | 'year_built'
   if (c.year && h.year_built && Math.abs(c.year - h.year_built) >= 5) notes.push(`Año: anuncio ${h.year_built}, Catastro ${c.year}`)
   if (c.use && !/residencial/i.test(c.use)) { s = 'warn'; notes.push(`Uso en Catastro: ${c.use} (no residencial)`) }
   if (c.rural) { s = 'warn'; notes.push('Está en suelo rústico: limita obras y ampliaciones') }
+  // Elementos del anuncio que el Catastro no recoge (en casas; en pisos van en la comunidad o en otra referencia)
+  const missing = missingInCadastre(h.features ?? [], c)
+  if (missing.length) { s = 'warn'; notes.push(`El anuncio tiene ${missing.join(', ')} y el Catastro no lo recoge: puede estar sin declarar`) }
   return { s, n: notes.length ? notes.join('. ') : 'Coincide con el anuncio', src: 'auto' }
 }
 
@@ -118,6 +121,17 @@ export function marketCheck(h: Pick<Home, 'created_at' | 'price_cents' | 'links'
     if (ours && ref && ours > ref * 1.2) s = 'warn'
   } else if (health.precio_zona?.n) notes.push(health.precio_zona.n)
   return { s: notes.length ? s : 'unknown', n: notes.join(' · ') || 'Sin datos', src: 'auto' }
+}
+
+/** Qué elementos del anuncio (piscina, garaje, trastero, porche/terraza) no aparecen en el desglose del Catastro */
+export function missingInCadastre(features: string[], c: Cadastre) {
+  if (!c.parts?.length || /division horizontal/i.test(c.kind ?? '')) return []
+  const uses = c.parts.map(p => p.use.toUpperCase()).join(' | ')
+  const map: [string, string, RegExp][] = [
+    ['piscina', 'piscina', /PISCINA|DEPORTIV/], ['garaje', 'garaje', /APARCAMIENTO|GARAJE/],
+    ['trastero', 'trastero', /ALMAC|TRASTERO/]
+  ]
+  return map.filter(([f, , re]) => features.includes(f) && !re.test(uses)).map(([, label]) => label)
 }
 
 /** Todas las comprobaciones de un piso, para el semáforo */
