@@ -179,7 +179,8 @@ export const COOLING: Record<Cooling, string> = { no: 'Sin aire', si: 'Sí', spl
 export const FEATURES: Record<string, string> = {
   ascensor: 'Ascensor', garaje: 'Garaje', trastero: 'Trastero', terraza: 'Terraza', exterior: 'Exterior',
   calefaccion: 'Calefacción', aire: 'Aire acondicionado', jardin: 'Jardín', piscina: 'Piscina',
-  reformado: 'Reformado', cerca_cole: 'Cerca del cole', transporte: 'Transporte cerca'
+  reformado: 'Reformado', placas_solares: 'Placas solares', solar_termica: 'Solar térmica (agua)',
+  cerca_cole: 'Cerca del cole', transporte: 'Transporte cerca'
 }
 export const HOME_STATUS: Record<HomeStatus, string> = {
   interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',

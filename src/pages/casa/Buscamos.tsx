@@ -468,6 +468,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
           {h.ibi_cents != null && <p>IBI: {price(h.ibi_cents)}/año</p>}
           {supplyCost(h) != null && <p>Suministros: {[h.electricity_cents != null && `luz ${price(h.electricity_cents)}`, h.water_cents != null && `agua ${price(h.water_cents)}`, h.heating_cents != null && `calefacción ${price(h.heating_cents)}`].filter(Boolean).join(' · ')} al mes</p>}
           {h.energy && <p>Certificado energético: {h.energy}</p>}
+          {(h.features.includes('placas_solares') || h.features.includes('solar_termica')) && <p>☀️ {h.features.includes('placas_solares') ? 'Placas solares fotovoltaicas' : 'Solar térmica'}{h.health?.solar?.n ? `: ${h.health.solar.n}` : ''}</p>}
           {(h.heating_type || h.cooling) && <p>{[h.heating_type && `Calefacción: ${HEATING[h.heating_type]}`, h.cooling && `Aire: ${COOLING[h.cooling]}`].filter(Boolean).join(' · ')}</p>}
           {h.minutes_to_school != null && <p>{h.minutes_to_school} min al cole</p>}
         </section>
@@ -765,8 +766,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
         ...(d.asking_m2_eur ? { asking_m2: d.asking_m2_eur, asking_note: d.asking_m2_note } : {})
       }))
     }
+    if (d.solar_note && health.solar?.src !== 'manual') setHealth(hl => ({ ...hl, solar: { s: 'ok', n: d.solar_note!, src: 'ia' } }))
     if (d.checks) {
-      const next: Health = { ...health }
+      const next: Health = { ...health, ...(d.solar_note && health.solar?.src !== 'manual' ? { solar: { s: 'ok' as const, n: d.solar_note, src: 'ia' as const } } : {}) }
       for (const [k, text] of Object.entries(d.checks ?? {})) {
         if (next[k]?.src === 'manual') continue
         next[k] = { s: aiStatus(k, text), n: text.replace(/^\s*(BIEN|REVISAR|PROBLEMA|NO CONSTA)\s*[—–:-]*\s*/i, '').slice(0, 400) || text.slice(0, 400), src: 'ia', ...(next[k]?.files ? { files: next[k].files } : {}) }
@@ -1174,6 +1176,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Calefacción', show: h => (h.heating_cents != null ? `${price(h.heating_cents)}/mes` : '—'), value: h => h.heating_cents, better: 'low' },
     { label: 'Gastos fijos', show: h => (monthlyCost(h) != null ? `${price(monthlyCost(h))}/mes` : '—'), value: monthlyCost, better: 'low' },
     { label: 'Calefacción', show: h => (h.heating_type ? HEATING[h.heating_type] : '—'), value: () => null, better: 'high' },
+    { label: 'Placas solares', show: h => (h.features.includes('placas_solares') ? `Sí${h.health?.solar?.n ? ` (${h.health.solar.n.slice(0, 40)})` : ''}` : h.features.includes('solar_termica') ? 'Térmicas' : '—'), value: h => (h.features.includes('placas_solares') ? 1 : 0), better: 'high' },
     { label: 'Aire', show: h => (h.cooling ? COOLING[h.cooling] : '—'), value: () => null, better: 'high' },
     { label: 'Energía', show: h => h.energy ?? '—', value: h => (h.energy ? ENERGY.indexOf(h.energy) : null), better: 'low' },
     { label: 'Al cole', show: h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—'), value: h => h.minutes_to_school, better: 'low' },

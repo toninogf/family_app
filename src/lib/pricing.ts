@@ -81,6 +81,7 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
     if (health.ite?.s === 'bad' || health.ite?.s === 'warn') adj.push([-0.03, 'ITE o licencias por revisar'])
     if (health.urbanizacion?.s === 'bad' || health.urbanizacion?.s === 'warn') adj.push([-0.02, 'urbanización no recepcionada o con cuota'])
     if (health.saneamiento?.s === 'warn') adj.push([-0.01, 'fosa séptica o pozo'])
+    if (h.features?.includes('placas_solares')) adj.push([0.01, 'placas solares'])
     if (h.features?.includes('reformado')) adj.push([0.02, 'reformado'])
     else if (h.year_built && h.year_built < 1985) adj.push([-0.02, `construido en ${h.year_built} sin reformar`])
     const plots = comps.map(c => Number(c.home.plot_m2)).filter(Boolean)

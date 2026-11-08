@@ -45,6 +45,8 @@ export type ListingData = {
   /** Precio medio del m² que se pide en portales (€/m²) y su fuente */
   asking_m2_eur?: number
   asking_m2_note?: string
+  /** Detalle de las placas solares (potencia, batería…) */
+  solar_note?: string
   advertiser?: 'agencia' | 'particular'
   agency?: string
   contact?: string
@@ -72,11 +74,13 @@ const FEATURE_PATTERNS: [string, RegExp][] = [
   ['aire', /\baire acondicionado\b/i],
   ['jardin', /\bjard[ií]n\b/i],
   ['piscina', /\bpiscina\b/i],
-  ['reformado', /\breformad[oa]\b|\bobra nueva\b/i]
+  ['reformado', /\breformad[oa]\b|\bobra nueva\b/i],
+  ['placas_solares', /\b(placas|paneles) (solares|fotovoltaic[oa]s)\b|\bfotovoltaic[oa]s?\b|\bautoconsumo\b/i],
+  ['solar_termica', /\bsolar t[eé]rmica\b|\bpaneles? solares? (para|de) (agua|acs)\b|\bcaptadores solares\b/i]
 ]
 // Frases que niegan una característica («sin ascensor», «no tiene garaje»)
 const NEGATED = (key: string, text: string) => {
-  const words: Record<string, string> = { ascensor: 'ascensor', garaje: '(garaje|parking)', trastero: 'trastero', terraza: 'terraza', piscina: 'piscina', jardin: 'jard[ií]n', calefaccion: 'calefacci[oó]n', aire: 'aire acondicionado' }
+  const words: Record<string, string> = { ascensor: 'ascensor', garaje: '(garaje|parking)', trastero: 'trastero', terraza: 'terraza', piscina: 'piscina', jardin: 'jard[ií]n', calefaccion: 'calefacci[oó]n', aire: 'aire acondicionado', placas_solares: '(placas|paneles) solares|fotovoltaic[oa]s', solar_termica: 'solar t[eé]rmica' }
   if (key === 'reformado') return /\b(para|a) reformar\b|\bnecesita reforma\b/i.test(text)
   const w = words[key]
   return w ? new RegExp(`\\b(sin|no tiene|no dispone de)\\s+${w}`, 'i').test(text) : false
@@ -225,6 +229,7 @@ HABITACIONES:
 BANOS:
 PLANTA:
 EXTRAS: (elige entre: ascensor, garaje, trastero, terraza, exterior, calefaccion, aire, jardin, piscina, reformado)
+SOLAR: (placas solares: «no», «fotovoltaicas» —con la potencia en kWp y si tienen batería, si aparece— o «térmicas» para agua caliente; NO CONSTA si no se sabe)
 CERTIFICADO: (letra de consumo, A-G)
 COMUNIDAD: (€/mes, solo el número)
 IBI: (€/año, solo el número)
@@ -301,13 +306,13 @@ export function photoUrls(raw: string): string[] {
 }
 
 const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'SISTEMA', 'CLIMA', 'AÑO', 'ANO', 'RESUMEN',
-  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO', 'PORTALES']
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO', 'PORTALES', 'SOLAR']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO|PORTALES'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO|PORTALES|SOLAR'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -336,6 +341,15 @@ export function parseAiBlock(raw: string): ListingData | null {
     const f = fold(values.EXTRAS)
     const keys = ['ascensor', 'garaje', 'trastero', 'terraza', 'exterior', 'calefaccion', 'aire', 'jardin', 'piscina', 'reformado'].filter(k => f.includes(k))
     if (keys.length) out.features = keys
+  }
+  if (values.SOLAR) {
+    const t = fold(values.SOLAR).toLowerCase()
+    if (!/^no\b|no tiene|sin placas|no consta/.test(t)) {
+      const add = [/fotovolt|autoconsumo|kwp|placas solares|paneles solares/.test(t) && !/^termic/.test(t) ? 'placas_solares' : null, /termic|agua caliente|acs/.test(t) ? 'solar_termica' : null]
+        .filter((x): x is string => !!x)
+      if (add.length) out.features = [...new Set([...(out.features ?? []), ...add])]
+      out.solar_note = values.SOLAR.slice(0, 200)
+    }
   }
   const cert = values.CERTIFICADO?.match(/\b([A-G])\b/i); if (cert) out.energy = cert[1].toUpperCase()
   const hType = values.SISTEMA && heatingFrom(values.SISTEMA); if (hType) out.heating_type = hType
