@@ -3,9 +3,15 @@ import { shortDate } from '../../lib/dates'
 import { COOLING, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
-import { Choice, MultiChips, Sheet, TextArea, TextField } from '../../components/Sheet'
+import { MultiChips, Sheet, TextArea } from '../../components/Sheet'
 import Combobox from '../../components/Combobox'
 import ListingImport, { knownForAi, merger } from '../../components/ListingImport'
+import { EditSection, Field, FEATURE_ICON, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
+
+const VSECTIONS = [
+  { id: 'basico', title: 'Lo básico' }, { id: 'ubicacion', title: 'Ubicación' }, { id: 'equip', title: 'Equipamiento' },
+  { id: 'gastos', title: 'Gastos' }, { id: 'texto', title: 'Descripción' }
+]
 
 const TOWNS = (MUNICIPALITIES['28'] ?? []).map(p => p.name)
 const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(/\./g, '').replace(',', '.')))
@@ -54,6 +60,10 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [notes, setNotes] = useState(l?.notes ?? '')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const sections = useSections(l ? [] : ['anuncio', 'basico'])
+  const { flash, show: showFlash } = useFlash()
+  const [summary, setSummary] = useState<{ filled: number; diffs: number } | null>(null)
+  const [leaving, setLeaving] = useState(false)
 
   /** Rellena solo lo vacío; lo que ya tenía otro valor se ofrece aparte (no se machaca) */
   function apply(d: ListingData) {
@@ -85,8 +95,31 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
     // Las características solo se añaden (nunca se quita ninguna)
     const newF = (d.features ?? []).filter(x => !features.includes(x))
     if (newF.length) { setFeatures([...features, ...newF]); f.filled.push('características') }
+    const touched = [...f.filled, ...f.diffs.map(x => x.label)]
+    showFlash(f.filled, f.diffs.map(x => x.label))
+    sections.reveal(VSECTIONS.filter(sec => fieldsOf(sec.id).some(([k]) => touched.includes(k))).map(sec => sec.id))
+    if (touched.length) setSummary({ filled: f.filled.length, diffs: f.diffs.length })
     return { filled: f.filled, diffs: f.diffs }
   }
+
+  // Qué datos tiene cada bloque (contador, resumen y «pedir solo lo que falta»)
+  function fieldsOf(id: string): [string, string][] {
+    switch (id) {
+      case 'basico': return [['precio', amount], ['tipo', type], ['m²', m2], ['m² útiles', useful], ['parcela', plot], ['habitaciones', rooms], ['baños', baths], ['planta', floor], ['año', year]]
+      case 'ubicacion': return [['localidad', municipality ?? ''], ['zona', zone], ['dirección', address]]
+      case 'equip': return [['características', features.length ? 'x' : ''], ['certificado', energy ?? ''], ['tipo de calefacción', heatType ?? ''], ['aire', cooling ?? '']]
+      case 'gastos': return [['comunidad', fee], ['IBI', ibi], ['luz', power], ['agua', water], ['calefacción', heating]]
+      case 'texto': return [['descripción', description], ['referencia', ref]]
+      default: return []
+    }
+  }
+  const cnt = (id: string) => { const f = fieldsOf(id); return { filled: f.filter(([, v]) => v.trim()).length, total: f.length } }
+  const flashedIn = (id: string) => fieldsOf(id).some(([k]) => flash[k])
+  const missingForAi = VSECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([, v]) => !v.trim()).map(([k]) => k)
+  const fl = (k: string) => flash[k]
+  const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, features, energy, heatType, cooling,
+    fee, ibi, power, water, heating, year, ref, description, notes, shots: shots.length, ad: adPhotos.length, extraLinks })
+  const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
 
   async function submit(e: FormEvent) {
@@ -130,66 +163,93 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   }
 
   return (
-    <Sheet title="Ficha de nuestro anuncio" onClose={onClose}>
-      <form onSubmit={submit} className="flex flex-col gap-5">
-        <ListingImport url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} adPhotos={adPhotos} onAdPhotos={setAdPhotos} onLinks={setExtraLinks} ourPrice={amount.trim() ? parsePrice(amount) : null}
-          known={knownForAi({
-            'Precio': amount && `${amount} €`, 'Título': title, 'Tipo': type, 'Dirección': address, 'Zona': zone, 'Localidad': municipality,
-            'Metros construidos': m2, 'Metros útiles': useful, 'Parcela (m²)': plot, 'Habitaciones': rooms, 'Baños': baths, 'Planta': floor,
-            'Año de construcción': year, 'Extras': features.map(f => FEATURES[f] ?? f).join(', '), 'Certificado energético': energy,
-            'Calefacción': heatType && HEATING[heatType], 'Aire acondicionado': cooling && COOLING[cooling],
-            'Comunidad (€/mes)': fee, 'IBI (€/año)': ibi, 'Luz (€/mes)': power, 'Agua (€/mes)': water, 'Calefacción (€/mes)': heating, 'Referencia': ref
-          })} />
-        <TextField label="Título" value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Ej. Chalet con piscina en Las Cuestas" />
-        <div className="grid grid-cols-2 gap-3">
-          <TextField label="Precio publicado (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="285.000" />
-          <TextField label="Publicado desde" type="date" value={published} onChange={e => setPublished(e.target.value)} />
-        </div>
-        <p className="text-xs text-muted -mt-3">Cada cambio de precio queda guardado en el historial.</p>
-        <TextField label="Tipo" value={type} onChange={e => setType(e.target.value)} maxLength={60} placeholder="Piso, chalet independiente, ático…" />
-        <Combobox label="Localidad" value={municipality} onChange={setMunicipality} options={TOWNS} placeholder="Escribe: Galap…" />
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-muted">{municipality === 'Madrid' ? 'Distrito o barrio' : 'Zona o barrio'}</span>
-          <input value={zone} onChange={e => setZone(e.target.value)} maxLength={60} list={municipality === 'Madrid' ? 'venta-distritos' : undefined}
-            className="w-full min-h-12 px-4 rounded-xl border border-line bg-card text-[16px] outline-none focus:border-accent" />
-          {municipality === 'Madrid' && <datalist id="venta-distritos">{MADRID_DISTRICTS.map(d => <option key={d} value={d} />)}</datalist>}
-        </label>
-        <TextField label="Dirección" value={address} onChange={e => setAddress(e.target.value)} maxLength={120} />
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="m² constr." inputMode="decimal" value={m2} onChange={e => setM2(e.target.value)} />
-          <TextField label="m² útiles" inputMode="decimal" value={useful} onChange={e => setUseful(e.target.value)} />
-          <TextField label="Parcela m²" inputMode="decimal" value={plot} onChange={e => setPlot(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="Habitaciones" inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} />
-          <TextField label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} />
-          <TextField label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} />
-        </div>
-        <MultiChips label="Tiene" value={features} onChange={setFeatures} options={Object.entries(FEATURES).filter(([k]) => k !== 'cerca_cole').map(([value, label]) => ({ value, label }))} />
-        <Choice<string | null> label="Certificado energético" value={energy} onChange={setEnergy}
-          options={[...'ABCDEFG'.split('').map(x => ({ value: x as string | null, label: x })), { value: null, label: '?' }]} />
-        <Choice<HeatingType | null> label="Calefacción" value={heatType} onChange={setHeatType}
-          options={[...(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k as HeatingType | null, label: HEATING[k] })), { value: null, label: '?' }]} />
-        <Choice<Cooling | null> label="Aire acondicionado" value={cooling} onChange={setCooling}
-          options={[...(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k as Cooling | null, label: COOLING[k] })), { value: null, label: '?' }]} />
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="Comunidad €/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} />
-          <TextField label="IBI €/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} />
-          <TextField label="Año constr." inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="Luz €/mes" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} />
-          <TextField label="Agua €/mes" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} />
-          <TextField label="Calefacción €/mes" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} />
-        </div>
-        <p className="text-xs text-muted -mt-3">Gasto medio al mes de vuestras facturas: a los compradores les interesa y sale en el dossier.</p>
-        <TextField label="Referencia del anuncio" value={ref} onChange={e => setRef(e.target.value)} maxLength={60} />
-        <TextArea label="Descripción del anuncio" value={description} onChange={e => setDescription(e.target.value)} maxLength={5000}
-          placeholder="El texto que tenéis publicado (sirve también para el dossier)" />
+    <Sheet title="Ficha de nuestro anuncio" onClose={requestClose}>
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <Field label="Título" value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Ej. Chalet con piscina en Las Cuestas" flash={fl('título')} />
+        {summary && (
+          <ImportSummary filled={summary.filled} diffs={summary.diffs}
+            missing={VSECTIONS.map(sec => ({ id: sec.id, title: sec.title, n: cnt(sec.id).total - cnt(sec.id).filled }))}
+            onGo={id => sections.reveal([id], id)} />
+        )}
+        <EditSection id="anuncio" icon="📥" title="Rellenar desde el anuncio" open={sections.isOpen('anuncio')} onToggle={() => sections.toggle('anuncio')}>
+          <ListingImport bare url={url} onUrl={setUrl} onApply={apply} shots={shots} onShots={setShots} adPhotos={adPhotos} onAdPhotos={setAdPhotos} onLinks={setExtraLinks}
+            ourPrice={amount.trim() ? parsePrice(amount) : null} missing={l ? missingForAi : undefined}
+            known={knownForAi({
+              'Precio': amount && `${amount} €`, 'Título': title, 'Tipo': type, 'Dirección': address, 'Zona': zone, 'Localidad': municipality,
+              'Metros construidos': m2, 'Metros útiles': useful, 'Parcela (m²)': plot, 'Habitaciones': rooms, 'Baños': baths, 'Planta': floor,
+              'Año de construcción': year, 'Extras': features.map(f => FEATURES[f] ?? f).join(', '), 'Certificado energético': energy,
+              'Calefacción': heatType && HEATING[heatType], 'Aire acondicionado': cooling && COOLING[cooling],
+              'Comunidad (€/mes)': fee, 'IBI (€/año)': ibi, 'Luz (€/mes)': power, 'Agua (€/mes)': water, 'Calefacción (€/mes)': heating, 'Referencia': ref
+            })} />
+        </EditSection>
+
+        <EditSection id="basico" icon="🏠" title="Lo básico" {...cnt('basico')} flashed={flashedIn('basico')} open={sections.isOpen('basico')} onToggle={() => sections.toggle('basico')}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Precio publicado" suffix="€" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} onBlur={() => setAmount(thousands)} placeholder="285.000" flash={fl('precio')} />
+            <Field label="Publicado desde" type="date" value={published} onChange={e => setPublished(e.target.value)} />
+          </div>
+          <p className="text-xs text-muted -mt-2">Cada cambio de precio queda guardado en el historial.</p>
+          <Field label="Tipo" value={type} onChange={e => setType(e.target.value)} maxLength={60} placeholder="Piso, chalet independiente, ático…" flash={fl('tipo')} />
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Construidos" suffix="m²" inputMode="decimal" value={m2} onChange={e => setM2(e.target.value)} flash={fl('m²')} />
+            <Field label="Útiles" suffix="m²" inputMode="decimal" value={useful} onChange={e => setUseful(e.target.value)} flash={fl('m² útiles')} />
+            <Field label="Parcela" suffix="m²" inputMode="decimal" value={plot} onChange={e => setPlot(e.target.value)} flash={fl('parcela')} />
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            <Field label="Hab." inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} flash={fl('habitaciones')} />
+            <Field label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} flash={fl('baños')} />
+            <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} flash={fl('planta')} />
+            <Field label="Año" inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} flash={fl('año')} />
+          </div>
+        </EditSection>
+
+        <EditSection id="ubicacion" icon="📍" title="Ubicación" {...cnt('ubicacion')} flashed={flashedIn('ubicacion')} open={sections.isOpen('ubicacion')} onToggle={() => sections.toggle('ubicacion')}>
+          <div className={`rounded-xl ${fl('localidad') ? 'ring-2 ring-accent' : ''}`}>
+            <Combobox label="Localidad" value={municipality} onChange={setMunicipality} options={TOWNS} placeholder="Escribe: Galap…" />
+          </div>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-muted">{municipality === 'Madrid' ? 'Distrito o barrio' : 'Zona, urbanización o barrio'}{fl('zona') ? ' ✨' : ''}</span>
+            <input value={zone} onChange={e => setZone(e.target.value)} maxLength={60} list={municipality === 'Madrid' ? 'venta-distritos' : undefined}
+              className={`w-full min-h-12 px-3 rounded-xl border border-line bg-card text-[16px] outline-none focus:border-accent ${fl('zona') ? 'ring-2 ring-accent' : ''}`} />
+            {municipality === 'Madrid' && <datalist id="venta-distritos">{MADRID_DISTRICTS.map(d => <option key={d} value={d} />)}</datalist>}
+          </label>
+          <Field label="Dirección" value={address} onChange={e => setAddress(e.target.value)} maxLength={120} flash={fl('dirección')} />
+        </EditSection>
+
+        <EditSection id="equip" icon="🔧" title="Equipamiento" {...cnt('equip')} flashed={flashedIn('equip')} open={sections.isOpen('equip')} onToggle={() => sections.toggle('equip')}>
+          <MultiChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
+            options={Object.entries(FEATURES).filter(([k]) => k !== 'cerca_cole').map(([value, label]) => ({ value, label: `${FEATURE_ICON[value] ?? ''} ${label}` }))} />
+          <div className="grid grid-cols-2 gap-3">
+            <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
+              options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
+            <SelectField<HeatingType> label="Calefacción" value={heatType} onChange={setHeatType} flash={fl('tipo de calefacción')}
+              options={(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k, label: HEATING[k] }))} />
+            <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
+              options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
+          </div>
+        </EditSection>
+
+        <EditSection id="gastos" icon="💶" title="Gastos" {...cnt('gastos')} flashed={flashedIn('gastos')} open={sections.isOpen('gastos')} onToggle={() => sections.toggle('gastos')}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
+            <Field label="IBI" suffix="€/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} onBlur={() => setIbi(thousands)} flash={fl('IBI')} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Luz" suffix="€" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} flash={fl('luz')} />
+            <Field label="Agua" suffix="€" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} flash={fl('agua')} />
+            <Field label="Calefacción" suffix="€" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} flash={fl('calefacción')} />
+          </div>
+          <p className="text-xs text-muted -mt-2">Gasto medio al mes de vuestras facturas: a los compradores les interesa y sale en el dossier.</p>
+        </EditSection>
+
+        <EditSection id="texto" icon="📝" title="Descripción y referencia" {...cnt('texto')} flashed={flashedIn('texto')} open={sections.isOpen('texto')} onToggle={() => sections.toggle('texto')}>
+          <Field label="Referencia del anuncio" value={ref} onChange={e => setRef(e.target.value)} maxLength={60} flash={fl('referencia')} />
+          <TextArea label="Descripción del anuncio" value={description} onChange={e => setDescription(e.target.value)} maxLength={5000}
+            placeholder="El texto que tenéis publicado (sirve también para el dossier)" />
+        </EditSection>
+
         <TextArea label="Notas privadas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} placeholder="Precio mínimo que aceptaríamos, qué incluye… (no sale en el dossier)" />
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        {busy && <p role="status" className="text-sm text-muted">{busy}</p>}
-        <button type="submit" disabled={!!busy} className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">Guardar</button>
+        <SaveBar dirty={dirty} busy={!!busy} status={busy} error={error} leaving={leaving} onStay={() => setLeaving(false)} onLeave={onClose} />
       </form>
       {m.prices.length > 0 && (
         <section className="flex flex-col gap-1">
