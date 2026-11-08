@@ -4,7 +4,7 @@ import { supabase, type Member } from '../../lib/supabase'
 import { aiPrompt, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
 import { locateHome } from '../../lib/geo'
-import { badPoints, compareSummary, monthlyCost, shortName, supplyCost } from '../../lib/compare'
+import { badPoints, compareSummary, monthlyCost, shortName } from '../../lib/compare'
 
 // El mapa (Leaflet) solo se descarga al abrirlo
 const HomesMap = lazy(() => import('./HomesMap'))
@@ -52,7 +52,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   const [filter, setFilter] = useState<Filter>('activos')
   const [view, setView] = useState<'lista' | 'mapa'>('lista')
   const [openId, setOpenId] = useState<string | null>(null)
-  const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared }>({ open: false })
+  const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared; focus?: EditFocus }>({ open: false })
   // Anuncio compartido desde la app de un portal (menú «Compartir» del móvil): abre un piso nuevo ya relleno
   const location = useLocation()
   useEffect(() => {
@@ -229,10 +229,10 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
 
       {open && !editHome.open && (
         <HomeSheet h={open} m={m} members={members} householdId={householdId}
-          onEdit={() => setEditHome({ open: true, home: open })} onClose={() => setOpenId(null)} />
+          onEdit={focus => setEditHome({ open: true, home: open, focus })} onClose={() => setOpenId(null)} />
       )}
       {editHome.open && (
-        <HomeEditSheet home={editHome.home} initial={editHome.initial} m={m} householdId={householdId} onClose={() => setEditHome({ open: false })}
+        <HomeEditSheet home={editHome.home} initial={editHome.initial} focus={editHome.focus} m={m} householdId={householdId} onClose={() => setEditHome({ open: false })}
           onCreated={() => setEditHome({ open: false })} />
       )}
       {criteriaOpen && <CriteriaSheet m={m} householdId={householdId} onClose={() => setCriteriaOpen(false)} />}
@@ -318,62 +318,54 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
   )
 }
 
+type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos'
+
+/**
+ * Ficha de un piso: pensada para decidir qué hacer con él (llamar, visitar, ofertar o descartar) y tener a mano lo
+ * necesario. Arriba lo visual y la acción que toca; luego los datos de un vistazo, si conviene, el seguimiento y el resto.
+ */
 function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
-  h: Home; m: Mudanza; members: Member[]; householdId: string; onEdit: () => void; onClose: () => void
+  h: Home; m: Mudanza; members: Member[]; householdId: string; onEdit: (focus?: EditFocus) => void; onClose: () => void
 }) {
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: HomeVisit }>({ open: false })
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: HomeOffer }>({ open: false })
   const [discarding, setDiscarding] = useState(false)
   const [reason, setReason] = useState(h.discard_reason ?? '')
   const [confirming, setConfirming] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const adults = members.filter(x => x.kind === 'adult')
   const visits = m.homeVisits.filter(v => v.home_id === h.id)
   const offers = m.homeOffers.filter(o => o.home_id === h.id)
-  const checks = mustHaveCheck(h, m.criteria)
   const pm2 = perM2(h)
   const maps = mapsHref({ location: [h.address, h.municipality].filter(Boolean).join(', ') || h.zone, maps_url: h.maps_url })
-
   const setStatus = (status: HomeStatus, extra: Record<string, unknown> = {}) => m.write('homes', { status, ...extra }, h.id)
+  // Título corto (el resto del nombre ya sale en la línea de lugar)
+  const short = h.title.split(' · ')[0] || h.title
+  const place = [h.zone, h.municipality].filter(Boolean).join(' · ')
 
-  if (visitSheet.open) {
-    return <HomeVisitSheet home={h} visit={visitSheet.visit} adults={adults} m={m} onClose={() => setVisitSheet({ open: false })} />
-  }
-  if (offerSheet.open) {
-    return <HomeOfferSheet home={h} offer={offerSheet.offer} m={m} onClose={() => setOfferSheet({ open: false })} />
-  }
+  if (visitSheet.open) return <HomeVisitSheet home={h} visit={visitSheet.visit} adults={adults} m={m} onClose={() => setVisitSheet({ open: false })} />
+  if (offerSheet.open) return <HomeOfferSheet home={h} offer={offerSheet.offer} m={m} onClose={() => setOfferSheet({ open: false })} />
 
   return (
-    <Sheet title={h.title} onClose={onClose}>
-      <div className="flex flex-col gap-1 -mt-3">
-        <span className="text-[22px] font-bold">{price(h.price_cents)}</span>
-        <span className="text-sm text-muted">
-          {[h.size_m2 && `${Number(h.size_m2)} m² construidos`, h.useful_m2 && `${Number(h.useful_m2)} m² útiles`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`, h.floor && `planta ${h.floor}`, h.year_built && `de ${h.year_built}`].filter(Boolean).join(' · ')}
-        </span>
-        {(h.address || h.zone || h.municipality) && <span className="text-sm">{[h.address, h.zone, h.municipality, h.province].filter(Boolean).join(' · ')}</span>}
-        {h.url && (
-          <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-sm text-accent font-semibold underline underline-offset-2 break-all">
-            {portalName(h.url)}: {h.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60)}{h.url.length > 70 ? '…' : ''}
-          </a>
-        )}
+    <Sheet title={short} onClose={onClose}>
+      {/* 1. Cabecera visual */}
+      <div className="-mt-3 flex flex-col gap-2">
+        <Gallery h={h} m={m} onAdd={() => onEdit('fotos')} />
+        <div className="flex justify-between items-end gap-2">
+          <span className="flex flex-col min-w-0">
+            <span className="text-[26px] font-bold leading-tight">{price(h.price_cents)}</span>
+            <span className="text-[13px] text-muted truncate">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
+          </span>
+          <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
+            onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null }) } }}
+            className="max-w-[52%] min-h-10 px-2 rounded-xl border border-line bg-card text-[13px] font-semibold">
+            {(['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(st => (
+              <option key={st} value={st}>{st === 'favorito' ? '★ ' : st === 'llamar' ? '📞 ' : ''}{HOME_STATUS[st]}</option>
+            ))}
+          </select>
+        </div>
+        {h.address && <span className="text-[13px] -mt-1">📍 {h.address}</span>}
       </div>
-
-      <div className="flex gap-2 flex-wrap">
-        {h.url && <a href={h.url} target="_blank" rel="noopener noreferrer" className="min-h-11 px-4 rounded-xl bg-card border border-line text-accent text-sm font-semibold flex items-center">Abrir en {portalName(h.url)} ↗</a>}
-        {h.links?.length > 0 && <div className="w-full"><LinkChips links={h.links} ourPrice={h.price_cents} big /></div>}
-        {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="min-h-11 px-4 rounded-xl bg-card border border-line text-accent text-sm font-semibold flex items-center">Cómo llegar ↗</a>}
-        <button onClick={onEdit} className="min-h-11 px-4 rounded-xl bg-card border border-line text-sm font-semibold">Editar datos</button>
-      </div>
-
-      <label className="flex items-center gap-3">
-        <span className="text-sm font-medium text-muted shrink-0">Estado</span>
-        <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
-          onChange={e => { const s = e.target.value as HomeStatus; if (s === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(s, { discard_reason: null }) } }}
-          className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[15px] font-semibold">
-          {(['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(s => (
-            <option key={s} value={s}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</option>
-          ))}
-        </select>
-      </label>
       {discarding && (
         <div className="flex flex-col gap-2 bg-card rounded-2xl p-4">
           <TextField label="¿Por qué lo descartáis?" value={reason} onChange={e => setReason(e.target.value)} maxLength={200} placeholder="Ej. demasiado ruido, reforma cara" autoFocus />
@@ -385,106 +377,263 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       )}
       {h.status === 'descartado' && h.discard_reason && <p className="text-sm text-muted -mt-3">Descartado: {h.discard_reason}</p>}
 
-      {checks.length > 0 && (
-        <section className="flex flex-col gap-1.5">
-          <h3 className="font-bold text-[15px]">Imprescindibles</h3>
-          <span className="flex gap-1 flex-wrap">
-            {checks.map(c => <Chip key={c.label} tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>)}
-          </span>
-        </section>
-      )}
+      {/* 2. Lo que toca hacer ahora */}
+      <PrimaryActions h={h} offers={offers} maps={maps}
+        onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
+        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null })} />
 
+      {/* 3. De un vistazo */}
+      <QuickFacts h={h} m={m} onEdit={onEdit} />
+
+      {/* 4. ¿Nos conviene? */}
       <HomePrice h={h} m={m} />
-
       <HomeHealth h={h} m={m} householdId={householdId} />
 
-      <NotesBox h={h} m={m} />
-
+      {/* 5. Seguimiento: visitas y ofertas, lo último primero, y las notas */}
       <section className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <h3 className="font-bold text-[15px]">Visitas</h3>
-          <button onClick={() => setVisitSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Visita</button>
+          <h3 className="font-bold text-[15px]">Seguimiento</h3>
+          <span className="flex">
+            <button onClick={() => setVisitSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Visita</button>
+            <button onClick={() => setOfferSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Oferta</button>
+          </span>
         </div>
-        {visits.length === 0 ? <p className="text-sm text-muted">Sin visitas. Al apuntarla sale en la Agenda.</p> : visits.map(v => {
-          const marked = Object.values(v.checklist ?? {}).filter(x => x.v).length
-          const bad = Object.values(v.checklist ?? {}).filter(x => x.v === 'mal').length
-          return (
+        {visits.length + offers.length === 0 ? <p className="text-sm text-muted">Aún no hay visitas ni ofertas. Las visitas salen en la Agenda.</p> : (
+          [...visits.map(v => ({ date: v.visit_date, el: (
             <button key={v.id} onClick={() => setVisitSheet({ open: true, visit: v })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
-              <span className="flex justify-between text-[15px] font-semibold">
-                <span>{longDate(v.visit_date)} · {hhmm(v.start_time)}</span>
-                <span className="text-[13px] text-muted">{v.status === 'done' ? 'Hecha' : v.status === 'cancelled' ? 'Cancelada' : 'Prevista'}</span>
+              <span className="flex justify-between gap-2 text-[14px] font-semibold">
+                <span>👀 Visita · {longDate(v.visit_date)} · {hhmm(v.start_time)}</span>
+                <span className="text-[12px] text-muted shrink-0">{v.status === 'done' ? 'Hecha' : v.status === 'cancelled' ? 'Cancelada' : 'Prevista'}</span>
               </span>
-              <span className="text-[13px] text-muted">
-                {v.attendee_id ? `Va ${nameOf(v.attendee_id, members)}` : 'Vais los dos'}
-                {marked > 0 && ` · Revisado ${marked}/${VISIT_CHECKLIST.length}`}{bad > 0 && ` · ${bad} punto${bad > 1 ? 's' : ''} malo${bad > 1 ? 's' : ''}`}
+              <VisitSummary v={v} members={members} />
+            </button>
+          ) })), ...offers.map(o => ({ date: o.offer_date, el: (
+            <button key={o.id} onClick={() => setOfferSheet({ open: true, offer: o })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
+              <span className="flex justify-between items-baseline gap-2">
+                <span className="text-[14px] font-semibold">💶 Oferta · {price(o.amount_cents)}</span>
+                <StatusPill status={o.status} />
+              </span>
+              <span className="text-[12px] text-muted">
+                {shortDate(o.offer_date)}{h.price_cents ? ` · ${Math.round((o.amount_cents / h.price_cents - 1) * 1000) / 10} % sobre el precio` : ''}
+                {o.counter_cents ? ` · contraoferta ${price(o.counter_cents)}` : ''}
               </span>
             </button>
-          )
-        })}
+          ) }))].sort((a, b) => b.date.localeCompare(a.date)).map(x => x.el)
+        )}
+        <NotesBox h={h} m={m} />
       </section>
 
-      <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
-      <Photos h={h} m={m} householdId={householdId} kind="foto" />
+      {/* 6. Contacto */}
+      <ContactCard h={h} onEdit={() => onEdit('contacto')} />
 
+      {/* 7. Más */}
       <section className="flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <h3 className="font-bold text-[15px]">Ofertas que hacemos</h3>
-          <button onClick={() => setOfferSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Oferta</button>
-        </div>
-        {offers.map(o => (
-          <button key={o.id} onClick={() => setOfferSheet({ open: true, offer: o })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
-            <span className="flex justify-between items-baseline gap-2">
-              <span className="text-[16px] font-bold">{price(o.amount_cents)}</span>
-              <StatusPill status={o.status} />
-            </span>
-            <span className="text-[13px] text-muted">
-              {shortDate(o.offer_date)}{h.price_cents ? ` · ${Math.round((o.amount_cents / h.price_cents - 1) * 1000) / 10}% sobre el precio` : ''}
-              {o.counter_cents ? ` · contraoferta ${price(o.counter_cents)}` : ''}
-            </span>
+        <button onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen} className="flex justify-between items-center min-h-11 text-left">
+          <span className="font-bold text-[15px]">Más: fotos, capturas y enlaces</span>
+          <span className="text-muted text-lg" aria-hidden="true">{moreOpen ? '▾' : '▸'}</span>
+        </button>
+        {moreOpen && (
+          <div className="flex flex-col gap-4">
+            <Photos h={h} m={m} householdId={householdId} kind="foto" />
+            <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
+            {h.links?.length > 0 && <LinkChips links={h.links} ourPrice={h.price_cents} big />}
+            <button onClick={() => onEdit()} className="self-start min-h-11 px-4 rounded-xl border border-line text-sm font-semibold">✏️ Editar todos los datos</button>
+            <ConfirmDelete label="Eliminar piso (con sus visitas, fotos y notas)" confirming={confirming} setConfirming={setConfirming}
+              onConfirm={async () => { await m.removeHome(h.id); onClose() }} />
+          </div>
+        )}
+      </section>
+    </Sheet>
+  )
+}
+
+/** Fotos deslizables arriba de la ficha (la portada primero) */
+function Gallery({ h, m, onAdd }: { h: Home; m: Mudanza; onAdd: () => void }) {
+  const cover = coverPhoto(h, m.photos)
+  const own = m.photos.filter(p => p.home_id === h.id)
+  const fotos = own.filter(p => (p.kind ?? 'foto') === 'foto')
+  const list = (fotos.length ? fotos : own.slice(0, 1))
+  const ordered = cover ? [cover, ...list.filter(p => p.id !== cover.id)] : list
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [big, setBig] = useState<string | null>(null)
+  const key = ordered.map(p => p.path).join()
+  useEffect(() => {
+    if (!ordered.length) return
+    let alive = true
+    photoUrls(ordered.map(p => p.path)).then(u => { if (alive) setUrls(u) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  if (!ordered.length) {
+    return <button onClick={onAdd} className="w-full aspect-[16/7] rounded-2xl border border-dashed border-line text-sm font-semibold text-accent">🖼️ Añadir fotos</button>
+  }
+  return (
+    <>
+      <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+        {ordered.map((p, i) => (
+          <button key={p.id} onClick={() => setBig(urls[p.path] ?? null)} aria-label={`Foto ${i + 1} de ${ordered.length}`}
+            className={`relative shrink-0 snap-center rounded-2xl overflow-hidden bg-bg aspect-[4/3] ${ordered.length > 1 ? 'w-[86%]' : 'w-full'}`}>
+            {urls[p.path] && <img src={urls[p.path]} alt="" loading={i ? 'lazy' : 'eager'} className={`w-full h-full object-cover ${p.kind === 'anuncio' ? 'object-top' : ''}`} />}
+            {i === 0 && ordered.length > 1 && <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-full bg-black/60 text-white text-[11px] font-semibold">1/{ordered.length} ⇢</span>}
           </button>
         ))}
-      </section>
+      </div>
+      {big && (
+        <div className="fixed inset-0 z-40 bg-black/95 flex flex-col" onClick={() => setBig(null)}>
+          <div className="flex justify-end px-3 pb-2 pt-[max(env(safe-area-inset-top),12px)]">
+            <button onClick={() => setBig(null)} aria-label="Cerrar" className="w-11 h-11 text-white text-2xl">×</button>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-2 pb-[max(env(safe-area-inset-bottom),8px)]">
+            <img src={big} alt="" className="max-w-full max-h-full object-contain" />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
-      {(h.contact || h.agency || h.contact_phone || h.contact_email || h.advertiser || h.listing_ref) && (
-        <section className="flex flex-col gap-2 bg-card rounded-2xl p-3">
-          <h3 className="font-bold text-[15px]">Contacto</h3>
+/** La acción que toca según el estado, y los accesos rápidos */
+function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }: {
+  h: Home; offers: HomeOffer[]; maps: string | null | undefined; onVisit: () => void; onOffer: (o?: HomeOffer) => void
+  onEdit: (focus?: EditFocus) => void; onRecover: () => void
+}) {
+  const who = h.agency || h.contact || (h.advertiser === 'particular' ? 'el particular' : 'el anunciante')
+  const tel = h.contact_phone ? `tel:${h.contact_phone.replace(/[^\d+]/g, '')}` : null
+  const btn = 'min-h-12 px-4 rounded-xl font-bold text-[15px] flex items-center justify-center gap-2'
+  const main = 'bg-accent text-white dark:text-bg'
+  const second = 'bg-card border border-line'
+  const call = tel
+    ? <a href={tel} className={`${btn} ${main} flex-1 min-w-0`}><span className="truncate">📞 Llamar a {who}</span></a>
+    : <button onClick={() => onEdit('contacto')} className={`${btn} ${second} flex-1`}>📞 Añadir el teléfono</button>
+  const wa = h.contact_phone ? <a href={`https://wa.me/${waNumber(h.contact_phone)}`} target="_blank" rel="noopener noreferrer" className={`${btn} ${second}`}>WhatsApp</a> : null
+  const lastOffer = offers[0]
+  let row: ReactNode
+  switch (h.status) {
+    case 'interesa': case 'llamar': row = <>{call}{wa}</>; break
+    case 'visita_pedida': row = <><button onClick={onVisit} className={`${btn} ${main} flex-1`}>📅 Apuntar la visita</button>{tel && <a href={tel} className={`${btn} ${second}`}>📞</a>}</>; break
+    case 'visitado': case 'favorito': row = <><button onClick={() => onOffer()} className={`${btn} ${main} flex-1`}>💶 Hacer oferta</button><button onClick={onVisit} className={`${btn} ${second}`}>📅 Otra visita</button></>; break
+    case 'oferta': row = <><button onClick={() => onOffer(lastOffer)} className={`${btn} ${main} flex-1`}>💶 {lastOffer ? `Ver la oferta (${price(lastOffer.amount_cents)})` : 'Apuntar la oferta'}</button>{tel && <a href={tel} className={`${btn} ${second}`}>📞</a>}</>; break
+    default: row = <button onClick={onRecover} className={`${btn} ${second} flex-1`}>↩️ Recuperar este piso</button>
+  }
+  const small = 'min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold flex items-center gap-1'
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">{row}</div>
+      <div className="flex gap-1.5 flex-wrap">
+        {h.url && <a href={h.url} target="_blank" rel="noopener noreferrer" className={`${small} text-accent`}>🔗 {portalName(h.url) ?? 'Anuncio'} ↗</a>}
+        {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className={`${small} text-accent`}>📍 Cómo llegar ↗</a>}
+        <button onClick={() => onEdit()} className={small}>✏️ Editar</button>
+      </div>
+    </div>
+  )
+}
+
+/** Los datos de un vistazo, con iconos; gastos al mes e imprescindibles */
+function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: EditFocus) => void }) {
+  const [costsOpen, setCostsOpen] = useState(false)
+  const [mustOpen, setMustOpen] = useState(false)
+  const checks = mustHaveCheck(h, m.criteria)
+  const met = checks.filter(c => c.ok).length
+  const monthly = monthlyCost(h)
+  const icons: Record<string, string> = { piscina: '🏊', garaje: '🚗', jardin: '🌿', trastero: '📦', terraza: '☀️', ascensor: '🛗', reformado: '✨', exterior: '🪟', placas_solares: '🔆', solar_termica: '♨️', transporte: '🚌', cerca_cole: '🏫', calefaccion: '🔥', aire: '❄️' }
+  const facts: [string, string][] = ([
+    h.size_m2 && ['🏠', `${Number(h.size_m2)} m²${h.useful_m2 ? ` (${Number(h.useful_m2)} útiles)` : ''}`],
+    h.plot_m2 && ['🌳', `parcela ${Number(h.plot_m2)} m²`],
+    h.rooms != null && ['🛏', `${h.rooms} hab.`],
+    h.baths != null && ['🛁', `${h.baths} baños`],
+    h.floor && ['🏢', h.floor.length > 18 ? `${h.floor.slice(0, 18)}…` : h.floor],
+    h.year_built && ['🏗', `de ${h.year_built}`],
+    h.energy && ['⚡', `certif. ${h.energy}`],
+    h.heating_type && ['🔥', HEATING[h.heating_type]],
+    h.cooling && ['❄️', `aire: ${COOLING[h.cooling]}`],
+    h.minutes_to_school != null && ['🏫', `${h.minutes_to_school} min al cole`]
+  ].filter(Boolean) as [string, string][])
+  // Extras que no estén ya dichos arriba (calefacción y aire van con su tipo)
+  const extras = h.features.filter(f => !(f === 'calefaccion' && h.heating_type) && !(f === 'aire' && h.cooling))
+  return (
+    <section className="bg-card rounded-2xl p-3 flex flex-col gap-2.5">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-[15px]">De un vistazo</h3>
+        <button onClick={() => onEdit('datos')} aria-label="Editar los datos" className="min-h-9 px-2 text-sm">✏️</button>
+      </div>
+      {facts.length > 0 ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          {facts.map(([i, t]) => <span key={i + t} className="text-[13px] flex gap-1.5 min-w-0"><span aria-hidden="true">{i}</span><span className="truncate">{t}</span></span>)}
+        </div>
+      ) : <p className="text-sm text-muted">Sin datos todavía: rellénalos desde el anuncio con «✏️».</p>}
+      {extras.length > 0 && (
+        <span className="flex gap-1 flex-wrap">
+          {extras.map(f => <span key={f} className="px-2 py-0.5 rounded-lg bg-bg text-[12px]">{icons[f] ?? '•'} {FEATURES[f] ?? f}</span>)}
+        </span>
+      )}
+      {h.features.includes('placas_solares') && h.health?.solar?.n && <span className="text-[12px] text-muted -mt-1">🔆 {h.health.solar.n}</span>}
+      <button onClick={() => (monthly != null ? setCostsOpen(!costsOpen) : onEdit('gastos'))} className="flex justify-between items-center text-left border-t border-line pt-2">
+        <span className="text-[13px] text-muted">💶 Gastos al mes</span>
+        <span className="text-[14px] font-semibold">{monthly != null ? `~${price(monthly)}` : 'Añadir'}{monthly != null && <span className="text-muted"> {costsOpen ? '▾' : '▸'}</span>}</span>
+      </button>
+      {costsOpen && monthly != null && (
+        <div className="text-[12px] text-muted grid grid-cols-2 gap-x-3 -mt-1">
+          {h.community_fee_cents != null && <span>Comunidad {price(h.community_fee_cents)}</span>}
+          {h.ibi_cents != null && <span>IBI {price(Math.round(h.ibi_cents / 12))}/mes</span>}
+          {h.electricity_cents != null && <span>Luz {price(h.electricity_cents)}</span>}
+          {h.water_cents != null && <span>Agua {price(h.water_cents)}</span>}
+          {h.heating_cents != null && <span>Calefacción {price(h.heating_cents)}</span>}
+          <button onClick={() => onEdit('gastos')} className="text-left text-accent font-semibold">✏️ Cambiar</button>
+        </div>
+      )}
+      {checks.length > 0 && (
+        <>
+          <button onClick={() => setMustOpen(!mustOpen)} className="flex justify-between items-center text-left border-t border-line pt-2">
+            <span className="text-[13px] text-muted">🎯 Imprescindibles</span>
+            <span className={`text-[14px] font-semibold ${met === checks.length ? 'text-accent' : ''}`}>{met === checks.length ? '✅' : '⚠️'} {met} de {checks.length} <span className="text-muted">{mustOpen ? '▾' : '▸'}</span></span>
+          </button>
+          {mustOpen && (
+            <span className="flex gap-1 flex-wrap -mt-1">
+              {checks.map(c => <Chip key={c.label} tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>)}
+            </span>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+function VisitSummary({ v, members }: { v: HomeVisit; members: Member[] }) {
+  const marked = Object.values(v.checklist ?? {}).filter(x => x.v).length
+  const bad = Object.values(v.checklist ?? {}).filter(x => x.v === 'mal').length
+  return (
+    <span className="text-[12px] text-muted">
+      {v.attendee_id ? `Va ${nameOf(v.attendee_id, members)}` : 'Vais los dos'}
+      {marked > 0 && ` · Revisado ${marked}/${VISIT_CHECKLIST.length}`}{bad > 0 && ` · ${bad} punto${bad > 1 ? 's' : ''} malo${bad > 1 ? 's' : ''}`}
+      {v.status === 'done' && !marked && ' · ¿Cómo fue? Apúntalo'}
+    </span>
+  )
+}
+
+function ContactCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
+  const has = h.contact || h.agency || h.contact_phone || h.contact_email || h.advertiser || h.listing_ref
+  return (
+    <section className="flex flex-col gap-2 bg-card rounded-2xl p-3">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-[15px]">Contacto</h3>
+        <button onClick={onEdit} aria-label="Editar el contacto" className="min-h-9 px-2 text-sm">✏️</button>
+      </div>
+      {!has ? <button onClick={onEdit} className="self-start text-sm text-accent font-semibold min-h-10">+ Añadir quién lo anuncia y su teléfono</button> : (
+        <>
           <p className="text-sm">
             {h.advertiser === 'particular' ? '🙋 Particular' : h.advertiser === 'agencia' ? '🏢 Agencia' : ''}
             {h.agency ? `${h.advertiser ? ' · ' : ''}${h.agency}` : ''}
             {h.contact ? `${h.advertiser || h.agency ? ' · ' : ''}${h.contact}` : ''}
           </p>
           {h.listing_ref && <p className="text-xs text-muted">Referencia del anuncio: {h.listing_ref}</p>}
-          {(h.contact_phone || h.contact_email) && (
-            <div className="flex flex-wrap gap-2">
-              {h.contact_phone && (
-                <>
-                  <a href={`tel:${h.contact_phone.replace(/[^\d+]/g, '')}`} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-sm font-semibold flex items-center">📞 {h.contact_phone}</a>
-                  <a href={`https://wa.me/${waNumber(h.contact_phone)}`} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">WhatsApp</a>
-                </>
-              )}
-              {h.contact_email && <a href={`mailto:${h.contact_email}`} className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">✉️ Email</a>}
-            </div>
-          )}
-        </section>
+          <div className="flex flex-wrap gap-2">
+            {h.contact_phone && <a href={`tel:${h.contact_phone.replace(/[^\d+]/g, '')}`} className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">📞 {h.contact_phone}</a>}
+            {h.contact_phone && <a href={`https://wa.me/${waNumber(h.contact_phone)}`} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">WhatsApp</a>}
+            {h.contact_email && <a href={`mailto:${h.contact_email}`} className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">✉️ Email</a>}
+          </div>
+        </>
       )}
-
-      {(h.community_fee_cents != null || h.ibi_cents != null || supplyCost(h) != null || h.energy || h.heating_type || h.cooling || h.minutes_to_school != null || h.features.length > 0) && (
-        <section className="flex flex-col gap-1 text-sm">
-          <h3 className="font-bold text-[15px]">Más datos</h3>
-          {h.features.length > 0 && <p>{h.features.map(k => FEATURES[k] ?? k).join(' · ')}</p>}
-          {h.community_fee_cents != null && <p>Comunidad: {price(h.community_fee_cents)}/mes</p>}
-          {h.ibi_cents != null && <p>IBI: {price(h.ibi_cents)}/año</p>}
-          {supplyCost(h) != null && <p>Suministros: {[h.electricity_cents != null && `luz ${price(h.electricity_cents)}`, h.water_cents != null && `agua ${price(h.water_cents)}`, h.heating_cents != null && `calefacción ${price(h.heating_cents)}`].filter(Boolean).join(' · ')} al mes</p>}
-          {h.energy && <p>Certificado energético: {h.energy}</p>}
-          {(h.features.includes('placas_solares') || h.features.includes('solar_termica')) && <p>☀️ {h.features.includes('placas_solares') ? 'Placas solares fotovoltaicas' : 'Solar térmica'}{h.health?.solar?.n ? `: ${h.health.solar.n}` : ''}</p>}
-          {(h.heating_type || h.cooling) && <p>{[h.heating_type && `Calefacción: ${HEATING[h.heating_type]}`, h.cooling && `Aire: ${COOLING[h.cooling]}`].filter(Boolean).join(' · ')}</p>}
-          {h.minutes_to_school != null && <p>{h.minutes_to_school} min al cole</p>}
-        </section>
-      )}
-
-      <ConfirmDelete label="Eliminar piso (con sus visitas, fotos y notas)" confirming={confirming} setConfirming={setConfirming}
-        onConfirm={async () => { await m.removeHome(h.id); onClose() }} />
-    </Sheet>
+    </section>
   )
 }
 
@@ -707,9 +856,15 @@ function HomeOfferSheet({ home, offer, m, onClose }: { home: Home; offer?: HomeO
 
 type Shared = { url?: string | null; text?: string | null; files?: File[] }
 
-function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
-  home?: Home; initial?: Shared; m: Mudanza; householdId: string; onClose: () => void; onCreated: () => void
+function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focus }: {
+  home?: Home; initial?: Shared; m: Mudanza; householdId: string; onClose: () => void; onCreated: () => void; focus?: EditFocus
 }) {
+  // Al abrir desde el ✏️ de un bloque de la ficha, se va directo a esa parte
+  useEffect(() => {
+    if (!focus) return
+    const t = setTimeout(() => document.getElementById(`edit-${focus}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120)
+    return () => clearTimeout(t)
+  }, [focus])
   // Capturas del anuncio: se leen en el móvil para rellenar la ficha y se guardan con el piso al guardar
   const [shots, setShots] = useState<File[]>([])
   // Fotos traídas desde los enlaces que dé la IA (se guardan como fotos del piso)
@@ -1032,12 +1187,13 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
           {links.length < 10 && <button type="button" onClick={() => setLinks([...links, { label: '', url: '' }])} className="self-start min-h-10 text-sm text-accent font-semibold">+ Añadir enlace (otro portal, la inmobiliaria…)</button>}
         </fieldset>
         {home && (
-          <div className="flex flex-col gap-3 rounded-2xl border border-line p-3">
+          <div id="edit-fotos" className="flex flex-col gap-3 rounded-2xl border border-line p-3 scroll-mt-4">
             <Photos h={home} m={m} householdId={householdId} kind="foto" />
             <Photos h={home} m={m} householdId={householdId} kind="anuncio" />
             <p className="text-xs text-muted -mt-1">Toca una foto para verla, borrarla o ponerla de portada.</p>
           </div>
         )}
+        <div id="edit-datos" className="scroll-mt-4" />
         <TextField label="Nombre para reconocerlo" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} placeholder="Ej. Ático luminoso calle Mayor" autoFocus={!home} />
         <div className="grid grid-cols-2 gap-3">
           <TextField label="Precio (€)" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="320.000" />
@@ -1074,7 +1230,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
         <TextField label="Dirección (opcional)" value={address} onChange={e => setAddress(e.target.value)} maxLength={120} />
         <TextField label="Enlace de Google Maps (opcional)" type="url" inputMode="url" value={maps} onChange={e => setMaps(e.target.value)} placeholder="https://maps.app.goo.gl/…" />
         <MultiChips label="Tiene" value={features} onChange={setFeatures} options={Object.entries(FEATURES).map(([value, label]) => ({ value, label }))} />
-        <div className="grid grid-cols-2 gap-3">
+        <div id="edit-gastos" className="grid grid-cols-2 gap-3 scroll-mt-4">
           <TextField label="Comunidad (€/mes)" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} />
           <TextField label="IBI (€/año)" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} />
         </div>
@@ -1091,7 +1247,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated }: {
         <Choice<Cooling | null> label="Aire acondicionado" value={cooling} onChange={setCooling}
           options={[...(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k as Cooling | null, label: COOLING[k] })), { value: null, label: '?' }]} />
         <TextField label="Minutos al cole" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="Ej. 10 (andando o en coche, como lo midáis)" />
-        <fieldset className="flex flex-col gap-3 rounded-2xl border border-line p-3">
+        <fieldset id="edit-contacto" className="flex flex-col gap-3 rounded-2xl border border-line p-3 scroll-mt-4">
           <legend className="text-sm font-bold px-1">Contacto del anuncio</legend>
           <Choice<'agencia' | 'particular' | null> label="¿Quién lo anuncia?" value={advertiser} onChange={setAdvertiser}
             options={[{ value: 'agencia', label: '🏢 Agencia' }, { value: 'particular', label: '🙋 Particular' }, { value: null, label: '?' }]} />
