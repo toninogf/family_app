@@ -30,7 +30,7 @@ import { GroupBox, useOpenGroups } from '../../components/Groups'
 import { applyFilters, EMPTY, sortHomes, type Ctx } from '../../lib/homeFilters'
 import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } from '../../lib/colegios'
 import { recommend } from '../../lib/pricing'
-import { HomeReforma } from './HomeReforma'
+import { HomeReforma, ReformaEditor } from './HomeReforma'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
@@ -254,7 +254,8 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   return {
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
-    dinero: join(t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs > 0 && `gastos ${kShort(costs)}`),
+    dinero: join(t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs > 0 && `gastos ${kShort(costs)}`,
+      h.advertiser !== 'particular' && (!h.buyer_fee_kind ? 'honorarios ¿?' : (buyerFee(h) ?? 0) > 0 ? `honorarios ${kShort(buyerFee(h)!)}` : 'sin honorarios')),
     docs: join(`✅ ${hc.ok}`, `⚠️ ${hc.warn}`, hc.bad > 0 && `⛔ ${hc.bad}`, `❓ ${hc.unknown}`, `Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`,
       `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
@@ -482,7 +483,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   )
 }
 
-type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos'
+type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos' | 'reforma'
 
 /**
  * Ficha de un piso: pensada para decidir qué hacer con él (llamar, visitar, ofertar o descartar) y tener a mano lo
@@ -568,8 +569,9 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
       </Group>
 
       <Group k="dinero" g={groups} line={sum.dinero}>
-        <HomeReforma h={h} m={m} householdId={householdId} />
+        <HomeReforma h={h} onEdit={() => onEdit('reforma')} />
         <HomeGastos h={h} m={m} />
+        <FeeCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
 
       <Group k="docs" g={groups} line={sum.docs} lineAlways>
@@ -608,7 +610,6 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
             </button>
           ) }))].sort((a, b) => b.date.localeCompare(a.date)).map(x => x.el)
         )}
-        <NotesBox h={h} m={m} />
         <ContactCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
 
@@ -626,6 +627,9 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         <Photos h={h} m={m} householdId={householdId} kind="foto" />
         <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
       </Group>
+
+      {/* Notas generales del piso, abajo y a mano (se guardan solas) */}
+      <NotesBox h={h} m={m} />
 
       <button onClick={() => onEdit()} className="self-start min-h-11 px-4 rounded-xl border border-line text-sm font-semibold">✏️ Editar todos los datos</button>
       {/* Borrar, siempre a mano al final de la ficha */}
@@ -965,7 +969,7 @@ function VisitSummary({ v, members }: { v: HomeVisit; members: Member[] }) {
 }
 
 function ContactCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
-  const has = h.contact || h.agency || h.contact_phone || h.contact_email || h.advertiser || h.listing_ref || h.buyer_fee_kind
+  const has = h.contact || h.agency || h.contact_phone || h.contact_email || h.advertiser || h.listing_ref
   return (
     <section className="flex flex-col gap-2 bg-card rounded-2xl p-3">
       <div className="flex justify-between items-center">
@@ -980,13 +984,6 @@ function ContactCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
             {h.contact ? `${h.advertiser || h.agency ? ' · ' : ''}${h.contact}` : ''}
           </p>
           {h.listing_ref && <p className="text-xs text-muted">Referencia del anuncio: {h.listing_ref}</p>}
-          {h.advertiser !== 'particular' && (
-            <p className={`text-[13px] ${h.buyer_fee_kind ? '' : 'text-[#C77A12]'}`}>
-              💼 Honorarios para el comprador: {h.buyer_fee_kind ? <b>{feeLabel(h)}</b> : 'sin preguntar'}
-              {(buyerFee(h) ?? 0) > 0 ? <span className="text-muted"> · ~{price(buyerFee(h))} con IVA</span> : null}
-              {h.buyer_fee_note ? <span className="block text-xs text-muted">{h.buyer_fee_note}</span> : null}
-            </p>
-          )}
           <div className="flex flex-wrap gap-2">
             {h.contact_phone && <a href={`tel:${h.contact_phone.replace(/[^\d+]/g, '')}`} className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">📞 {h.contact_phone}</a>}
             {h.contact_phone && <a href={`https://wa.me/${waNumber(h.contact_phone)}`} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">WhatsApp</a>}
@@ -995,6 +992,27 @@ function ContactCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
         </>
       )}
     </section>
+  )
+}
+
+/** «💼 Honorarios» en El dinero: lo que cobra la agencia al comprador (se edita en Contacto) */
+function FeeCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
+  if (h.advertiser === 'particular') return null
+  const amount = buyerFee(h) ?? 0
+  return (
+    <button onClick={onEdit} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1">
+      <span className="flex justify-between items-center gap-2">
+        <span className="font-bold text-[15px]">💼 Honorarios de la agencia</span>
+        <span className="text-sm" aria-hidden="true">✏️</span>
+      </span>
+      {h.buyer_fee_kind ? (
+        <span className="text-[14px]">
+          <b>{feeLabel(h)}</b>{amount > 0 ? <span className="text-muted"> · ~{price(amount)} con IVA</span> : null}
+          {amount > 0 && <span className="block text-[12px] text-muted">Incluidos en «Para entrar a vivir».</span>}
+        </span>
+      ) : <span className="text-[13px] text-[#C77A12]">Sin preguntar: pregunta si cobran algo al comprador (en Madrid suele pagar el vendedor).</span>}
+      {h.buyer_fee_note && <span className="text-[12px] text-muted">{h.buyer_fee_note}</span>}
+    </button>
   )
 }
 
@@ -1010,8 +1028,8 @@ function NotesBox({ h, m }: { h: Home; m: Mudanza }) {
     setTimeout(() => setSaved(false), 1500)
   }
   return (
-    <section className="flex flex-col gap-2 bg-card rounded-2xl p-4">
-      <TextArea label="Notas y comentarios" value={text} onChange={e => setText(e.target.value)} onBlur={save} maxLength={1000}
+    <section className="flex flex-col gap-2 bg-card rounded-2xl p-4 mt-2">
+      <TextArea label="📝 Notas y comentarios" value={text} onChange={e => setText(e.target.value)} onBlur={save} maxLength={1000}
         placeholder="Lo que os ha gustado, lo que no, dudas para la próxima visita…" />
       {saved && <p role="status" className="text-xs text-accent">Guardado</p>}
     </section>
@@ -1221,7 +1239,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   home?: Home; initial?: Shared; m: Mudanza; householdId: string; onClose: () => void; onCreated: () => void; focus?: EditFocus
 }) {
   // Bloques: en un piso nuevo, abiertos «anuncio» y «lo básico»; al venir del ✏️ de la ficha, solo ese bloque
-  const focusSection = focus ? ({ datos: 'basico', gastos: 'gastos', contacto: 'contacto', fotos: 'enlaces' } as const)[focus] : null
+  const focusSection = focus ? ({ datos: 'basico', gastos: 'gastos', contacto: 'contacto', fotos: 'enlaces', reforma: 'reforma' } as const)[focus] : null
   const sections = useSections(home ? (focusSection ? [focusSection] : []) : ['anuncio', 'basico'])
   useEffect(() => {
     if (!focusSection) return
@@ -1287,8 +1305,8 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   const [feeVat, setFeeVat] = useState(home?.buyer_fee_vat ?? true)
   const [feeNote, setFeeNote] = useState(home?.buyer_fee_note ?? '')
   const [notes, setNotes] = useState(home?.notes ?? '')
-  // La reforma que proponga la IA (solo se guarda si la IA ha dicho algo; el resto se edita en la ficha)
-  const [reform, setReform] = useState<Reform | null>(null)
+  // La reforma: se edita aquí (bloque «Reforma») y la IA puede proponer partidas
+  const [reform, setReform] = useState<Reform>(() => ({ ...(home?.reform ?? {}) }))
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -1301,7 +1319,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
       setPicked(d.sources.map(x => x.url).filter(u => u.replace(/\?.*$/, '') !== url.trim().replace(/\?.*$/, '')))
     }
     if (d.changes) setChanges(d.changes)
-    if (d.reform) setReform(r => mergeAiReform(r ?? home?.reform ?? {}, d.reform!))
+    if (d.reform) setReform(r => mergeAiReform(r, d.reform!))
     if (d.cadastral_ref && !cadRef) setCadRef(d.cadastral_ref)
     if (d.zone_m2_eur || d.asking_m2_eur) {
       setMarket(mk => ({
@@ -1383,7 +1401,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   const missingForAi = SECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([k, v]) => !v.trim() && !['mapa', 'minutos al cole', 'anunciante'].includes(k)).map(([k]) => k)
 
   const dirty = useDirty({ title, url, amount, m2, useful, plot, year, rooms, baths, floor, zone, province, municipality, address, maps, features, fee, ibi, power, water, heating,
-    energy, heatType, cooling, minutes, contact, advertiser, agency, phone, email, listingRef, feeKind, feePct, feeAmount, feeVat, feeNote, notes, links, shots: shots.length, ad: adPhotos.length, picked, health, cadRef, market })
+    energy, heatType, cooling, minutes, contact, advertiser, agency, phone, email, listingRef, feeKind, feePct, feeAmount, feeVat, feeNote, notes, links, shots: shots.length, ad: adPhotos.length, picked, health, cadRef, market, reform })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
   function fromText(text: string, intro = 'Rellenado') {
@@ -1500,7 +1518,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
       buyer_fee_kind: advertiser === 'particular' ? null : feeKind, buyer_fee_vat: feeVat, buyer_fee_note: feeNote.trim() || null,
       buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Math.min(10, Math.max(0, Number(feePct.replace(',', '.')) || 0)) : null,
       buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null,
-      health, cadastral_ref: cadRef, market, ...(reform ? { reform } : {}),
+      health, cadastral_ref: cadRef, market, ...(Object.keys(reform).length || home?.reform ? { reform: reform.items ? { ...reform, items: reform.items.slice(0, 40) } : reform } : {}),
       links: mergeLinks(links.filter(l => l.url.trim()).map(l => ({ ...l, label: l.label.trim(),
         url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim().replace(/^http:/i, 'https:') : `https://${l.url.trim()}` })), sourcesToLinks(sources, picked), [cleanUrl])
     }
@@ -1653,6 +1671,15 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
               options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
           </div>
+        </EditSection>
+
+        <EditSection id="reforma" icon="🔨" title="Reforma" open={sections.isOpen('reforma')} onToggle={() => sections.toggle('reforma')}>
+          <ReformaEditor m={m} householdId={householdId} value={reform} onChange={setReform}
+            h={{ ...(home ?? {}), id: home?.id, price_cents: parsePrice(amount) ?? null, size_m2: num(m2) ?? null, useful_m2: num(useful) ?? null,
+              rooms: rooms.trim() ? parseInt(rooms, 10) : null, baths: baths.trim() ? parseInt(baths, 10) : null, year_built: year.trim() ? parseInt(year, 10) : null,
+              features, energy, heating_type: heatType, cooling, advertiser, buyer_fee_kind: feeKind, buyer_fee_vat: feeVat,
+              buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Number(feePct.replace(',', '.')) || 0 : null,
+              buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null } as Home} />
         </EditSection>
 
         <EditSection id="gastos" icon="💶" title="Gastos" {...cnt('gastos')} flashed={flashedIn('gastos')} open={sections.isOpen('gastos')} onToggle={() => sections.toggle('gastos')}>

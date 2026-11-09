@@ -6,49 +6,39 @@ import {
   buyingCosts, itemCost, rangeK, readyPrice, reformKnown, reformTotal, suggestions,
   type Reform, type ReformItem, type ReformState, type Tier
 } from '../../lib/reforma'
-import { Sheet, TextArea } from '../../components/Sheet'
+import { TextArea } from '../../components/Sheet'
 import DocFiles from '../../components/DocFiles'
 
 const STATES = Object.keys(REFORM_STATE) as ReformState[]
 
-/** Bloque «Reforma» de la ficha: estado, coste estimado y precio para entrar a vivir */
-export function HomeReforma({ h, m, householdId }: { h: Home; m: Mudanza; householdId: string }) {
-  const [open, setOpen] = useState(false)
+/** Bloque «Reforma» de la ficha: solo resumen; se edita en «Editar piso» (✏️ abre ese bloque) */
+export function HomeReforma({ h, onEdit }: { h: Home; onEdit: () => void }) {
   const r = h.reform ?? {}
   const total = reformTotal(r, h)
   const known = reformKnown(r)
   const ready = readyPrice(h)
 
-  async function quick(state: ReformState) {
-    const items = STATE_ITEMS[state].map(k => ({ k, src: 'auto' as const }))
-    await m.write('homes', { reform: { ...r, state, items: r.items?.length ? r.items : items } }, h.id)
-    if (state !== 'listo') setOpen(true)
-  }
-
   return (
     <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
       <div className="flex justify-between items-center gap-2">
         <span className="font-bold text-[15px]">🔨 Reforma</span>
-        {known && <button onClick={() => setOpen(true)} aria-label="Editar la reforma" className="min-h-9 px-2 text-sm">✏️</button>}
+        <button onClick={onEdit} aria-label="Editar la reforma" className="min-h-9 px-2 text-sm">✏️</button>
       </div>
       {!known ? (
-        <>
-          <p className="text-[13px] text-muted">¿Cómo está para entrar a vivir? Elige y ajusta las partidas: el coste se suma al precio para comparar todas igual.</p>
-          <div className="grid grid-cols-2 gap-2">
-            {STATES.map(s => (
-              <button key={s} onClick={() => quick(s)} className="min-h-12 px-2 rounded-xl border border-line text-[13px] font-semibold text-left">
-                {REFORM_STATE[s].icon} {REFORM_STATE[s].label}
-              </button>
-            ))}
-          </div>
-        </>
+        <button onClick={onEdit} className="text-left flex flex-col gap-1">
+          <span className="text-[13px] text-muted">¿Cómo está para entrar a vivir? Indícalo y ajusta las partidas: el coste se suma al precio para comparar todas igual.</span>
+          <span className="text-sm text-accent font-semibold min-h-10 flex items-center">+ Valorar la reforma</span>
+        </button>
       ) : (
-        <button onClick={() => setOpen(true)} className="text-left flex flex-col gap-1">
+        <button onClick={onEdit} className="text-left flex flex-col gap-1">
           <span className="text-[14px] font-semibold">
             {r.state ? `${REFORM_STATE[r.state].icon} ${REFORM_STATE[r.state].label}` : '🔨 Con reforma'}
             {total ? <span className="text-muted font-normal"> · {total.count} partida{total.count === 1 ? '' : 's'}{total.quoted ? ` (${total.quoted} presupuestada${total.quoted === 1 ? '' : 's'})` : ''}</span> : null}
           </span>
           {total && <span className="text-[13px]">Coste estimado: <b>{rangeK(total.lo, total.hi)}</b></span>}
+          {total && r.state !== 'listo' && (
+            <span className="text-[12px] text-muted">{(r.items ?? []).map(i => (i.k === 'otros' ? i.label || 'Otra cosa' : PARTIDA[i.k]?.label ?? i.k)).slice(0, 6).join(' · ')}{(r.items?.length ?? 0) > 6 ? '…' : ''}</span>
+          )}
           {ready != null && (
             <span className="text-[13px] rounded-xl bg-bg px-3 py-2 mt-1 flex justify-between gap-2">
               <span className="text-muted">Para entrar a vivir (con gastos de compra)</span>
@@ -57,52 +47,54 @@ export function HomeReforma({ h, m, householdId }: { h: Home; m: Mudanza; househ
           )}
           {total?.pending.length ? <span className="text-[12px] text-[#C77A12]">Faltan metros u otros datos para calcular: {total.pending.join(', ')}</span> : null}
           {(r.items ?? []).some(i => i.src === 'ia') && <span className="text-[12px] text-muted">✨ Hay partidas propuestas por la IA: revísalas tras la visita.</span>}
+          {r.note && <span className="text-[12px] text-muted">📝 {r.note}</span>}
         </button>
       )}
-      {open && <ReformaSheet h={h} m={m} householdId={householdId} onClose={() => setOpen(false)} />}
     </section>
   )
 }
 
 const SRC_LABEL: Record<string, string> = { ia: '✨ IA', auto: 'propuesta', visita: '👀 visita', manual: '' }
 
-function ReformaSheet({ h, m, householdId, onClose }: { h: Home; m: Mudanza; householdId: string; onClose: () => void }) {
-  const live = () => m.homes.find(x => x.id === h.id) ?? h
-  const [r, setR] = useState<Reform>(() => ({ ...(h.reform ?? {}) }))
+/**
+ * Editor de la reforma dentro de «Editar piso» (controlado: guarda con el resto de la ficha).
+ * «h» lleva los datos que se están editando (metros, baños…) para que las cantidades salgan al momento.
+ * Los presupuestos adjuntos sí se guardan al subirlos (si el piso ya existe), para no dejar archivos sueltos.
+ */
+export function ReformaEditor({ h, m, householdId, value: r, onChange: setR }: {
+  h: Home; m: Mudanza; householdId: string; value: Reform; onChange: (f: (r: Reform) => Reform) => void
+}) {
   const [openItem, setOpenItem] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
   const items = r.items ?? []
   const total = reformTotal(r, h)
   const sugg = suggestions({ ...h, reform: r }, [...(m.criteria?.must_haves ?? []), ...(m.criteria?.nice_to_haves ?? [])])
   const integral = items.some(i => i.k === 'integral')
   const fee = buyingCosts(h)
   const ready = h.price_cents != null ? h.price_cents + (total?.mid ?? 0) + fee : null
+  const saved = h.id ? m.homes.find(x => x.id === h.id) : undefined
 
-  const setItems = (next: ReformItem[]) => setR(x => ({ ...x, items: next }))
-  const patch = (k: string, p: Partial<ReformItem>) => setItems(items.map(i => (i.k === k ? clean({ ...i, ...p }) : i)))
+  const setItems = (next: (items: ReformItem[]) => ReformItem[]) => setR(x => ({ ...x, items: next(x.items ?? []) }))
+  const patch = (k: string, p: Partial<ReformItem>) => setItems(list => list.map(i => (i.k === k ? clean({ ...i, ...p }) : i)))
   const add = (k: string, src: ReformItem['src'] = 'manual') => {
     if (items.some(i => i.k === k)) return
-    setItems([...items, { k, src }])
-    setR(x => ({ ...x, state: x.state === 'listo' || !x.state ? (k === 'integral' ? 'integral' : 'parcial') : x.state }))
+    setR(x => ({ ...x, items: [...(x.items ?? []), { k, src }], state: x.state === 'listo' || !x.state ? (k === 'integral' ? 'integral' : 'parcial') : x.state }))
   }
-  const remove = (k: string) => setItems(items.filter(i => i.k !== k))
-
-  async function write(next: Reform) {
-    const err = await m.write('homes', { reform: next }, h.id)
-    if (err) setError(err)
-    return err
-  }
-  async function save() {
-    setBusy(true)
-    const err = await write({ ...r, items: (r.items ?? []).slice(0, 40) })
-    setBusy(false)
-    if (!err) onClose()
+  const remove = (k: string) => setItems(list => list.filter(i => i.k !== k))
+  /** Archivos de una partida: al borrador y, si el piso existe, también a lo guardado */
+  async function setFiles(k: string, files: NonNullable<ReformItem['files']>) {
+    patch(k, { files })
+    if (!saved) return
+    const live = saved.reform ?? {}
+    const inLive = (live.items ?? []).some(i => i.k === k)
+    const it = items.find(i => i.k === k)
+    const next: Reform = inLive
+      ? { ...live, items: (live.items ?? []).map(i => (i.k === k ? { ...i, files } : i)) }
+      : { ...live, items: [...(live.items ?? []), clean({ ...(it ?? { k }), files })] }
+    await m.write('homes', { reform: next }, saved.id)
   }
 
   return (
-    <Sheet title="Reforma" onClose={onClose}>
       <div className="flex flex-col gap-5">
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-sm font-medium text-muted mb-1.5">Estado para entrar a vivir</legend>
@@ -150,11 +142,7 @@ function ReformaSheet({ h, m, householdId, onClose }: { h: Home; m: Mudanza; hou
                   {isOpen && (
                     <ItemEditor it={it} h={h} householdId={householdId}
                       onChange={p2 => patch(it.k, p2)} onRemove={() => { remove(it.k); setOpenItem(null) }}
-                      onFiles={async files => {
-                        const next = { ...r, items: items.map(i => (i.k === it.k ? { ...i, files } : i)) }
-                        setR(next)
-                        await write(next)
-                      }} />
+                      onFiles={saved ? files => setFiles(it.k, files) : undefined} />
                   )}
                 </div>
               )
@@ -218,16 +206,11 @@ function ReformaSheet({ h, m, householdId, onClose }: { h: Home; m: Mudanza; hou
           </section>
         )}
 
-        <TextArea label="Notas" value={r.note ?? ''} onChange={e => setR(x => ({ ...x, note: e.target.value.slice(0, 600) || undefined }))} maxLength={600} />
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        <div className="flex gap-2">
-          {reformKnown(live().reform) && (
-            <button type="button" onClick={async () => { if (!(await write({}))) onClose() }} className="min-h-12 px-4 rounded-xl border border-line text-sm font-semibold text-danger">Borrar</button>
-          )}
-          <button type="button" onClick={save} disabled={busy} className="flex-1 py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px] disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar'}</button>
-        </div>
+        <TextArea label="Notas de la reforma" value={r.note ?? ''} onChange={e => setR(x => ({ ...x, note: e.target.value.slice(0, 600) || undefined }))} maxLength={600} />
+        {reformKnown(r) && (
+          <button type="button" onClick={() => setR(() => ({}))} className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold text-danger">Quitar la reforma</button>
+        )}
       </div>
-    </Sheet>
   )
 }
 
@@ -240,7 +223,7 @@ function clean(i: ReformItem): ReformItem {
 
 function ItemEditor({ it, h, householdId, onChange, onRemove, onFiles }: {
   it: ReformItem; h: Home; householdId: string
-  onChange: (p: Partial<ReformItem>) => void; onRemove: () => void; onFiles: (files: NonNullable<ReformItem['files']>) => Promise<void>
+  onChange: (p: Partial<ReformItem>) => void; onRemove: () => void; onFiles?: (files: NonNullable<ReformItem['files']>) => Promise<void>
 }) {
   const p = PARTIDA[it.k]
   const auto = p?.auto(h)
@@ -297,16 +280,18 @@ function ItemEditor({ it, h, householdId, onChange, onRemove, onFiles }: {
         <input type="checkbox" checked={it.src === 'visita'} onChange={e => onChange({ src: e.target.checked ? 'visita' : 'manual' })} className="w-5 h-5" />
         <span>Confirmado en la visita</span>
       </label>
-      <DocFiles files={files}
-        onAdd={async (list, onProgress) => {
-          const { added, error } = await uploadDocFiles(`${householdId}/pisos/${h.id}`, list, 10 - files.length, onProgress)
-          if (added.length) await onFiles([...files, ...added])
-          return error
-        }}
-        onRemove={async f => {
-          await supabase.storage.from('sale-docs').remove([f.path])
-          await onFiles(files.filter(x => x.path !== f.path))
-        }} />
+      {onFiles ? (
+        <DocFiles files={files}
+          onAdd={async (list, onProgress) => {
+            const { added, error } = await uploadDocFiles(`${householdId}/pisos/${h.id}`, list, 10 - files.length, onProgress)
+            if (added.length) await onFiles([...files, ...added])
+            return error
+          }}
+          onRemove={async f => {
+            await supabase.storage.from('sale-docs').remove([f.path])
+            await onFiles(files.filter(x => x.path !== f.path))
+          }} />
+      ) : <p className="text-[12px] text-muted">Guarda el piso para poder adjuntar presupuestos.</p>}
       <button type="button" onClick={onRemove} className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold text-danger">Quitar partida</button>
     </div>
   )
