@@ -13,7 +13,7 @@ import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
   CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
-  type CheckValue, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
+  type Check, type CheckValue, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -240,8 +240,8 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   )
 }
 
-function Chip({ children, tone }: { children: ReactNode; tone?: 'ok' | 'bad' | 'unknown' }) {
-  const cls = tone === 'ok' ? 'bg-accent-soft text-accent' : tone === 'bad' ? 'bg-danger/10 text-danger' : tone === 'unknown' ? 'bg-bg text-muted' : 'bg-bg'
+function Chip({ children, tone }: { children: ReactNode; tone?: 'ok' | 'bad' | 'unknown' | 'warn' }) {
+  const cls = tone === 'ok' ? 'bg-accent-soft text-accent' : tone === 'bad' ? 'bg-danger/10 text-danger' : tone === 'warn' ? 'bg-[#C77A12]/15 text-[#C77A12]' : tone === 'unknown' ? 'bg-bg text-muted' : 'bg-bg'
   return <span className={`text-[12px] font-semibold px-2 py-1 rounded-lg ${cls}`}>{children}</span>
 }
 
@@ -250,6 +250,12 @@ function StatusBadge({ s }: { s: HomeStatus }) {
   const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' ? 'bg-bg text-muted'
     : s === 'llamar' ? 'bg-danger text-white dark:text-bg' : 'bg-accent-soft text-accent'
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</span>
+}
+
+/** Chip de un criterio: ✓ verde, ✗ rojo, ? gris o 🔨 ámbar si no lo tiene pero está en la reforma */
+function CheckChip({ c }: { c: Check }) {
+  if (c.ok === false && c.reform) return <Chip tone="warn">🔨 {c.label}: no tiene · {/piscina/i.test(c.label) ? 'hacerla' : 'con reforma'} ~{kShort(c.reform.cents)}</Chip>
+  return <Chip tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>
 }
 
 /** Título sin repetir la zona ni la localidad (ya salen en la línea 📍) */
@@ -288,6 +294,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
   const title = shortTitle(h)
 
   const fails = checks.filter(c => c.ok === false)
+  const viaReform = fails.filter(c => c.reform).length
   const unknown = checks.filter(c => c.ok == null).length
   const nice = niceCount(h, m.criteria)
   const rec = recommend(h, m.homes)
@@ -332,14 +339,14 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
       {facts.length > 0 && <span className="text-[13px] text-muted">{facts.join(' · ')}</span>}
       {(checks.length > 0 || nice.want.length > 0) && (
         <span className="text-[13px]">
-          {checks.length > 0 && <span className={fails.length ? '' : 'text-accent font-semibold'}>🎯 Cumple {checks.length - fails.length - unknown} de {checks.length}{unknown ? ` (${unknown} sin dato)` : ''}</span>}
+          {checks.length > 0 && <span className={fails.length ? '' : 'text-accent font-semibold'}>🎯 Cumple {checks.length - fails.length - unknown} de {checks.length}{unknown ? ` (${unknown} sin dato)` : ''}{viaReform ? <span className="text-[#C77A12]"> · 🔨 {viaReform} con reforma</span> : null}</span>}
           {checks.length > 0 && nice.want.length > 0 && <span className="text-muted"> · </span>}
-          {nice.want.length > 0 && <span>⭐ {nice.got.length} de {nice.want.length} que valoramos</span>}
+          {nice.want.length > 0 && <span>⭐ {nice.got.length} de {nice.want.length} que valoramos{nice.viaReform.length ? <span className="text-[#C77A12]"> (+🔨{nice.viaReform.length})</span> : null}</span>}
         </span>
       )}
       {fails.length > 0 && (
         <span className="flex gap-1 flex-wrap">
-          {fails.map(c => <Chip key={c.label} tone="bad">✗ {c.label}</Chip>)}
+          {fails.map(c => <CheckChip key={c.label} c={c} />)}
         </span>
       )}
       {extra.length > 0 && <span className="text-[13px] text-muted">{extra.join(' · ')}</span>}
@@ -735,7 +742,7 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
           </button>
           {mustOpen && (
             <span className="flex gap-1 flex-wrap -mt-1">
-              {checks.map(c => <Chip key={c.label} tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>)}
+              {checks.map(c => <CheckChip key={c.label} c={c} />)}
             </span>
           )}
         </>
@@ -748,7 +755,7 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
           </button>
           {niceOpen && (
             <span className="flex gap-1 flex-wrap -mt-1">
-              {nice.want.map(k => <Chip key={k} tone={nice.got.includes(k) ? 'ok' : 'unknown'}>{nice.got.includes(k) ? '✓' : '·'} {criteriaLabel(k)}</Chip>)}
+              {nice.want.map(k => <Chip key={k} tone={nice.got.includes(k) ? 'ok' : nice.viaReform.includes(k) ? 'warn' : 'unknown'}>{nice.got.includes(k) ? '✓' : nice.viaReform.includes(k) ? '🔨' : '·'} {criteriaLabel(k)}{nice.viaReform.includes(k) ? ' (con reforma)' : ''}</Chip>)}
             </span>
           )}
         </>
@@ -1631,7 +1638,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Localidad', show: h => h.municipality ?? '—' },
     { label: 'Zona', show: h => h.zone ?? '—' },
     { label: 'Extras', show: h => (h.features.length ? h.features.map(f => FEATURES[f] ?? f).join(', ') : '—'), value: h => h.features.length, better: 'high' },
-    { label: 'Imprescindibles', show: h => { const c = mustHaveCheck(h, m.criteria); return c.length ? `${c.filter(x => x.ok).length}/${c.length}` : '—' }, value: musts, better: 'high' },
+    { label: 'Imprescindibles', show: h => { const c = mustHaveCheck(h, m.criteria); const r = c.filter(x => x.reform).length; return c.length ? <>{c.filter(x => x.ok).length}/{c.length}{r ? <span className="text-[#C77A12]"> · 🔨{r}</span> : null}</> : '—' }, value: musts, better: 'high' },
     { label: 'Valoramos', show: h => { const n = niceCount(h, m.criteria); return n.want.length ? `${n.got.length}/${n.want.length}` : '—' }, value: h => (m.criteria?.nice_to_haves?.length ? niceCount(h, m.criteria).got.length : null), better: 'high' },
     { label: 'Piscina', show: h => (h.features.includes('piscina') ? 'Propia' : h.features.includes('piscina_comunitaria') ? 'Comunitaria' : '—'), value: h => (h.features.includes('piscina') ? 2 : h.features.includes('piscina_comunitaria') ? 1 : 0), better: 'high' },
     { label: 'Comunidad', show: h => (h.community_fee_cents != null ? `${price(h.community_fee_cents)}/mes` : '—'), value: h => h.community_fee_cents, better: 'low' },

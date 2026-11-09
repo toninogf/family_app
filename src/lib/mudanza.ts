@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { compressImage } from './money'
 import { addDays } from './dates'
-import { readyPrice } from './reforma'
+import { PARTIDA, readyPrice, reformTotal, type Reform, type ReformItem } from './reforma'
 
 // ---------- Tipos ----------
 /** Enlace a un anuncio (opcionalmente con el precio que pone esa web) */
@@ -220,9 +220,7 @@ export const criteriaLabel = (k: string) => CRITERIA_EXTRA[k] ?? FEATURES[k] ?? 
 export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map((g, i) =>
   i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: [...g.keys, 'aerotermia', 'geotermia'] } : g)
 /** ¿Cumple el piso esta característica de lo que buscamos? */
-export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null; reform?: { state?: string; items?: { k: string }[] } | null }, k: string) {
-  // Una piscina que vamos a hacer (partida de la reforma, ya sumada al precio para entrar a vivir) cuenta como que la tiene
-  if ((k === 'piscina' || k === 'piscina_cualquiera') && h.reform?.state !== 'listo' && h.reform?.items?.some(i => i.k === 'piscina_nueva')) return true
+export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string) {
   if (k === 'calefaccion') return h.features.includes(k) || (!!h.heating_type && h.heating_type !== 'ninguna')
   if (k === 'aire') return h.features.includes(k) || (!!h.cooling && h.cooling !== 'no')
   if (k === 'piscina_cualquiera') return h.features.includes('piscina') || h.features.includes('piscina_comunitaria')
@@ -232,11 +230,24 @@ export function meets(h: { features: string[]; heating_type?: string | null; coo
   return h.features.includes(k)
 }
 /** Cuántos de los «Valoramos» tiene un piso */
-export function niceCount(h: { features: string[]; heating_type?: string | null; cooling?: string | null; reform?: { state?: string; items?: { k: string }[] } | null }, c: { nice_to_haves?: string[] } | null) {
+export function niceCount(h: { features: string[]; heating_type?: string | null; cooling?: string | null; reform?: Reform | null; size_m2?: number | string | null; plot_m2?: number | string | null; rooms?: number | null; baths?: number | null }, c: { nice_to_haves?: string[] } | null) {
   const want = c?.nice_to_haves ?? []
   const got = want.filter(k => meets(h, k))
-  return { got, want }
+  const viaReform = want.filter(k => !got.includes(k) && reformFor(h, k))
+  return { got, want, viaReform }
 }
+/** Partidas de la reforma que consiguen un criterio que el piso no tiene (se marca en ámbar: no lo tiene, pero está presupuestado) */
+const REFORM_FOR: Record<string, string[]> = {
+  piscina: ['piscina_nueva'], piscina_cualquiera: ['piscina_nueva'], aire: ['aire'], placas_solares: ['placas'],
+  aerotermia: ['aerotermia'], aislamiento: ['aislamiento', 'ventanas'], calefaccion: ['caldera', 'aerotermia', 'radiadores'],
+  riego: ['riego'], armarios: ['armarios'], reformado: ['integral']
+}
+export function reformFor(h: { reform?: Reform | null }, k: string): ReformItem | null {
+  const keys = REFORM_FOR[k]
+  if (!keys || h.reform?.state === 'listo') return null
+  return h.reform?.items?.find(i => keys.includes(i.k)) ?? null
+}
+export type Check = { label: string; ok: boolean | null; reform?: { label: string; cents: number } }
 export const HOME_STATUS: Record<HomeStatus, string> = {
   interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',
   favorito: 'Favorito', descartado: 'Descartado', oferta: 'Oferta hecha'
@@ -286,13 +297,18 @@ export const perM2 = (h: Pick<Home, 'price_cents' | 'size_m2'>) =>
 
 /** Qué imprescindibles cumple un piso (las habitaciones y m² mínimos cuentan como imprescindibles) */
 export function mustHaveCheck(h: Home, c: Criteria | null) {
-  if (!c) return [] as { label: string; ok: boolean | null }[]
-  const out: { label: string; ok: boolean | null }[] = []
+  if (!c) return [] as Check[]
+  const out: Check[] = []
   if (c.max_price_cents) { const r = readyPrice(h); out.push({ label: `≤ ${priceShort(c.max_price_cents)} para entrar`, ok: r == null ? null : r <= c.max_price_cents }) }
   if (c.min_rooms) out.push({ label: `${c.min_rooms}+ hab.`, ok: h.rooms == null ? null : h.rooms >= c.min_rooms })
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
   if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2 })
-  for (const k of c.must_haves) out.push({ label: criteriaLabel(k), ok: meets(h, k) })
+  for (const k of c.must_haves) {
+    const ok = meets(h, k)
+    const it = ok ? null : reformFor(h, k)
+    // Lo que se consigue con la reforma sigue sin cumplirse, pero se dice cuánto cuesta (ya sumado al precio para entrar a vivir)
+    out.push({ label: criteriaLabel(k), ok, ...(it ? { reform: { label: PARTIDA[it.k]?.label ?? it.k, cents: reformTotal({ items: [it], contingency: h.reform?.contingency, no_vat: h.reform?.no_vat }, h)?.mid ?? 0 } } : {}) })
+  }
   return out
 }
 

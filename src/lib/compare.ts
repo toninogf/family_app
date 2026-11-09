@@ -98,7 +98,7 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
   if (criteria) {
     for (const h of homes) {
       const c = mustHaveCheck(h, criteria)
-      const fails = c.filter(x => x.ok === false).map(x => x.label)
+      const fails = c.filter(x => x.ok === false).map(x => (x.reform ? `${x.label} (se puede hacer con la reforma)` : x.label))
       if (fails.length) out.push(`❌ **${n(h)}** no cumple: ${list(fails)}.`)
     }
     const all = homes.filter(h => { const c = mustHaveCheck(h, criteria); return c.length > 0 && c.every(x => x.ok) })
