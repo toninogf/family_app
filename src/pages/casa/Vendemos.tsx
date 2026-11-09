@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import type { Member } from '../../lib/supabase'
 import { addDays, hhmm, longDate, parseISO, relativeDay, shortDate, startOfWeek, today } from '../../lib/dates'
 import {
@@ -9,10 +9,17 @@ import {
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { MarketCompare, VentaFichaSheet, VentaPhotos } from './VentaFicha'
-import { Fold, VentaCuentas, VentaDocs, VentaPasos, docAlert, docsSummary, saleNet, stepsSummary } from './VentaGestion'
+import { VentaCuentas, VentaDocs, VentaPasos, docAlert, docsSummary, saleNet, stepsSummary } from './VentaGestion'
 import { DossierSheet } from './VentaDossier'
 import { SaleFacts, SaleGallery } from './VentaHeader'
+import { GroupBox, Tile, useOpenGroups } from '../../components/Groups'
 
+type SaleGroup = 'resumen' | 'visitas' | 'casa' | 'cuentas' | 'docs' | 'pasos' | 'enlaces' | 'fotos'
+const SALE_GROUPS: { k: SaleGroup; icon: string; title: string }[] = [
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'visitas', icon: '👀', title: 'Visitas y ofertas' }, { k: 'casa', icon: '🏠', title: 'Nuestra casa' },
+  { k: 'cuentas', icon: '💶', title: '¿Cuánto nos queda?' }, { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'pasos', icon: '✍️', title: 'Pasos hasta la firma' },
+  { k: 'enlaces', icon: '🔗', title: 'Enlaces' }, { k: 'fotos', icon: '📷', title: 'Fotos y capturas' }
+]
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const nameOf = (id: string | null, members: Member[]) => (id ? members.find(m => m.id === id)?.display_name ?? '' : '')
 
@@ -21,8 +28,6 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: BuyerOffer }>({ open: false })
   const [listingOpen, setListingOpen] = useState(false)
   const [dossierOpen, setDossierOpen] = useState(false)
-  const [fold, setFold] = useState<string | null>(null)
-  const toggle = (k: string) => setFold(f => (f === k ? null : k))
   const [showPast, setShowPast] = useState(false)
   const t = today()
   const adults = members.filter(x => x.kind === 'adult')
@@ -57,22 +62,69 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
     return { first, cents: first - asking, pct: Math.round(((first - asking) / first) * 1000) / 10 }
   })() : null
 
+  // Cifras: lo que pedimos, lo que nos queda y la mejor oferta
+  const best = m.offers.find(o => o.status === 'accepted') ?? activeOffers.slice().sort((a, b) => (b.counter_cents ?? b.amount_cents) - (a.counter_cents ?? a.amount_cents))[0]
+  const netAt = (p: number) => p - net.mortgage - net.costs
+  const docsPending = m.saleDocs.filter(d => d.status === 'falta' || d.status === 'pedido').length
+  const nextStep = m.saleSteps.filter(x => !x.done && x.step_date).sort((a, b) => a.step_date!.localeCompare(b.step_date!))[0]
+  const lines: Record<SaleGroup, string> = {
+    resumen: [`${done.length} visita${done.length === 1 ? '' : 's'}`, activeOffers.length ? `${activeOffers.length} oferta${activeOffers.length > 1 ? 's' : ''} abierta${activeOffers.length > 1 ? 's' : ''}` : null, docsPending ? `${docsPending} doc. pendientes` : null].filter(Boolean).join(' · '),
+    visitas: [upcoming.length ? `📅 ${relativeDay(upcoming[0].visit_date).toLowerCase()} ${hhmm(upcoming[0].start_time)}` : 'sin visitas previstas', pendingFeedback.length ? `${pendingFeedback.length} por valorar` : null, m.offers.length ? `${m.offers.length} oferta${m.offers.length > 1 ? 's' : ''}` : null].filter(Boolean).join(' · '),
+    casa: [m.listing?.size_m2 && `${Number(m.listing.size_m2)} m²`, m.listing?.plot_m2 && `parcela ${Number(m.listing.plot_m2)} m²`, m.listing?.rooms != null && `${m.listing.rooms} hab.`, m.listing?.baths != null && `${m.listing.baths} baños`].filter(Boolean).join(' · ') || 'rellena la ficha',
+    cuentas: net.net != null ? `${price(net.net)} tras hipoteca y gastos` : 'precio − hipoteca − gastos',
+    docs: m.saleDocs.length ? docsSummary(m.saleDocs) : 'nota simple, certificado energético, IBI…',
+    pasos: stepsSummary(m.saleSteps),
+    enlaces: `${m.listing?.links?.length ?? 0} enlace${(m.listing?.links?.length ?? 0) === 1 ? '' : 's'}`,
+    fotos: `${m.salePhotos.filter(p => p.kind === 'foto').length} fotos · ${m.salePhotos.filter(p => p.kind === 'anuncio').length} capturas`
+  }
+  const busy = upcoming.length > 0 || pendingFeedback.length > 0 || activeOffers.length > 0
+  const g = useOpenGroups<SaleGroup>('venta.grupos', ['resumen'], busy ? ['visitas'] : [])
+  // Función (no componente) para no recrear el contenido en cada pintado
+  const grp = (k: SaleGroup, extra: ReactNode, children: ReactNode) => {
+    const meta = SALE_GROUPS.find(x => x.k === k)!
+    return <GroupBox id={k} icon={meta.icon} title={meta.title} line={lines[k]} open={g.isOpen(k)} onToggle={() => g.toggle(k)} extra={extra}>{children}</GroupBox>
+  }
+
   return (
     <div className="flex flex-col gap-5">
-      {/* 1. Cabecera visual: fotos, precio y días a la venta */}
-      <SaleGallery m={m} onAdd={() => setFold('fotos')} />
-      <div className="flex flex-col gap-0.5 -mt-1">
+      {/* 1. Cabecera: fotos y las cifras */}
+      <SaleGallery m={m} onAdd={() => g.go('fotos')} />
+      <div className="flex flex-col gap-1 -mt-2">
         <span className="text-[13px] text-muted">{m.listing?.title || 'Nuestra casa en venta'}</span>
-        <button onClick={() => setListingOpen(true)} className="text-left">
-          <span className="text-[26px] font-bold leading-tight">{asking ? price(asking) : 'Pon el precio'}</span>
-          {asking && m.listing?.size_m2 ? <span className="text-[13px] text-muted"> · {price(Math.round(asking / Number(m.listing.size_m2)))}/m²</span> : null}
-        </button>
-        <span className="text-[13px] text-muted">
-          {m.listing?.published_on
-            ? `Publicado el ${shortDate(m.listing.published_on)} · ${daysBetween(m.listing.published_on, t)} días a la venta`
-            : 'Rellena la ficha desde vuestro anuncio (con IA o capturas)'}
-          {drop ? ` · ${drop.cents > 0 ? `bajado ${price(drop.cents)} (${drop.pct} %)` : `subido ${price(-drop.cents)}`}` : ''}
-        </span>
+        <div className="rounded-2xl bg-card p-3 flex flex-col gap-2">
+          <button onClick={() => setListingOpen(true)} className="flex justify-between items-baseline gap-2 text-left">
+            <span className="flex flex-col min-w-0">
+              <span className="text-[13px] text-muted">Pedimos</span>
+              <span className="text-[11px] text-muted">
+                {m.listing?.published_on ? `${daysBetween(m.listing.published_on, t)} días a la venta` : 'sin fecha de publicación'}
+                {asking && m.listing?.size_m2 ? ` · ${price(Math.round(asking / Number(m.listing.size_m2)))}/m²` : ''}
+                {drop && drop.cents > 0 ? ` · bajado ${drop.pct} %` : ''}
+              </span>
+            </span>
+            <span className="text-[24px] font-bold leading-tight shrink-0">{asking ? price(asking) : 'Pon el precio'}</span>
+          </button>
+          {asking != null && (
+            <button onClick={() => g.go('cuentas')} className="flex justify-between items-baseline gap-2 border-t border-line pt-2 text-left">
+              <span className="flex flex-col min-w-0">
+                <span className="text-[13px] text-muted">Nos queda limpio</span>
+                <span className="text-[11px] text-muted">tras hipoteca{net.costs ? ', plusvalía y gastos' : ''}</span>
+              </span>
+              <span className="text-[24px] font-bold leading-tight shrink-0 text-accent">{price(netAt(asking))}</span>
+            </button>
+          )}
+          {best && (
+            <button onClick={() => setOfferSheet({ open: true, offer: best })} className="flex flex-col gap-0.5 border-t border-line pt-2 text-left">
+              <span className="flex justify-between items-baseline gap-2">
+                <span className="flex flex-col min-w-0">
+                  <span className="text-[13px] text-muted">{best.status === 'accepted' ? 'Oferta aceptada' : 'Mejor oferta recibida'}</span>
+                  <span className="text-[11px] text-muted">{best.buyer_name || 'Comprador'} · {OFFER_STATUS[best.status].toLowerCase()}{best.counter_cents ? ` · contraoferta ${price(best.counter_cents)}` : ''}</span>
+                </span>
+                <span className="text-[20px] font-bold leading-tight shrink-0">{price(best.amount_cents)}</span>
+              </span>
+              <span className="text-[12px] text-muted text-right">nos quedaría {price(netAt(best.counter_cents ?? best.amount_cents))}{asking ? ` · ${Math.round(((best.counter_cents ?? best.amount_cents) / asking - 1) * 1000) / 10} % sobre lo que pedimos` : ''}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 2. Lo que toca hacer ahora */}
@@ -87,54 +139,82 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
           )}
           <button onClick={() => setDossierOpen(true)} className="min-h-12 px-4 rounded-xl bg-card border border-line font-bold text-[15px]">📤 Dossier</button>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {(m.listing?.links ?? []).map((l, i) => (
-            <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">
-              🔗 {l.label || portalName(l.url) || 'Anuncio'}{l.price_cents && l.price_cents !== asking ? ` · ${priceShort(l.price_cents)} ⚠️` : ''} ↗
-            </a>
-          ))}
-          <button onClick={() => setListingOpen(true)} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">✏️ Editar la ficha</button>
-        </div>
+        <button onClick={() => setListingOpen(true)} className="self-start min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">✏️ Editar la ficha</button>
       </div>
 
-      {/* 3. De un vistazo */}
-      <SaleFacts m={m} onEdit={() => setListingOpen(true)} />
-
       {docAlerts.length > 0 && (
-        <button onClick={() => setFold('docs')} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-0.5 ring-2 ring-danger">
+        <button onClick={() => g.go('docs')} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-0.5 ring-2 ring-danger">
           <span className="text-[13px] font-semibold text-danger">⚠️ Documentos por renovar</span>
           {docAlerts.map(({ d, a }) => <span key={d.id} className="text-[14px]">{d.title}: {a.text.toLowerCase()}</span>)}
         </button>
       )}
-      <MarketCompare m={m} />
 
-      {/* Gestión de la venta */}
-      <div className="flex flex-col gap-2">
-        <Fold title="🖼️ Fotos y capturas" summary={`${m.salePhotos.filter(p => p.kind === 'foto').length} fotos · ${m.salePhotos.filter(p => p.kind === 'anuncio').length} capturas del anuncio`} open={fold === 'fotos'} onToggle={() => toggle('fotos')}>
-          <div className="bg-card rounded-2xl p-4 flex flex-col gap-4">
-            <VentaPhotos m={m} householdId={householdId} kind="foto" />
-            <VentaPhotos m={m} householdId={householdId} kind="anuncio" />
-          </div>
-        </Fold>
-        <Fold title="📄 Documentos" summary={m.saleDocs.length ? docsSummary(m.saleDocs) : 'Nota simple, certificado energético, IBI…'} open={fold === 'docs'} onToggle={() => toggle('docs')}>
-          <VentaDocs m={m} householdId={householdId} />
-        </Fold>
-        <Fold title="💶 ¿Cuánto nos queda?" summary={net.net != null ? `${price(net.net)} tras hipoteca y gastos` : 'Precio − hipoteca − gastos'} open={fold === 'cuentas'} onToggle={() => toggle('cuentas')}>
-          <VentaCuentas m={m} householdId={householdId} />
-        </Fold>
-        <Fold title="✍️ Pasos hasta la firma" summary={stepsSummary(m.saleSteps)} open={fold === 'pasos'} onToggle={() => toggle('pasos')}>
-          <VentaPasos m={m} />
-        </Fold>
-        <button onClick={() => setDossierOpen(true)} className="bg-card rounded-2xl p-4 flex justify-between items-center gap-2 text-left">
-          <span className="flex flex-col gap-0.5">
-            <span className="text-[15px] font-bold">📤 Dossier para compradores</span>
-            <span className="text-[13px] text-muted">PDF con ficha, fotos y certificado para WhatsApp</span>
-          </span>
-          <span className="text-muted text-lg" aria-hidden="true">›</span>
-        </button>
-      </div>
+      {grp('resumen', null, <>
+        <div className="grid grid-cols-2 gap-2">
+          <Tile label="👀 Visitas" value={<>{done.length}{upcoming.length ? <span className="text-[13px] font-normal text-muted"> · {upcoming.length} próx.</span> : null}</>} tone={done.length ? 'ok' : 'none'} onClick={() => g.go('visitas')} />
+          <Tile label="💶 Ofertas" value={activeOffers.length ? `${activeOffers.length} abierta${activeOffers.length > 1 ? 's' : ''}` : m.offers.some(o => o.status === 'accepted') ? '✅ aceptada' : 'ninguna'} tone={activeOffers.length || m.offers.some(o => o.status === 'accepted') ? 'ok' : 'none'} onClick={() => g.go('visitas')} />
+          <Tile label="📄 Documentos" value={m.saleDocs.length ? (docsPending ? `${docsPending} pendiente${docsPending > 1 ? 's' : ''}` : '✅ al día') : 'sin lista'} tone={docAlerts.length ? 'bad' : docsPending ? 'warn' : m.saleDocs.length ? 'ok' : 'none'} onClick={() => g.go('docs')} />
+          <Tile label="✍️ Siguiente paso" value={nextStep ? `${nextStep.title} · ${shortDate(nextStep.step_date!)}` : '—'} onClick={() => g.go('pasos')} />
+        </div>
+        <MarketCompare m={m} />
+      </>)}
 
-      {/* Resumen */}
+      {grp('visitas', <span className="flex">
+        <button onClick={() => setVisitSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Visita</button>
+        <button onClick={() => setOfferSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Oferta</button>
+      </span>, <>
+      {/* Visitas */}
+      {pendingFeedback.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-base font-bold">¿Cómo fueron?</h2>
+          {pendingFeedback.map(v => <VisitRow key={v.id} v={v} members={members} onOpen={() => setVisitSheet({ open: true, visit: v })} highlight />)}
+        </section>
+      )}
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-bold">Próximas visitas</h2>
+        {m.loading ? <p className="text-sm text-muted">Cargando…</p> : upcoming.length === 0
+          ? <Card><p className="text-sm text-muted">No hay visitas previstas. Apúntalas con «+ Visita» y saldrán en la Agenda y en el aviso de la mañana.</p></Card>
+          : upcoming.map(v => <VisitRow key={v.id} v={v} members={members} onOpen={() => setVisitSheet({ open: true, visit: v })} />)}
+      </section>
+
+      {/* Ofertas */}
+      <section className="flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <h2 className="text-base font-bold">Ofertas recibidas</h2>
+          <button onClick={() => setOfferSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Oferta</button>
+        </div>
+        {m.offers.length === 0
+          ? <Card><p className="text-sm text-muted">Aún no hay ofertas.</p></Card>
+          : m.offers.map(o => (
+            <button key={o.id} onClick={() => setOfferSheet({ open: true, offer: o })} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1">
+              <span className="flex justify-between items-baseline gap-2">
+                <span className="text-[17px] font-bold">{price(o.amount_cents)}</span>
+                <StatusPill status={o.status} />
+              </span>
+              <span className="text-[13px] text-muted">
+                {o.buyer_name || 'Comprador'} · {shortDate(o.offer_date)} · {FINANCING[o.financing]}
+                {asking ? ` · ${Math.round((o.amount_cents / asking - 1) * 1000) / 10}% sobre el precio` : ''}
+              </span>
+              {o.counter_cents && <span className="text-[13px]">Contraoferta: {price(o.counter_cents)}</span>}
+              {o.response_deadline && (o.status === 'pending' || o.status === 'countered') && (
+                <span className={`text-[13px] font-semibold ${o.response_deadline <= addDays(t, 1) ? 'text-danger' : 'text-accent'}`}>
+                  Responder antes de: {relativeDay(o.response_deadline)}
+                </span>
+              )}
+            </button>
+          ))}
+      </section>
+
+      {past.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <button onClick={() => setShowPast(s => !s)} aria-expanded={showPast} className="min-h-10 text-sm font-semibold text-muted self-start">
+            Visitas anteriores ({past.length}) {showPast ? '▾' : '▸'}
+          </button>
+          {showPast && past.map(v => <VisitRow key={v.id} v={v} members={members} onOpen={() => setVisitSheet({ open: true, visit: v })} />)}
+        </section>
+      )}
+
       {m.visits.length > 0 && (
         <Card className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -192,57 +272,49 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         </Card>
       )}
 
-      {/* Visitas */}
-      {pendingFeedback.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-base font-bold">¿Cómo fueron?</h2>
-          {pendingFeedback.map(v => <VisitRow key={v.id} v={v} members={members} onOpen={() => setVisitSheet({ open: true, visit: v })} highlight />)}
-        </section>
-      )}
+      </>)}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-base font-bold">Próximas visitas</h2>
-        {m.loading ? <p className="text-sm text-muted">Cargando…</p> : upcoming.length === 0
-          ? <Card><p className="text-sm text-muted">No hay visitas previstas. Apúntalas con «+ Visita» y saldrán en la Agenda y en el aviso de la mañana.</p></Card>
-          : upcoming.map(v => <VisitRow key={v.id} v={v} members={members} onOpen={() => setVisitSheet({ open: true, visit: v })} />)}
-      </section>
+      {grp('casa', null, <>
+        <SaleFacts m={m} onEdit={() => setListingOpen(true)} />
+      </>)}
 
-      {/* Ofertas */}
-      <section className="flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <h2 className="text-base font-bold">Ofertas recibidas</h2>
-          <button onClick={() => setOfferSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Oferta</button>
-        </div>
-        {m.offers.length === 0
-          ? <Card><p className="text-sm text-muted">Aún no hay ofertas.</p></Card>
-          : m.offers.map(o => (
-            <button key={o.id} onClick={() => setOfferSheet({ open: true, offer: o })} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1">
-              <span className="flex justify-between items-baseline gap-2">
-                <span className="text-[17px] font-bold">{price(o.amount_cents)}</span>
-                <StatusPill status={o.status} />
-              </span>
-              <span className="text-[13px] text-muted">
-                {o.buyer_name || 'Comprador'} · {shortDate(o.offer_date)} · {FINANCING[o.financing]}
-                {asking ? ` · ${Math.round((o.amount_cents / asking - 1) * 1000) / 10}% sobre el precio` : ''}
-              </span>
-              {o.counter_cents && <span className="text-[13px]">Contraoferta: {price(o.counter_cents)}</span>}
-              {o.response_deadline && (o.status === 'pending' || o.status === 'countered') && (
-                <span className={`text-[13px] font-semibold ${o.response_deadline <= addDays(t, 1) ? 'text-danger' : 'text-accent'}`}>
-                  Responder antes de: {relativeDay(o.response_deadline)}
-                </span>
-              )}
-            </button>
+      {grp('cuentas', null, <>
+        <VentaCuentas m={m} householdId={householdId} />
+      </>)}
+
+      {grp('docs', null, <>
+        <VentaDocs m={m} householdId={householdId} />
+      </>)}
+
+      {grp('pasos', null, <>
+        <VentaPasos m={m} />
+      </>)}
+
+      {grp('enlaces', <button onClick={() => setListingOpen(true)} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>, <>
+        <div className="flex gap-1.5 flex-wrap">
+          {(m.listing?.links ?? []).map((l, i) => (
+            <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">
+              🔗 {l.label || portalName(l.url) || 'Anuncio'}{l.price_cents && l.price_cents !== asking ? ` · ${priceShort(l.price_cents)} ⚠️` : ''} ↗
+            </a>
           ))}
-      </section>
+          {!(m.listing?.links?.length) && <p className="text-[13px] text-muted">Sin enlaces. Añade los de vuestros anuncios con ✏️.</p>}
+        </div>
+      </>)}
 
-      {past.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <button onClick={() => setShowPast(s => !s)} aria-expanded={showPast} className="min-h-10 text-sm font-semibold text-muted self-start">
-            Visitas anteriores ({past.length}) {showPast ? '▾' : '▸'}
-          </button>
-          {showPast && past.map(v => <VisitRow key={v.id} v={v} members={members} onOpen={() => setVisitSheet({ open: true, visit: v })} />)}
-        </section>
-      )}
+      {grp('fotos', null, <>
+        <div className="flex flex-col gap-4">
+          <VentaPhotos m={m} householdId={householdId} kind="foto" />
+          <VentaPhotos m={m} householdId={householdId} kind="anuncio" />
+        </div>
+      </>)}
+
+      <button onClick={() => setDossierOpen(true)} className="bg-card rounded-2xl p-4 flex justify-between items-center gap-2 text-left">
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[15px] font-bold">📤 Dossier para compradores</span>
+          <span className="text-[13px] text-muted">PDF con ficha, fotos y certificado para WhatsApp</span>
+        </span>
+        <span className="text-muted text-lg" aria-hidden="true">›</span>
+      </button>
 
       <Fab label="Visita" onClick={() => setVisitSheet({ open: true })} />
 

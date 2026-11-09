@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { addDays, hhmm, relativeDay, shortDate, today } from '../../lib/dates'
 import {
-  COST_TEMPLATE, DOC_TEMPLATE, STEP_TEMPLATE, parsePrice, price, priceInput,
+  COST_TEMPLATE, DOC_PHASES, DOC_TEMPLATE, STEP_TEMPLATE, parsePrice, price, priceInput,
   type DocStatus, type Mudanza, type SaleCost, type SaleDoc, type SaleStep, type StepKind
 } from '../../lib/mudanza'
 import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -69,13 +69,25 @@ export function VentaDocs({ m, householdId }: { m: Mudanza; householdId: string 
           </button>
         </div>
       )}
-      {m.saleDocs.length > 0 && (
+      {m.saleDocs.length > 0 && [...DOC_PHASES, { key: 'otros', title: '📎 Otros', keys: [] as string[] }].map(ph => {
+        const known = DOC_PHASES.flatMap(x => x.keys)
+        const list = m.saleDocs.filter(d => (ph.key === 'otros' ? !d.doc_key || !known.includes(d.doc_key) : ph.keys.includes(d.doc_key ?? '')))
+          .sort((a, b) => (ph.keys.indexOf(a.doc_key ?? '') - ph.keys.indexOf(b.doc_key ?? '')) || a.title.localeCompare(b.title, 'es'))
+        if (!list.length) return null
+        const rel = list.filter(d => d.status !== 'no_aplica')
+        const ok = rel.filter(d => d.status === 'ok').length
+        return (
+        <div key={ph.key} className="flex flex-col gap-1.5">
+          <span className="flex justify-between items-baseline px-1">
+            <span className="text-[13px] font-semibold">{ph.title}</span>
+            <span className={`text-[12px] font-semibold ${ok === rel.length ? 'text-accent' : 'text-muted'}`}>{ok === rel.length ? '✓ ' : ''}{ok}/{rel.length}</span>
+          </span>
         <ul className="bg-card rounded-2xl px-4">
-          {m.saleDocs.map((d, i) => {
+          {list.map((d, i) => {
             const alert = docAlert(d)
             const hint = DOC_TEMPLATE.find(t => t.key === d.doc_key)?.hint
             return (
-              <li key={d.id} className={`py-3 flex items-center gap-3 ${i < m.saleDocs.length - 1 ? 'border-b border-line' : ''}`}>
+              <li key={d.id} className={`py-3 flex items-center gap-3 ${i < list.length - 1 ? 'border-b border-line' : ''}`}>
                 <button onClick={() => setEdit(d)} className="flex-1 text-left flex flex-col gap-0.5 min-w-0">
                   <span className="text-[15px] font-semibold">{d.title}</span>
                   {alert ? <span className={`text-[12px] font-semibold ${alert.level === 'bad' ? 'text-danger' : 'text-[#C77A12]'}`}>⚠️ {alert.text}</span>
@@ -92,7 +104,9 @@ export function VentaDocs({ m, householdId }: { m: Mudanza; householdId: string 
             )
           })}
         </ul>
-      )}
+        </div>
+        )
+      })}
       <div className="flex gap-2">
         <button onClick={() => setEdit('new')} className="flex-1 min-h-11 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Otro documento</button>
         {m.saleDocs.length > 0 && missing.length > 0 && (

@@ -26,6 +26,7 @@ import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, rea
 import { HomeGastos } from './HomeGastos'
 import { HomeSchools, useSchoolSummaries } from './HomeSchools'
 import { FilterBar, FilterSheet, useHomeFilters } from './HomeFilters'
+import { GroupBox, useOpenGroups } from '../../components/Groups'
 import { applyFilters, EMPTY, sortHomes, type Ctx } from '../../lib/homeFilters'
 import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } from '../../lib/colegios'
 import { recommend } from '../../lib/pricing'
@@ -229,42 +230,13 @@ const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
   { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'seguimiento', icon: '📅', title: 'Seguimiento' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
   { k: 'fotos', icon: '📷', title: 'Fotos' }
 ]
-const GROUPS_KEY = 'ficha.grupos'
-/** Grupos abiertos (se recuerdan en este móvil); «go» abre uno y baja hasta él */
-function useGroups(initial: GroupKey[]) {
-  const [open, setOpen] = useState<Set<GroupKey>>(() => {
-    try { const v = localStorage.getItem(GROUPS_KEY); if (v) return new Set([...(JSON.parse(v) as GroupKey[]), ...initial.filter(k => k === 'seguimiento')]) } catch { /* nada */ }
-    return new Set(initial)
-  })
-  const persist = (n: Set<GroupKey>) => { try { localStorage.setItem(GROUPS_KEY, JSON.stringify([...n])) } catch { /* nada */ } }
-  const toggle = (k: GroupKey) => setOpen(o => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); persist(n); return n })
-  const go = (k: GroupKey) => {
-    setOpen(o => { const n = new Set(o); n.add(k); persist(n); return n })
-    setTimeout(() => document.getElementById(`grupo-${k}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60)
-  }
-  return { isOpen: (k: GroupKey) => open.has(k), toggle, go }
-}
+/** Grupos abiertos de la ficha (se recuerdan en este móvil); «go» abre uno y baja hasta él */
+const useGroups = (initial: GroupKey[]) => useOpenGroups<GroupKey>('ficha.grupos', initial.filter(k => k !== 'seguimiento'), initial.filter(k => k === 'seguimiento'))
 type Groups = ReturnType<typeof useGroups>
 
 function Group({ k, g, line, extra, children, lineAlways }: { k: GroupKey; g: Groups; line: ReactNode; extra?: ReactNode; children: ReactNode; lineAlways?: boolean }) {
   const meta = GROUPS.find(x => x.k === k)!
-  const open = g.isOpen(k)
-  return (
-    <section id={`grupo-${k}`} className="flex flex-col gap-2 scroll-mt-3">
-      <div className="flex items-center gap-1 border-b border-line pb-1">
-        <button onClick={() => g.toggle(k)} aria-expanded={open} className="flex-1 min-w-0 min-h-11 flex items-center gap-2 text-left">
-          <span className="text-[16px]" aria-hidden="true">{meta.icon}</span>
-          <span className="flex flex-col min-w-0">
-            <span className="font-bold text-[16px] leading-tight">{meta.title}</span>
-            {(!open || lineAlways) && line ? <span className="text-[12px] text-muted truncate">{line}</span> : null}
-          </span>
-          <span className="ml-auto text-muted" aria-hidden="true">{open ? '▾' : '▸'}</span>
-        </button>
-        {open && extra}
-      </div>
-      {open && <div className="flex flex-col gap-3">{children}</div>}
-    </section>
-  )
+  return <GroupBox id={k} icon={meta.icon} title={meta.title} line={line} open={g.isOpen(k)} onToggle={() => g.toggle(k)} extra={extra} lineAlways={lineAlways}>{children}</GroupBox>
 }
 
 /** Una línea por grupo, para verlo plegado sin abrirlo */

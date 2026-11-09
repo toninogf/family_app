@@ -666,17 +666,25 @@ export async function saleDocUrl(path: string): Promise<string | null> {
 // ---------- Plantillas de Vendemos ----------
 /** Documentos que suelen hacer falta para vender; «months»: validez habitual (para avisar de la caducidad) */
 export const DOC_TEMPLATE: { key: string; title: string; hint: string; months?: number }[] = [
+  { key: 'cee', title: 'Certificado energético', hint: 'Obligatorio para anunciar y firmar. Vale 10 años.', months: 120 },
+  { key: 'planos', title: 'Planos de la vivienda', hint: 'Del proyecto, del arquitecto o hechos para el anuncio. Si hay varios (por plantas), añade uno por cada plano.' },
+  { key: 'catastro', title: 'Referencia / certificado catastral', hint: 'Sede electrónica del Catastro.' },
   { key: 'nota_simple', title: 'Nota simple del Registro', hint: 'Titularidad y cargas. Se pide reciente (menos de 3 meses).', months: 3 },
   { key: 'escritura', title: 'Escritura de propiedad', hint: 'La piden el notario y el banco del comprador.' },
-  { key: 'catastro', title: 'Referencia / certificado catastral', hint: 'Sede electrónica del Catastro.' },
-  { key: 'planos', title: 'Planos de la vivienda', hint: 'Del proyecto, del arquitecto o hechos para el anuncio. Si hay varios (por plantas), añade uno por cada plano.' },
-  { key: 'cee', title: 'Certificado energético', hint: 'Obligatorio para anunciar y firmar. Vale 10 años.', months: 120 },
-  { key: 'ibi', title: 'Último recibo del IBI', hint: 'Lo pide el notario.', months: 12 },
-  { key: 'comunidad', title: 'Certificado de la comunidad (al corriente)', hint: 'Obligatorio en la firma si hay comunidad. Reciente.', months: 1 },
-  { key: 'hipoteca', title: 'Certificado de deuda de la hipoteca', hint: 'Cuánto queda para cancelarla el día de la firma.', months: 1 },
-  { key: 'suministros', title: 'Facturas de luz, agua y gas', hint: 'Para el cambio de titular.' },
+  { key: 'arras_modelo', title: 'Modelo de contrato de arras', hint: 'El que vayáis a firmar con el comprador.' },
   { key: 'ite', title: 'ITE / IEE y licencias de obras', hint: 'Si el edificio es antiguo o hay reformas.' },
-  { key: 'arras_modelo', title: 'Modelo de contrato de arras', hint: 'El que vayáis a firmar con el comprador.' }
+  { key: 'hipoteca', title: 'Certificado de deuda de la hipoteca', hint: 'Cuánto queda para cancelarla el día de la firma.', months: 1 },
+  { key: 'comunidad', title: 'Certificado de la comunidad (al corriente)', hint: 'Obligatorio en la firma si hay comunidad. Reciente.', months: 1 },
+  { key: 'ibi', title: 'Último recibo del IBI', hint: 'Lo pide el notario.', months: 12 },
+  { key: 'suministros', title: 'Facturas de luz, agua y gas', hint: 'Para el cambio de titular.' }
+]
+
+/** Cuándo hace falta cada documento (se agrupan así en Vendemos, en el orden en que se van necesitando) */
+export const DOC_PHASES: { key: string; title: string; keys: string[] }[] = [
+  { key: 'anunciar', title: '📢 Para anunciar', keys: ['cee', 'planos', 'catastro', 'nota_simple'] },
+  { key: 'arras', title: '🤝 Para las arras', keys: ['escritura', 'arras_modelo', 'ite'] },
+  { key: 'firma', title: '✍️ Para la firma en notaría', keys: ['hipoteca', 'comunidad', 'ibi'] },
+  { key: 'despues', title: '🔑 Al entregar las llaves', keys: ['suministros'] }
 ]
 
 /** Pasos de la venta con lo que conviene tener hecho en cada uno */
