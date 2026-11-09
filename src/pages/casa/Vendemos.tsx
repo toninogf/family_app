@@ -7,9 +7,10 @@ import {
   type BuyerOffer, type BuyerVisit, type Financing, type Interest, type Mudanza, type OfferStatus, type VisitStatus
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
-import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
+import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../components/Sheet'
 import { VentaFichaSheet, VentaPhotos, type VentaFocus } from './VentaFicha'
 import { Competitors, MarketCard, ObjectionHelp } from './VentaMercado'
+import { valuation } from '../../lib/venta'
 import { VentaCuentas, VentaDocs, VentaPasos, docAlert, docsSummary, saleNet, stepsSummary } from './VentaGestion'
 import { DossierSheet } from './VentaDossier'
 import { SaleFacts, SaleGallery, SaleMonthly } from './VentaHeader'
@@ -80,6 +81,13 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
     enlaces: `${m.listing?.links?.length ?? 0} enlace${(m.listing?.links?.length ?? 0) === 1 ? '' : 's'}`,
     fotos: `${m.salePhotos.filter(p => p.kind === 'foto').length} fotos · ${m.salePhotos.filter(p => p.kind === 'anuncio').length} capturas`
   }
+  // Mercado (misma valoración que «¿Estamos en precio?») y competencia en bruto (€/m² de los que siguen en venta)
+  const val = valuation(m.listing, m.competitors)
+  const valDiff = val && asking ? Math.round((asking / val.target - 1) * 100) : null
+  const compActive = m.competitors.filter(c => c.status === 'activo' && c.price_cents && c.size_m2)
+  const compDrop = compActive.filter(c => c.first_price_cents && c.price_cents! < c.first_price_cents).length
+  const compM2 = compActive.length ? (() => { const xs = compActive.map(c => c.price_cents! / Number(c.size_m2)).sort((a, b) => a - b); const k = Math.floor(xs.length / 2); return Math.round(xs.length % 2 ? xs[k] : (xs[k - 1] + xs[k]) / 2) })() : null
+  const ourM2Diff = compM2 && asking && m.listing?.size_m2 ? Math.round((asking / Number(m.listing.size_m2) / compM2 - 1) * 100) : null
   const busy = upcoming.length > 0 || pendingFeedback.length > 0 || activeOffers.length > 0
   const g = useOpenGroups<SaleGroup>('venta.grupos', ['resumen'], busy ? ['visitas'] : [])
   // Función (no componente) para no recrear el contenido en cada pintado
@@ -115,6 +123,41 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
               <span className="text-[24px] font-bold leading-tight shrink-0 text-accent">{price(netAt(asking))}</span>
             </button>
           )}
+          {/* Lo que dice el mercado y cómo estamos frente a la competencia (detalle en Resumen y en Competencia) */}
+          {asking != null && (val || ourM2Diff != null ? (
+            <>
+              {val && (
+                <button onClick={() => g.go('resumen')} className="flex justify-between items-baseline gap-2 border-t border-line pt-2 text-left">
+                  <span className="flex flex-col min-w-0">
+                    <span className="text-[13px] text-muted">📊 Precio de mercado</span>
+                    <span className={`text-[11px] ${Math.abs(valDiff!) <= 4 ? 'text-accent' : valDiff! > 0 ? 'text-danger' : 'text-accent'}`}>
+                      {Math.abs(valDiff!) <= 4 ? 'Estáis en precio' : valDiff! > 0 ? `Pedís un ${valDiff} % por encima` : `Pedís un ${-valDiff!} % por debajo`} · fiabilidad {val.confidence}
+                    </span>
+                  </span>
+                  <span className="text-[20px] font-bold leading-tight shrink-0">{priceShort(val.target)}</span>
+                </button>
+              )}
+              {compM2 != null && ourM2Diff != null && (
+                <button onClick={() => g.go('competencia')} className="flex justify-between items-baseline gap-2 border-t border-line pt-2 text-left">
+                  <span className="flex flex-col min-w-0">
+                    <span className="text-[13px] text-muted">🏘️ Competencia</span>
+                    <span className="text-[11px] text-muted">{compActive.length} en venta · mediana {price(compM2)}/m²{compDrop ? ` · 📉 ${compDrop} han bajado` : ''}</span>
+                  </span>
+                  <span className={`text-[16px] font-bold leading-tight shrink-0 ${ourM2Diff! > 5 ? 'text-danger' : ourM2Diff! < -5 ? 'text-accent' : ''}`}>
+                    {ourM2Diff! > 0 ? '+' : ''}{ourM2Diff} % €/m²
+                  </span>
+                </button>
+              )}
+            </>
+          ) : (
+            <button onClick={() => g.go('competencia')} className="flex justify-between items-center gap-2 border-t border-line pt-2 text-left">
+              <span className="flex flex-col min-w-0">
+                <span className="text-[13px] text-muted">📊 Precio de mercado y competencia</span>
+                <span className="text-[11px] text-muted">Sin pisos parecidos todavía: añadidlos (o pedídselos a la IA) y aquí saldrá si estáis en precio</span>
+              </span>
+              <span className="text-sm font-semibold text-accent shrink-0">Añadir ›</span>
+            </button>
+          ))}
           {best && (
             <button onClick={() => setOfferSheet({ open: true, offer: best })} className="flex flex-col gap-0.5 border-t border-line pt-2 text-left">
               <span className="flex justify-between items-baseline gap-2">
@@ -327,7 +370,6 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         <span className="text-muted text-lg" aria-hidden="true">›</span>
       </button>
 
-      <Fab label="Visita" onClick={() => setVisitSheet({ open: true })} />
 
       {visitSheet.open && (
         <VisitSheet visit={visitSheet.visit} adults={adults} m={m} onClose={() => setVisitSheet({ open: false })} />
