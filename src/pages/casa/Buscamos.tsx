@@ -294,6 +294,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
   const next = m.homeVisits.find(v => v.home_id === h.id && v.status === 'scheduled' && v.visit_date >= today())
   const maps = h.maps_url || h.address || h.municipality ? mapsHref({ location: [h.address, h.municipality].filter(Boolean).join(', ') || h.zone, maps_url: h.maps_url }) : null
   const school = useNearestSchool(h)
+  const [askDelete, setAskDelete] = useState(false)
   const ready = readyPrice(h)
   const t = reformTotal(h.reform, h)
   const costs = buyingCosts(h)
@@ -367,6 +368,15 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
         <button type="button" onClick={() => void m.write('homes', { status: 'descartado', discard_reason: 'Propuesta automática descartada' }, h.id)} className="flex-1 min-h-11 text-[14px] font-semibold text-muted border-l border-line">👎 Descartar</button>
       </div>
     )}
+    {askDelete && (
+      <div className="flex flex-col gap-2 border-t border-line p-3 bg-danger/5" role="alert">
+        <span className="text-[13px]">¿Borrar esta ficha con sus visitas, fotos y notas? No se puede deshacer.{h.status === 'propuesta' ? ' Puede volver a proponerse en otra búsqueda; con «👎 Descartar» no vuelve.' : ''}</span>
+        <span className="flex gap-2">
+          <button type="button" onClick={() => setAskDelete(false)} className="flex-1 min-h-10 rounded-lg border border-line text-[13px] font-semibold">Cancelar</button>
+          <button type="button" onClick={() => void m.removeHome(h.id)} className="flex-1 min-h-10 rounded-lg bg-danger text-white text-[13px] font-semibold">Borrar</button>
+        </span>
+      </div>
+    )}
     <div className="flex border-t border-line">
       <button type="button" onClick={onPick} aria-pressed={picked}
         className={`min-h-11 px-3 flex items-center gap-1.5 text-[13px] font-semibold shrink-0 ${picked ? 'text-accent bg-accent-soft' : 'text-muted'}`}>
@@ -382,6 +392,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
           📍 <span className="truncate">Cómo llegar</span> ↗
         </a>
       )}
+      <button type="button" onClick={() => setAskDelete(true)} aria-label="Borrar la ficha" className="min-h-11 px-4 text-[15px] text-muted border-l border-line shrink-0">🗑️</button>
     </div>
     </div>
   )
@@ -508,11 +519,15 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
             <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
             {h.links?.length > 0 && <LinkChips links={h.links} ourPrice={h.price_cents} big />}
             <button onClick={() => onEdit()} className="self-start min-h-11 px-4 rounded-xl border border-line text-sm font-semibold">✏️ Editar todos los datos</button>
-            <ConfirmDelete label="Eliminar piso (con sus visitas, fotos y notas)" confirming={confirming} setConfirming={setConfirming}
-              onConfirm={async () => { await m.removeHome(h.id); onClose() }} />
           </div>
         )}
       </section>
+      {/* Borrar, siempre a mano al final de la ficha */}
+      <div className="flex flex-col gap-1 border-t border-line pt-3">
+        <ConfirmDelete label="🗑️ Borrar esta ficha (con sus visitas, fotos y notas)" confirming={confirming} setConfirming={setConfirming}
+          onConfirm={async () => { await m.removeHome(h.id); onClose() }} />
+        {h.status === 'propuesta' && <p className="text-[12px] text-muted">Si la borras, la búsqueda automática podría volver a proponerla. Con «👎 Descartar» no vuelve (salvo que baje de precio).</p>}
+      </div>
     </Sheet>
   )
 }
