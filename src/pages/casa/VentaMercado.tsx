@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
-import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, threshold, thermometer, valuation, type Condition } from '../../lib/venta'
+import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, opinionPrompt, threshold, thermometer, valuation, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
 import { Field, SelectField } from '../../components/FormKit'
@@ -66,6 +66,7 @@ export function MarketCard({ m, householdId }: { m: Mudanza; householdId: string
       </section>
 
       <Simulator m={m} />
+      <AiOpinion m={m} />
     </div>
   )
 }
@@ -290,6 +291,41 @@ export function ObjectionHelp({ objections }: { objections: [string, number][] }
           {OBJECTION_HELP[o].fix && <span className="text-[12px] text-muted">🛠️ {OBJECTION_HELP[o].fix}</span>}
         </div>
       ))}
+    </section>
+  )
+}
+
+/** Segunda opinión: prepara un texto con todos los datos de la venta y abre la IA */
+function AiOpinion({ m }: { m: Mudanza }) {
+  const [note, setNote] = useState('')
+  const [buy, setBuy] = useState<{ savings_cents: number | null; loan_cents: number | null } | null>(null)
+  useEffect(() => { void supabase.from('purchase').select('savings_cents, loan_cents').maybeSingle().then(({ data }) => setBuy(data as never)) }, [])
+  const l = m.listing
+  if (!l) return null
+  async function ask(ai: 'chatgpt' | 'gemini' | 'claude') {
+    const costs = (l!.costs ?? []).reduce((s, c) => s + (c.cents || 0), 0)
+    const net = l!.price_cents != null ? l!.price_cents - (l!.mortgage_cents ?? 0) - costs : null
+    const budget = m.criteria?.max_price_cents ?? null
+    const need = budget != null ? budget - (buy?.savings_cents ?? 0) - (buy?.loan_cents ?? 0) : null
+    const prompt = opinionPrompt({ l: l!, competitors: m.competitors, visits: m.visits, offers: m.offers, prices: m.prices, today: today(), net, need })
+    let copied = true
+    try { await navigator.clipboard.writeText(prompt) } catch { copied = false }
+    // Si el texto es muy largo, el enlace no lo lleva entero: se pega desde el portapapeles
+    const q = prompt.length < 6000 ? encodeURIComponent(prompt) : ''
+    const target = ai === 'chatgpt' ? `https://chatgpt.com/${q ? `?q=${q}` : ''}` : ai === 'claude' ? `https://claude.ai/new${q ? `?q=${q}` : ''}` : 'https://gemini.google.com/app'
+    setNote(copied ? (q && ai !== 'gemini' ? 'Abierta con todos los datos (también están copiados por si no aparecen).' : 'Datos copiados: pégalos en la IA y envía.') : 'No se ha podido copiar: dale permiso al portapapeles e inténtalo otra vez.')
+    window.open(target, '_blank', 'noopener')
+  }
+  return (
+    <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
+      <span className="font-bold text-[15px]">🤖 Pedir opinión a la IA</span>
+      <span className="text-[13px] text-muted">Le pasa vuestro piso, la competencia con sus ajustes, las referencias, las visitas, las ofertas y lo que calcula la app, y le pide que lo contraste en la web: si estáis en precio, si conviene bajar y cómo vender mejor.</span>
+      <div className="grid grid-cols-3 gap-2">
+        {([['chatgpt', 'ChatGPT'], ['gemini', 'Gemini'], ['claude', 'Claude']] as const).map(([k, lb]) => (
+          <button key={k} onClick={() => void ask(k)} className="min-h-11 rounded-xl border border-line text-sm font-semibold">{lb}</button>
+        ))}
+      </div>
+      {note && <p role="status" className="text-[12px] text-muted">{note}</p>}
     </section>
   )
 }

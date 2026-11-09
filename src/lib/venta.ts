@@ -221,3 +221,58 @@ export const OBJECTION_HELP: Record<string, { reply: string; fix?: string }> = {
   'Gastos de comunidad': { reply: 'Explicad qué incluyen (calefacción central, portero, ascensor…) y su coste real al mes.' },
   'Orientación': { reply: 'Enseñadlo a la hora en que más luz entra y decid las horas de sol.' }
 }
+
+/** Texto para pedir una segunda opinión a una IA con todos los datos de la venta */
+export function opinionPrompt(o: {
+  l: Listing; competitors: Competitor[]; visits: BuyerVisit[]; offers: BuyerOffer[]; prices: PricePoint[]; today: string
+  net: number | null; need: number | null
+}) {
+  const { l } = o
+  const eur = (c: number | null | undefined) => (c == null ? '¿?' : `${Math.round(c / 100).toLocaleString('es-ES')} €`)
+  const v = valuation(l, o.competitors)
+  const th = thermometer({ visits: o.visits, offers: o.offers, asking: l.price_cents, publishedOn: l.published_on, today: o.today, avgDays: l.market?.avg_days, prices: o.prices, competitors: o.competitors })
+  const done = o.visits.filter(x => x.status === 'done')
+  const obj = new Map<string, number>()
+  for (const x of done) for (const k of x.objections) obj.set(k, (obj.get(k) ?? 0) + 1)
+  const interest = { high: 0, medium: 0, low: 0 } as Record<string, number>
+  for (const x of done) if (x.interest) interest[x.interest]++
+  const feats = l.features.join(', ') || '—'
+  const lines = [
+    'Actúa como un asesor inmobiliario independiente en Madrid. Queremos vender nuestro piso y necesitamos una segunda opinión honesta sobre el precio y cómo venderlo mejor. Responde en español, breve y con cifras.',
+    '',
+    'NUESTRO PISO',
+    `- ${l.property_type ?? 'piso'} en ${[l.zone, l.municipality].filter(Boolean).join(', ')}${l.address ? ` (${l.address})` : ''}`,
+    `- ${l.size_m2 ?? '¿?'} m² construidos${l.useful_m2 ? ` / ${l.useful_m2} útiles` : ''}, ${l.rooms ?? '¿?'} habitaciones, ${l.baths ?? '¿?'} baños, planta ${l.floor ?? '¿?'}`,
+    `- Extras: ${feats}${l.cooling ? `; aire: ${l.cooling}` : ''}${l.heating_type ? `; calefacción: ${l.heating_type}` : ''}`,
+    `- Construido en ${l.year_built ?? '¿?'}; última reforma: ${l.reform_year ?? '¿?'}; orientación: ${l.orientation ?? '¿?'}; certificado: ${l.energy ?? '¿?'}`,
+    `- Comunidad: ${eur(l.community_fee_cents)}/mes; IBI: ${eur(l.ibi_cents)}/año; edificio: ${l.building_state ? BUILDING_LABEL[l.building_state] : '¿?'}; derrama: ${l.derrama_cents ? eur(l.derrama_cents) : 'no'}; calle: ${l.noise ? NOISE_LABEL[l.noise] : '¿?'}; luz: ${l.light ? LIGHT_LABEL[l.light] : '¿?'}`,
+    `- Precio pedido: ${eur(l.price_cents)}${l.size_m2 && l.price_cents ? ` (${eur(l.price_cents / Number(l.size_m2))}/m²)` : ''}; publicado el ${l.published_on ?? '¿?'}${o.prices.length > 1 ? `; historial: ${o.prices.map(p => `${p.changed_on} ${eur(p.price_cents)}`).join(' → ')}` : ''}`,
+    ...(l.links?.length ? [`- Anuncio: ${l.links.map(x => x.url).join(' , ')}`] : []),
+    '',
+    'REFERENCIAS DE LA ZONA',
+    `- €/m² pagado (notarías): ${l.market?.paid_m2 ?? '¿?'}; €/m² pedido (portales): ${l.market?.asking_m2 ?? '¿?'}; días medios de venta: ${l.market?.avg_days ?? '¿?'}${l.market?.at ? ` (al ${l.market.at})` : ''}`,
+    '',
+    `COMPETENCIA (${o.competitors.length} pisos parecidos; entre corchetes, los ajustes que aplica nuestra app a su €/m² para compararlo con el nuestro)`,
+    ...o.competitors.slice(0, 12).map(c => {
+      const adj = adjustments(l, c)
+      return `- ${c.title}${c.zone ? `, ${c.zone}` : ''}: ${eur(c.price_cents)}, ${c.size_m2 ?? '¿?'} m²${c.price_cents && c.size_m2 ? ` (${eur(c.price_cents / Number(c.size_m2))}/m²)` : ''}, ${c.rooms ?? '¿?'} hab., ${c.baths ?? '¿?'} baños, planta ${c.floor ?? '¿?'}; ${c.status}${c.first_price_cents && c.price_cents && c.price_cents < c.first_price_cents ? `, ha bajado desde ${eur(c.first_price_cents)}` : ''}${adj.length ? ` [${adj.map(a => `${a.label} ${a.pct > 0 ? '+' : ''}${a.pct}%`).join('; ')}]` : ''}${c.url ? ` ${c.url}` : ''}`
+    }),
+    '',
+    'LO QUE CALCULA NUESTRA APP',
+    v ? `- Objetivo ${eur(v.target)} (salida ${eur(v.start)}, suelo ${eur(v.low)}), ${eur(v.perM2)}/m², fiabilidad ${v.confidence}; fuentes: ${v.sources.join('; ')}; lo que suma el nuestro: ${v.prem.map(p => `${p.label} ${p.pct > 0 ? '+' : ''}${p.pct}%`).join(', ') || '—'}` : '- Sin valoración (faltan datos)',
+    `- Termómetro: ${th.verdict.text} ${th.signals.map(s => s.text).join('; ')}`,
+    '',
+    'VISITAS Y OFERTAS',
+    `- ${done.length} visitas hechas; interés alto ${interest.high}, medio ${interest.medium}, bajo ${interest.low}; pegas: ${[...obj.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} (${n})`).join(', ') || 'ninguna anotada'}`,
+    ...(o.offers.length ? o.offers.map(x => `- Oferta ${eur(x.amount_cents)} (${x.offer_date}), ${x.status}${x.counter_cents ? `, contraoferta ${eur(x.counter_cents)}` : ''}`) : ['- Ninguna oferta todavía']),
+    ...(o.net != null ? [`- Al precio pedido nos quedarían ${eur(o.net)} limpios${o.need != null ? `; para la casa que queremos comprar necesitamos ~${eur(o.need)} de la venta` : ''}`] : []),
+    '',
+    'QUÉ NECESITAMOS',
+    '1. Busca en la web referencias recientes de la zona y pisos parecidos en venta o vendidos para contrastar. Di qué has encontrado (con enlaces).',
+    '2. ¿Estamos en precio? Rango realista de cierre y precio de salida que recomendarías, teniendo en cuenta exterior, reforma, aire, baños, planta, comunidad, edificio, ruido y luz, no solo el €/m².',
+    '3. ¿Algún ajuste de nuestra app te parece exagerado o se nos escapa alguna variable importante?',
+    '4. ¿Conviene bajar? Cuánto y cuándo (y si estamos justo por encima de un umbral de los filtros de los portales).',
+    '5. Las 3 acciones más útiles para vender antes o mejor (anuncio, fotos, descripción, respuesta a las pegas, momento).'
+  ]
+  return lines.join('\n')
+}
