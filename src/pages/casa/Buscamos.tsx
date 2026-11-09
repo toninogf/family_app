@@ -20,7 +20,7 @@ import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../co
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
-import { aiStatus, type Health, type Market } from '../../lib/health'
+import { aiStatus, healthCounts, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
 import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
 import { HomeGastos } from './HomeGastos'
@@ -219,6 +219,108 @@ function StatusBadge({ s }: { s: HomeStatus }) {
   const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' ? 'bg-bg text-muted'
     : s === 'llamar' ? 'bg-danger text-white dark:text-bg' : 'bg-accent-soft text-accent'
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</span>
+}
+
+// ---------- Ficha por grupos plegables ----------
+type GroupKey = 'resumen' | 'casa' | 'dinero' | 'zona' | 'seguimiento' | 'enlaces' | 'fotos'
+const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'casa', icon: '🏠', title: 'La casa' }, { k: 'dinero', icon: '💶', title: 'El dinero' },
+  { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'seguimiento', icon: '📅', title: 'Seguimiento' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
+  { k: 'fotos', icon: '📷', title: 'Fotos' }
+]
+const GROUPS_KEY = 'ficha.grupos'
+/** Grupos abiertos (se recuerdan en este móvil); «go» abre uno y baja hasta él */
+function useGroups(initial: GroupKey[]) {
+  const [open, setOpen] = useState<Set<GroupKey>>(() => {
+    try { const v = localStorage.getItem(GROUPS_KEY); if (v) return new Set([...(JSON.parse(v) as GroupKey[]), ...initial.filter(k => k === 'seguimiento')]) } catch { /* nada */ }
+    return new Set(initial)
+  })
+  const persist = (n: Set<GroupKey>) => { try { localStorage.setItem(GROUPS_KEY, JSON.stringify([...n])) } catch { /* nada */ } }
+  const toggle = (k: GroupKey) => setOpen(o => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); persist(n); return n })
+  const go = (k: GroupKey) => {
+    setOpen(o => { const n = new Set(o); n.add(k); persist(n); return n })
+    setTimeout(() => document.getElementById(`grupo-${k}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60)
+  }
+  return { isOpen: (k: GroupKey) => open.has(k), toggle, go }
+}
+type Groups = ReturnType<typeof useGroups>
+
+function Group({ k, g, line, extra, children }: { k: GroupKey; g: Groups; line: ReactNode; extra?: ReactNode; children: ReactNode }) {
+  const meta = GROUPS.find(x => x.k === k)!
+  const open = g.isOpen(k)
+  return (
+    <section id={`grupo-${k}`} className="flex flex-col gap-2 scroll-mt-3">
+      <div className="flex items-center gap-1 border-b border-line pb-1">
+        <button onClick={() => g.toggle(k)} aria-expanded={open} className="flex-1 min-w-0 min-h-11 flex items-center gap-2 text-left">
+          <span className="text-[16px]" aria-hidden="true">{meta.icon}</span>
+          <span className="flex flex-col min-w-0">
+            <span className="font-bold text-[16px] leading-tight">{meta.title}</span>
+            {!open && line ? <span className="text-[12px] text-muted truncate">{line}</span> : null}
+          </span>
+          <span className="ml-auto text-muted" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        </button>
+        {open && extra}
+      </div>
+      {open && <div className="flex flex-col gap-3">{children}</div>}
+    </section>
+  )
+}
+
+/** Una línea por grupo, para verlo plegado sin abrirlo */
+function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOffer[], nextV: HomeVisit | undefined) {
+  const school = useNearestSchool(h)
+  const rec = recommend(h, m.homes)
+  const checks = mustHaveCheck(h, m.criteria)
+  const hc = healthCounts(h)
+  const t = reformTotal(h.reform, h)
+  const costs = buyingCosts(h)
+  const nPhotos = m.photos.filter(p => p.home_id === h.id).length
+  const nLinks = (h.links?.length ?? 0) + (h.url ? 1 : 0)
+  const join = (...x: (string | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
+  return {
+    resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
+    casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
+    dinero: join(t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs > 0 && `gastos ${kShort(costs)}`),
+    zona: join(school && `${schoolShort(school)} a ${distLabel(school.dist)}`, hc.bad ? `❌ ${hc.bad} problema${hc.bad > 1 ? 's' : ''}` : hc.warn ? `⚠️ ${hc.warn} aviso${hc.warn > 1 ? 's' : ''}` : hc.ok ? '✅ sin problemas' : 'riesgos sin revisar'),
+    seguimiento: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas', offers[0] && `oferta ${priceShort(offers[0].amount_cents)}`, h.contact_phone && '📞'),
+    enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
+    fotos: nPhotos ? `${nPhotos} foto${nPhotos > 1 ? 's' : ''}` : 'sin fotos'
+  }
+}
+const schoolShort = (s: NearSchool) => (s.type_abbr === 'CP INF-PRI' ? 'CEIP' : s.type_abbr === 'IES' ? 'IES' : OWN_LABEL[s.ownership])
+
+/** Veredicto en 4 casillas: criterios, riesgos, colegio y oferta (cada una lleva a su detalle) */
+function Verdict({ h, m, onGo }: { h: Home; m: Mudanza; onGo: (k: GroupKey) => void }) {
+  const checks = mustHaveCheck(h, m.criteria)
+  const ok = checks.filter(c => c.ok).length
+  const viaReform = checks.filter(c => c.ok === false && c.reform).length
+  const hc = healthCounts(h)
+  const school = useNearestSchool(h)
+  const rec = recommend(h, m.homes)
+  const tile = (tone: 'ok' | 'warn' | 'bad' | 'none') =>
+    `rounded-2xl p-3 text-left flex flex-col gap-0.5 min-w-0 ${tone === 'ok' ? 'bg-accent-soft' : tone === 'warn' ? 'bg-[#C77A12]/12' : tone === 'bad' ? 'bg-danger/10' : 'bg-card'}`
+  const crit: 'ok' | 'warn' | 'bad' | 'none' = !checks.length ? 'none' : ok === checks.length ? 'ok' : checks.length - ok - viaReform <= 1 ? 'warn' : 'bad'
+  const risk: 'ok' | 'warn' | 'bad' | 'none' = hc.bad ? 'bad' : hc.warn ? 'warn' : hc.ok ? 'ok' : 'none'
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <button onClick={() => onGo('casa')} className={tile(crit)}>
+        <span className="text-[12px] text-muted">🎯 Criterios</span>
+        <span className="text-[17px] font-bold">{checks.length ? `${ok}/${checks.length}` : '—'}{viaReform ? <span className="text-[#C77A12] text-[14px]"> · 🔨{viaReform}</span> : null}</span>
+      </button>
+      <button onClick={() => onGo('zona')} className={tile(risk)}>
+        <span className="text-[12px] text-muted">🩺 Riesgos</span>
+        <span className="text-[17px] font-bold">{hc.bad ? `❌ ${hc.bad}` : hc.warn ? `⚠️ ${hc.warn}` : hc.ok ? '✅ Bien' : 'Sin revisar'}</span>
+      </button>
+      <button onClick={() => onGo('zona')} className={tile(school ? (school.dist <= 1500 ? 'ok' : 'none') : 'none')}>
+        <span className="text-[12px] text-muted">🏫 Colegio</span>
+        <span className="text-[17px] font-bold truncate">{school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'Sin ubicación' : '—'}</span>
+      </button>
+      <div className={tile('none')}>
+        <span className="text-[12px] text-muted">💡 Oferta</span>
+        <span className="text-[17px] font-bold">{rec ? `~${priceShort(rec.open)}` : '—'}{rec && rec.asking ? <span className="text-muted text-[13px] font-normal"> ({Math.round((rec.open / rec.asking - 1) * 100)} %)</span> : null}</span>
+      </div>
+    </div>
+  )
 }
 
 /** ¿Por qué no nos interesa? (opcional: la búsqueda aprende del motivo) */
@@ -420,7 +522,6 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
   const [reason, setReason] = useState(h.discard_reason ?? '')
   const [cat, setCat] = useState<DiscardCategory | null>(h.discard_category)
   const [confirming, setConfirming] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
   const adults = members.filter(x => x.kind === 'adult')
   const visits = m.homeVisits.filter(v => v.home_id === h.id)
   const offers = m.homeOffers.filter(o => o.home_id === h.id)
@@ -430,6 +531,10 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
   // Título corto (el resto del nombre ya sale en la línea de lugar)
   const short = h.title.split(' · ')[0] || h.title
   const place = [h.zone, h.municipality].filter(Boolean).join(' · ')
+
+  const nextV = visits.filter(v => v.status === 'scheduled' && v.visit_date >= today()).sort((x, y) => x.visit_date.localeCompare(y.visit_date))[0]
+  const groups = useGroups(nextV ? ['resumen', 'seguimiento'] : ['resumen'])
+  const sum = useGroupLines(h, m, visits, offers, nextV)
 
   if (visitSheet.open) return <HomeVisitSheet home={h} visit={visitSheet.visit} adults={adults} m={m} onClose={() => setVisitSheet({ open: false })} />
   if (offerSheet.open) return <HomeOfferSheet home={h} offer={offerSheet.offer} m={m} onClose={() => setOfferSheet({ open: false })} />
@@ -477,25 +582,38 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
         onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
-      {/* 3. De un vistazo */}
-      <HomePrice h={h} m={m} />
-      <QuickFacts h={h} m={m} onEdit={onEdit} />
-      <HomeReforma h={h} m={m} householdId={householdId} />
-      <HomeGastos h={h} m={m} />
+      {/* Índice: abre y lleva a cada grupo */}
+      <nav className="flex gap-1.5 overflow-x-auto -mx-5 px-5" style={{ scrollbarWidth: 'none' }} aria-label="Partes de la ficha">
+        {GROUPS.map(g => (
+          <button key={g.k} onClick={() => groups.go(g.k)} className="shrink-0 min-h-9 px-3 rounded-full border border-line bg-card text-[13px] font-semibold">{g.icon} {g.title}</button>
+        ))}
+      </nav>
 
-      {/* 4. ¿Nos conviene? */}
-      <HomeHealth h={h} m={m} householdId={householdId} />
-      <HomeSchools h={h} m={m} />
+      <Group k="resumen" g={groups} line={sum.resumen}>
+        <Verdict h={h} m={m} onGo={groups.go} />
+        <HomePrice h={h} m={m} />
+      </Group>
 
-      {/* 5. Seguimiento: visitas y ofertas, lo último primero, y las notas */}
-      <section className="flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <h3 className="font-bold text-[15px]">Seguimiento</h3>
-          <span className="flex">
-            <button onClick={() => setVisitSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Visita</button>
-            <button onClick={() => setOfferSheet({ open: true })} className="min-h-10 px-2 text-sm font-semibold text-accent">+ Oferta</button>
-          </span>
-        </div>
+      <Group k="casa" g={groups} line={sum.casa}>
+        <QuickFacts h={h} m={m} onEdit={onEdit} />
+      </Group>
+
+      <Group k="dinero" g={groups} line={sum.dinero}>
+        <HomeReforma h={h} m={m} householdId={householdId} />
+        <HomeGastos h={h} m={m} />
+      </Group>
+
+      <Group k="zona" g={groups} line={sum.zona}>
+        {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="self-start min-h-10 px-3 rounded-xl border border-line text-[13px] font-semibold text-accent flex items-center">📍 Cómo llegar ↗</a>}
+        <HomeSchools h={h} m={m} />
+        <HomeHealth h={h} m={m} householdId={householdId} />
+      </Group>
+
+      <Group k="seguimiento" g={groups} line={sum.seguimiento}
+        extra={<span className="flex">
+          <button onClick={() => setVisitSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Visita</button>
+          <button onClick={() => setOfferSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Oferta</button>
+        </span>}>
         {visits.length + offers.length === 0 ? <p className="text-sm text-muted">Aún no hay visitas ni ofertas. Las visitas salen en la Agenda.</p> : (
           [...visits.map(v => ({ date: v.visit_date, el: (
             <button key={v.id} onClick={() => setVisitSheet({ open: true, visit: v })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
@@ -519,17 +637,10 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
           ) }))].sort((a, b) => b.date.localeCompare(a.date)).map(x => x.el)
         )}
         <NotesBox h={h} m={m} />
-      </section>
+        <ContactCard h={h} onEdit={() => onEdit('contacto')} />
+      </Group>
 
-      {/* 6. Contacto */}
-      <ContactCard h={h} onEdit={() => onEdit('contacto')} />
-
-      {/* 7. Enlaces (siempre a la vista) */}
-      <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <span className="font-bold text-[15px]">🔗 Enlaces{(h.links?.length ?? 0) + (h.url ? 1 : 0) > 0 ? ` (${(h.links?.length ?? 0) + (h.url ? 1 : 0)})` : ''}</span>
-          <button onClick={() => onEdit()} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>
-        </div>
+      <Group k="enlaces" g={groups} line={sum.enlaces} extra={<button onClick={() => onEdit()} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>}>
         {h.url && (
           <a href={h.url} target="_blank" rel="noopener noreferrer" className="min-h-11 px-3 rounded-xl bg-bg flex items-center gap-2 text-[14px] font-semibold text-accent">
             <span className="flex-1 min-w-0 truncate">⭐ {portalName(h.url) ?? 'Anuncio'} <span className="text-muted font-normal">· principal</span></span>
@@ -537,21 +648,13 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
           </a>
         )}
         {h.links?.length > 0 ? <LinkChips links={h.links} ourPrice={h.price_cents} big /> : !h.url && <p className="text-[13px] text-muted">Sin enlaces. Añádelos con ✏️ (otros portales, web de la inmobiliaria…).</p>}
-      </section>
+      </Group>
 
-      {/* 8. Fotos y capturas */}
-      <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
-        <button onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen} className="flex justify-between items-center min-h-9 text-left">
-          <span className="font-bold text-[15px]">📷 Fotos y capturas ({m.photos.filter(p => p.home_id === h.id).length})</span>
-          <span className="text-muted text-lg" aria-hidden="true">{moreOpen ? '▾' : '▸'}</span>
-        </button>
-        {moreOpen && (
-          <div className="flex flex-col gap-4">
-            <Photos h={h} m={m} householdId={householdId} kind="foto" />
-            <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
-          </div>
-        )}
-      </section>
+      <Group k="fotos" g={groups} line={sum.fotos}>
+        <Photos h={h} m={m} householdId={householdId} kind="foto" />
+        <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
+      </Group>
+
       <button onClick={() => onEdit()} className="self-start min-h-11 px-4 rounded-xl border border-line text-sm font-semibold">✏️ Editar todos los datos</button>
       {/* Borrar, siempre a mano al final de la ficha */}
       <div className="flex flex-col gap-1 border-t border-line pt-3">
