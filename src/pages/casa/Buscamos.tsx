@@ -246,7 +246,7 @@ function useGroups(initial: GroupKey[]) {
 }
 type Groups = ReturnType<typeof useGroups>
 
-function Group({ k, g, line, extra, children }: { k: GroupKey; g: Groups; line: ReactNode; extra?: ReactNode; children: ReactNode }) {
+function Group({ k, g, line, extra, children, lineAlways }: { k: GroupKey; g: Groups; line: ReactNode; extra?: ReactNode; children: ReactNode; lineAlways?: boolean }) {
   const meta = GROUPS.find(x => x.k === k)!
   const open = g.isOpen(k)
   return (
@@ -256,7 +256,7 @@ function Group({ k, g, line, extra, children }: { k: GroupKey; g: Groups; line: 
           <span className="text-[16px]" aria-hidden="true">{meta.icon}</span>
           <span className="flex flex-col min-w-0">
             <span className="font-bold text-[16px] leading-tight">{meta.title}</span>
-            {!open && line ? <span className="text-[12px] text-muted truncate">{line}</span> : null}
+            {(!open || lineAlways) && line ? <span className="text-[12px] text-muted truncate">{line}</span> : null}
           </span>
           <span className="ml-auto text-muted" aria-hidden="true">{open ? '▾' : '▸'}</span>
         </button>
@@ -283,8 +283,8 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
     dinero: join(t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs > 0 && `gastos ${kShort(costs)}`),
-    docs: join(`Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`, `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`,
-      hc.bad ? `❌ ${hc.bad} problema${hc.bad > 1 ? 's' : ''}` : hc.warn ? `⚠️ ${hc.warn} aviso${hc.warn > 1 ? 's' : ''}` : hc.ok ? '✅ sin problemas' : 'sin revisar'),
+    docs: join(`✅ ${hc.ok}`, `⚠️ ${hc.warn}`, hc.bad > 0 && `⛔ ${hc.bad}`, `❓ ${hc.unknown}`, `Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`,
+      `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
     seguimiento: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas', offers[0] && `oferta ${priceShort(offers[0].amount_cents)}`, h.contact_phone && '📞'),
     enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
@@ -600,8 +600,8 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         <HomeGastos h={h} m={m} />
       </Group>
 
-      <Group k="docs" g={groups} line={sum.docs}>
-        <HomeHealth h={h} m={m} householdId={householdId} />
+      <Group k="docs" g={groups} line={sum.docs} lineAlways>
+        <HomeHealth h={h} m={m} householdId={householdId} embedded />
       </Group>
 
       <Group k="zona" g={groups} line={sum.zona}>
@@ -796,8 +796,8 @@ function OfferLine({ h, m, compact }: { h: Home; m: Mudanza; compact?: boolean }
     return (
       <span className="flex flex-col">
         <span className="flex justify-between items-baseline gap-2">
-          <span className="text-[13px] text-muted min-w-0 truncate">{last ? 'Nuestra oferta' : 'Oferta recomendada'}{last ? <span className="text-[11px]"> · {st}</span> : <span className="text-[11px]"> · tope {priceShort(rec!.max)}</span>}</span>
-          <span className="text-[15px] font-bold shrink-0">{last ? price(last.amount_cents) : `~${priceShort(rec!.open)}`}</span>
+          <span className="text-[13px] text-muted min-w-0 truncate">{last ? <>Nuestra oferta <span className="text-[11px]">· {st}</span></> : 'Oferta → precio razonable'}</span>
+          <span className="text-[15px] font-bold shrink-0">{last ? price(last.amount_cents) : <><span className="text-accent">~{priceShort(rec!.open)}</span> → {priceShort(rec!.max)}</>}</span>
         </span>
         <span className="text-[11px] text-muted text-right">si os la aceptan: entrar a vivir {priceShort(ready)}{fit ? <> · {fit}</> : null}</span>
       </span>
@@ -805,13 +805,26 @@ function OfferLine({ h, m, compact }: { h: Home; m: Mudanza; compact?: boolean }
   }
   return (
     <div className="flex flex-col gap-0.5 border-t border-line pt-2">
-      <div className="flex justify-between items-baseline gap-2">
-        <span className="flex flex-col min-w-0">
-          <span className="text-[13px] text-muted">{last ? 'Nuestra oferta' : 'Oferta recomendada'}</span>
-          <span className="text-[11px] text-muted">{last ? st : `tope razonable ${price(rec!.max)}`}</span>
-        </span>
-        <span className="text-[20px] font-bold leading-tight shrink-0">{last ? price(last.amount_cents) : `~${price(rec!.open)}`}</span>
-      </div>
+      {last ? (
+        <div className="flex justify-between items-baseline gap-2">
+          <span className="flex flex-col min-w-0">
+            <span className="text-[13px] text-muted">Nuestra oferta</span>
+            <span className="text-[11px] text-muted">{st}</span>
+          </span>
+          <span className="text-[20px] font-bold leading-tight shrink-0">{price(last.amount_cents)}</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <span className="rounded-xl bg-accent-soft p-2.5 flex flex-col">
+            <span className="text-[12px] text-muted">💡 Oferta inicial</span>
+            <span className="text-[19px] font-bold text-accent leading-tight">~{price(rec!.open)}</span>
+          </span>
+          <span className="rounded-xl bg-bg p-2.5 flex flex-col">
+            <span className="text-[12px] text-muted">🎯 Precio razonable (tope)</span>
+            <span className="text-[19px] font-bold leading-tight">{price(rec!.max)}</span>
+          </span>
+        </div>
+      )}
       <span className="text-[12px] text-muted text-right">si os la aceptan: entrar a vivir {price(ready)}{fit ? <> · {fit}</> : null}</span>
     </div>
   )

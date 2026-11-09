@@ -16,8 +16,10 @@ type CheckResult = { error?: string; candidates?: Candidate[]; units?: Unit[]; p
 const tone = (s: HealthStatus) => (s === 'ok' ? 'text-accent' : s === 'bad' ? 'text-danger' : s === 'warn' ? 'text-[#C77A12]' : 'text-muted')
 
 /** «Estado y riesgos» de un piso: semáforo con lo automático, lo de la IA y lo que hay que comprobar con papeles */
-export default function HomeHealth({ h, m, householdId }: { h: Home; m: Mudanza; householdId: string }) {
-  const [open, setOpen] = useState(false)
+export default function HomeHealth({ h, m, householdId, embedded }: { h: Home; m: Mudanza; householdId: string; embedded?: boolean }) {
+  // «embedded»: ya va dentro de un grupo plegable de la ficha, así que sin cabecera propia y siempre abierto
+  const [openState, setOpen] = useState(false)
+  const open = embedded || openState
   const [edit, setEdit] = useState<{ key: string; title: string; hint: string; link?: { label: string; url: string } } | null>(null)
   const [catOpen, setCatOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
@@ -57,13 +59,13 @@ export default function HomeHealth({ h, m, householdId }: { h: Home; m: Mudanza;
 
   return (
     <section className="flex flex-col gap-2">
-      <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex justify-between items-center gap-2 text-left min-h-11">
+      {!embedded && <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex justify-between items-center gap-2 text-left min-h-11">
         <span className="flex flex-col">
           <span className="font-bold text-[15px]">🩺 Estado y riesgos</span>
           <span className="text-[13px] text-muted">✅ {c.ok} · ⚠️ {c.warn}{c.bad ? ` · ⛔ ${c.bad}` : ''} · ❓ {c.unknown}</span>
         </span>
         <span className="text-muted text-lg" aria-hidden="true">{open ? '▾' : '▸'}</span>
-      </button>
+      </button>}
       {open && (
         <div className="flex flex-col gap-3">
           {/* Automático */}
