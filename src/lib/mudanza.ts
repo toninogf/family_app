@@ -313,7 +313,16 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
 }
 
 // ---------- Datos ----------
-const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers']
+const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers', 'home_rejections']
+
+export type RejectReason = 'precio' | 'ubicacion' | 'parcela' | 'estado' | 'no_gusta' | 'otro'
+export const REJECT_REASONS: Record<RejectReason, string> = {
+  precio: '💶 Precio', ubicacion: '📍 Ubicación', parcela: '🌳 Parcela pequeña', estado: '🔨 Estado o reforma', no_gusta: '👎 No nos gusta', otro: 'Otro'
+}
+export type Rejection = {
+  id: string; title: string | null; url: string | null; municipality: string | null; zone: string | null; price_cents: number | null
+  size_m2: number | null; plot_m2: number | null; reason: RejectReason | null; created_at: string; reproposed_at: string | null
+}
 
 export function useMudanza() {
   const [listing, setListing] = useState<Listing | null>(null)
@@ -322,6 +331,7 @@ export function useMudanza() {
   const [offers, setOffers] = useState<BuyerOffer[]>([])
   const [criteria, setCriteria] = useState<Criteria | null>(null)
   const [homes, setHomes] = useState<Home[]>([])
+  const [rejections, setRejections] = useState<Rejection[]>([])
   const [homeVisits, setHomeVisits] = useState<HomeVisit[]>([])
   const [ratings, setRatings] = useState<Rating[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -333,7 +343,7 @@ export function useMudanza() {
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
-    const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss] = await Promise.all([
+    const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj] = await Promise.all([
       supabase.from('sale_listing').select('*').maybeSingle(),
       supabase.from('sale_price_history').select('id, price_cents, changed_on, changed_at').order('changed_at'),
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
@@ -346,9 +356,10 @@ export function useMudanza() {
       supabase.from('home_offers').select('id, home_id, offer_date, amount_cents, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('sale_photos').select('id, path, kind, created_at').order('created_at'),
       supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, files, notes, position, updated_at').order('position').order('title'),
-      supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position')
+      supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position'),
+      supabase.from('home_rejections').select('id, title, url, municipality, zone, price_cents, size_m2, plot_m2, reason, created_at, reproposed_at').order('created_at', { ascending: false }).limit(200)
     ])
-    const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss].find(x => x.error)?.error
+    const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj].find(x => x.error)?.error
     if (firstError) setError(firstError.message)
     setListing((l.data as Listing | null) ?? null)
     setPrices((p.data ?? []) as PricePoint[])
@@ -363,6 +374,7 @@ export function useMudanza() {
     setSalePhotos((sp.data ?? []) as SalePhoto[])
     setSaleDocs((sd.data ?? []) as SaleDoc[])
     setSaleSteps((ss.data ?? []) as SaleStep[])
+    setRejections((rj.data ?? []) as Rejection[])
     setLoading(false)
   }, [])
 
@@ -466,7 +478,21 @@ export function useMudanza() {
     await remove('home_photos', p.id)
   }
 
+  /** «No nos interesa» en una propuesta: guarda la huella (para no repetirla y aprender del motivo) y borra la ficha */
+  async function rejectProposal(id: string, reason: RejectReason | null) {
+    const { error } = await supabase.rpc('reject_proposal', { p_home: id, p_reason: reason })
+    if (error) { setError(friendly(error.message)); return friendly(error.message) }
+    await removeHome(id)
+  }
+  /** Vuelve a poner una rechazada como propuesta */
+  async function restoreRejection(id: string) {
+    const { error } = await supabase.rpc('restore_rejection', { p_id: id })
+    if (error) { setError(friendly(error.message)); return friendly(error.message) }
+    await remove('home_rejections', id)
+  }
+
   return {
+    rejections, rejectProposal, restoreRejection,
     listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, loading, error,
     salePhotos, saleDocs, saleSteps, addSalePhoto, removeSalePhoto, uploadSaleDoc, removeSaleDocFile, removeSaleDoc,
     clearError: () => setError(''), reload: load, write, remove, removeHome, createHome, addPhoto, removePhoto

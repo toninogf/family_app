@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase, type Member } from '../../lib/supabase'
 import { aiPrompt, parseAny, type ListingData } from '../../lib/listingParse'
@@ -13,7 +13,7 @@ import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
   CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
-  type Check, type CheckValue, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
+  type Check, type CheckValue, type RejectReason, REJECT_REASONS, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -57,7 +57,22 @@ const num = (s: string) => {
 
 export default function Buscamos({ m, members, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
   const [filter, setFilter] = useState<Filter>('activos')
-  const proposals = m.homes.filter(h => h.status === 'propuesta').length
+  // «🙅 No nos interesa»: se oculta al momento y se hace de verdad a los 6 s (hasta entonces se puede deshacer)
+  const [pending, setPending] = useState<{ id: string; title: string; reason: RejectReason | null } | null>(null)
+  const pendingRef = useRef(pending)
+  pendingRef.current = pending
+  const timer = useRef<ReturnType<typeof setTimeout>>()
+  const commitReject = () => { const p = pendingRef.current; if (p) { setPending(null); void m.rejectProposal(p.id, p.reason) } }
+  const reject = (h: Home, reason: RejectReason | null) => {
+    commitReject()
+    setPending({ id: h.id, title: h.title, reason })
+    clearTimeout(timer.current)
+    timer.current = setTimeout(commitReject, 6000)
+  }
+  // Si se sale de Buscamos antes de los 6 s, se hace ya
+  useEffect(() => () => { clearTimeout(timer.current); commitReject() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const [rejectedOpen, setRejectedOpen] = useState(false)
+  const proposals = m.homes.filter(h => h.status === 'propuesta' && h.id !== pending?.id).length
   const [view, setView] = useState<'lista' | 'mapa'>('lista')
   const [openId, setOpenId] = useState<string | null>(null)
   const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared; focus?: EditFocus }>({ open: false })
@@ -84,7 +99,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   const towns = [...new Set(m.homes.map(h => h.municipality).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, 'es'))
 
   const list = useMemo(() => {
-    const f = m.homes.filter(h =>
+    const f = m.homes.filter(h => h.id !== pending?.id).filter(h =>
       filter === 'todos' ? true
         : filter === 'activos' ? h.status !== 'descartado' && h.status !== 'propuesta'
           : h.status === filter)
@@ -103,7 +118,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
             : sort === 'valoramos' ? niceCount(b, m.criteria).got.length - niceCount(a, m.criteria).got.length || HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status)
               : HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [m.homes, m.criteria, filter, town, minP, maxP, sort])
+  }, [m.homes, m.criteria, filter, town, minP, maxP, sort, pending])
 
   const nextVisits = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t)
   // Portadas de los pisos de la lista (enlaces temporales pedidos de una vez)
@@ -196,6 +211,9 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
               {(m.criteria?.nice_to_haves?.length ?? 0) > 0 && <option value="valoramos">Lo que valoramos (más primero)</option>}
             </select>
           </label>
+          {m.rejections.length > 0 && (
+            <button type="button" onClick={() => setRejectedOpen(true)} className="self-start min-h-10 text-[13px] text-muted">🙅 Rechazadas ({m.rejections.filter(r => !r.reproposed_at).length}) · <span className="text-accent font-semibold">ver</span></button>
+          )}
         </Card>
       )}
       {pickedHomes.length === 0 && m.homes.length >= 2 && (
@@ -213,7 +231,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
           {list.map(h => {
             const cp = coverPhoto(h, m.photos)
             return <HomeCard key={h.id} h={h} m={m} cover={cp ? { url: covers[cp.path], ad: cp.kind === 'anuncio' } : null}
-              onOpen={() => setOpenId(h.id)} picked={picked.includes(h.id)} onPick={() => togglePick(h.id)} />
+              onOpen={() => setOpenId(h.id)} picked={picked.includes(h.id)} onPick={() => togglePick(h.id)} onReject={r => reject(h, r)} />
           })}
         </div>
       )}
@@ -230,11 +248,19 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </div>
       )}
 
+      {pending && (
+        <div role="status" className="fixed inset-x-5 mx-auto max-w-[34rem] bottom-[calc(max(env(safe-area-inset-bottom),8px)+88px)] z-20 flex items-center gap-2 bg-ink text-bg rounded-2xl p-2 pl-4 shadow-lg">
+          <span className="text-sm flex-1 min-w-0 truncate">🙅 Rechazada{pending.reason ? ` (${REJECT_REASONS[pending.reason].replace(/^\S+\s/, '').toLowerCase()})` : ''}</span>
+          <button onClick={() => { clearTimeout(timer.current); setPending(null) }} className="min-h-10 px-4 rounded-xl bg-accent text-white dark:text-bg text-sm font-bold">Deshacer</button>
+        </div>
+      )}
       <Fab label="Piso" onClick={() => setEditHome({ open: true })} />
+      {rejectedOpen && <RejectedSheet m={m} onClose={() => setRejectedOpen(false)} />}
 
       {open && !editHome.open && (
         <HomeSheet h={open} m={m} members={members} householdId={householdId}
-          onEdit={focus => setEditHome({ open: true, home: open, focus })} onClose={() => setOpenId(null)} />
+          onEdit={focus => setEditHome({ open: true, home: open, focus })} onClose={() => setOpenId(null)}
+          onReject={r => { setOpenId(null); reject(open, r) }} />
       )}
       {editHome.open && (
         <HomeEditSheet home={editHome.home} initial={editHome.initial} focus={editHome.focus} m={m} householdId={householdId} onClose={() => setEditHome({ open: false })}
@@ -258,6 +284,48 @@ function StatusBadge({ s }: { s: HomeStatus }) {
   const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' ? 'bg-bg text-muted'
     : s === 'llamar' ? 'bg-danger text-white dark:text-bg' : 'bg-accent-soft text-accent'
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</span>
+}
+
+/** ¿Por qué no nos interesa? (opcional: la búsqueda aprende del motivo) */
+function ReasonPicker({ onPick }: { onPick: (r: RejectReason | null) => void }) {
+  return (
+    <div className="flex flex-col gap-2 px-4 py-3 border-t border-line bg-bg rounded-b-2xl">
+      <span className="text-[13px] text-muted">¿Por qué? (así la búsqueda aprende)</span>
+      <span className="flex gap-1.5 flex-wrap">
+        {(Object.keys(REJECT_REASONS) as RejectReason[]).map(r => (
+          <button key={r} type="button" onClick={() => onPick(r)} className="min-h-10 px-3 rounded-full border border-line bg-card text-[13px] font-semibold">{REJECT_REASONS[r]}</button>
+        ))}
+        <button type="button" onClick={() => onPick(null)} className="min-h-10 px-3 rounded-full text-[13px] text-muted">Sin motivo</button>
+      </span>
+    </div>
+  )
+}
+
+/** Propuestas rechazadas: para recuperar alguna si os equivocasteis */
+function RejectedSheet({ m, onClose }: { m: Mudanza; onClose: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const list = m.rejections.filter(r => !r.reproposed_at)
+  return (
+    <Sheet title={`Rechazadas (${list.length})`} onClose={onClose}>
+      <div className="flex flex-col gap-2">
+        <p className="text-[13px] text-muted">La búsqueda automática no las vuelve a proponer, salvo que bajen de precio un 5 % o más.</p>
+        {list.length === 0 && <p className="text-sm text-muted">No hay ninguna.</p>}
+        {list.map(r => (
+          <div key={r.id} className="rounded-xl bg-card p-3 flex flex-col gap-1">
+            <span className="text-[14px] font-semibold">{r.title ?? 'Sin título'}</span>
+            <span className="text-[12px] text-muted">
+              {[r.municipality, r.price_cents != null && priceShort(r.price_cents), r.size_m2 && `${Number(r.size_m2)} m²`, r.plot_m2 && `parcela ${Number(r.plot_m2)} m²`, r.reason && REJECT_REASONS[r.reason], new Date(r.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })].filter(Boolean).join(' · ')}
+            </span>
+            <span className="flex gap-1.5 flex-wrap mt-1">
+              {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="min-h-9 px-2.5 rounded-lg border border-line text-[12px] font-semibold flex items-center text-accent">🔗 Anuncio ↗</a>}
+              <button type="button" disabled={busy === r.id} onClick={async () => { setBusy(r.id); await m.restoreRejection(r.id); setBusy(null) }}
+                className="min-h-9 px-2.5 rounded-lg border border-line text-[12px] font-semibold disabled:opacity-50">↩️ Volver a proponer</button>
+            </span>
+          </div>
+        ))}
+      </div>
+    </Sheet>
+  )
 }
 
 /** Chip de un criterio: ✓ verde, ✗ rojo, ? gris o 🔨 ámbar si no lo tiene pero está en la reforma */
@@ -286,8 +354,9 @@ function useNearestSchool(h: Home) {
   return s
 }
 
-function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
+function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   h: Home; m: Mudanza; cover: { url?: string; ad: boolean } | null; onOpen: () => void; picked: boolean; onPick: () => void
+  onReject: (r: RejectReason | null) => void
 }) {
   const checks = mustHaveCheck(h, m.criteria)
   const pm2 = perM2(h)
@@ -295,6 +364,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
   const maps = h.maps_url || h.address || h.municipality ? mapsHref({ location: [h.address, h.municipality].filter(Boolean).join(', ') || h.zone, maps_url: h.maps_url }) : null
   const school = useNearestSchool(h)
   const [askDelete, setAskDelete] = useState(false)
+  const [askReason, setAskReason] = useState(false)
   const ready = readyPrice(h)
   const t = reformTotal(h.reform, h)
   const costs = buyingCosts(h)
@@ -365,12 +435,13 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
     {h.status === 'propuesta' && (
       <div className="flex border-t border-line">
         <button type="button" onClick={() => void m.write('homes', { status: 'interesa' }, h.id)} className="flex-1 min-h-11 text-[14px] font-bold text-accent">👍 Me interesa</button>
-        <button type="button" onClick={() => void m.write('homes', { status: 'descartado', discard_reason: 'Propuesta automática descartada' }, h.id)} className="flex-1 min-h-11 text-[14px] font-semibold text-muted border-l border-line">👎 Descartar</button>
+        <button type="button" onClick={() => setAskReason(!askReason)} aria-expanded={askReason} className="flex-1 min-h-11 text-[14px] font-semibold text-muted border-l border-line">🙅 No nos interesa</button>
       </div>
     )}
+    {h.status === 'propuesta' && askReason && <ReasonPicker onPick={r => { setAskReason(false); onReject(r) }} />}
     {askDelete && (
       <div className="flex flex-col gap-2 border-t border-line p-3 bg-danger/5" role="alert">
-        <span className="text-[13px]">¿Borrar esta ficha con sus visitas, fotos y notas? No se puede deshacer.{h.status === 'propuesta' ? ' Puede volver a proponerse en otra búsqueda; con «👎 Descartar» no vuelve.' : ''}</span>
+        <span className="text-[13px]">¿Borrar esta ficha con sus visitas, fotos y notas? No se puede deshacer.{h.status === 'propuesta' ? ' Puede volver a proponerse en otra búsqueda; con «🙅 No nos interesa» no vuelve.' : ''}</span>
         <span className="flex gap-2">
           <button type="button" onClick={() => setAskDelete(false)} className="flex-1 min-h-10 rounded-lg border border-line text-[13px] font-semibold">Cancelar</button>
           <button type="button" onClick={() => void m.removeHome(h.id)} className="flex-1 min-h-10 rounded-lg bg-danger text-white text-[13px] font-semibold">Borrar</button>
@@ -404,8 +475,9 @@ type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos'
  * Ficha de un piso: pensada para decidir qué hacer con él (llamar, visitar, ofertar o descartar) y tener a mano lo
  * necesario. Arriba lo visual y la acción que toca; luego los datos de un vistazo, si conviene, el seguimiento y el resto.
  */
-function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
+function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
   h: Home; m: Mudanza; members: Member[]; householdId: string; onEdit: (focus?: EditFocus) => void; onClose: () => void
+  onReject: (r: RejectReason | null) => void
 }) {
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: HomeVisit }>({ open: false })
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: HomeOffer }>({ open: false })
@@ -458,7 +530,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       {/* 2. Lo que toca hacer ahora */}
       <PrimaryActions h={h} offers={offers} maps={maps}
         onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
-        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null })} onDiscard={() => setDiscarding(true)} />
+        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null })} onReject={onReject} />
 
       {/* 3. De un vistazo */}
       <QuickFacts h={h} m={m} onEdit={onEdit} />
@@ -526,7 +598,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       <div className="flex flex-col gap-1 border-t border-line pt-3">
         <ConfirmDelete label="🗑️ Borrar esta ficha (con sus visitas, fotos y notas)" confirming={confirming} setConfirming={setConfirming}
           onConfirm={async () => { await m.removeHome(h.id); onClose() }} />
-        {h.status === 'propuesta' && <p className="text-[12px] text-muted">Si la borras, la búsqueda automática podría volver a proponerla. Con «👎 Descartar» no vuelve (salvo que baje de precio).</p>}
+        {h.status === 'propuesta' && <p className="text-[12px] text-muted">Si la borras, la búsqueda automática podría volver a proponerla. Con «🙅 No nos interesa» no vuelve (salvo que baje de precio).</p>}
       </div>
     </Sheet>
   )
@@ -578,10 +650,11 @@ function Gallery({ h, m, onAdd }: { h: Home; m: Mudanza; onAdd: () => void }) {
 }
 
 /** La acción que toca según el estado, y los accesos rápidos */
-function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, onDiscard }: {
+function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, onReject }: {
   h: Home; offers: HomeOffer[]; maps: string | null | undefined; onVisit: () => void; onOffer: (o?: HomeOffer) => void
-  onEdit: (focus?: EditFocus) => void; onRecover: () => void; onDiscard: () => void
+  onEdit: (focus?: EditFocus) => void; onRecover: () => void; onReject: (r: RejectReason | null) => void
 }) {
+  const [askReason, setAskReason] = useState(false)
   const who = h.agency || h.contact || (h.advertiser === 'particular' ? 'el particular' : 'el anunciante')
   const tel = h.contact_phone ? `tel:${h.contact_phone.replace(/[^\d+]/g, '')}` : null
   const btn = 'min-h-12 px-4 rounded-xl font-bold text-[15px] flex items-center justify-center gap-2'
@@ -594,7 +667,7 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, 
   const lastOffer = offers[0]
   let row: ReactNode
   switch (h.status) {
-    case 'propuesta': row = <><button onClick={onRecover} className={`${btn} ${main} flex-1`}>👍 Me interesa</button><button onClick={onDiscard} className={`${btn} ${second}`}>👎 Descartar</button></>; break
+    case 'propuesta': row = <><button onClick={onRecover} className={`${btn} ${main} flex-1`}>👍 Me interesa</button><button onClick={() => setAskReason(!askReason)} aria-expanded={askReason} className={`${btn} ${second}`}>🙅 No nos interesa</button></>; break
     case 'interesa': case 'llamar': row = <>{call}{wa}</>; break
     case 'visita_pedida': row = <><button onClick={onVisit} className={`${btn} ${main} flex-1`}>📅 Apuntar la visita</button>{tel && <a href={tel} className={`${btn} ${second}`}>📞</a>}</>; break
     case 'visitado': case 'favorito': row = <><button onClick={() => onOffer()} className={`${btn} ${main} flex-1`}>💶 Hacer oferta</button><button onClick={onVisit} className={`${btn} ${second}`}>📅 Otra visita</button></>; break
@@ -605,6 +678,7 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">{row}</div>
+      {h.status === 'propuesta' && askReason && <ReasonPicker onPick={onReject} />}
       <div className="flex gap-1.5 flex-wrap">
         {h.url && <a href={h.url} target="_blank" rel="noopener noreferrer" className={`${small} text-accent`}>🔗 {portalName(h.url) ?? 'Anuncio'} ↗</a>}
         {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className={`${small} text-accent`}>📍 Cómo llegar ↗</a>}
