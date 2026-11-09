@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
-import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
+import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, competitorFromLinkPrompt, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
 import { Field, SelectField } from '../../components/FormKit'
@@ -219,6 +219,53 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const int = (x: string) => (x.trim() && Number.isFinite(Number(x)) ? Math.round(Number(x)) : null)
+  // Ayuda de la IA: le pasas el enlace, contesta con un JSON y se rellena la ficha (solo lo que esté vacío)
+  const [aiNote, setAiNote] = useState('')
+  const [aiText, setAiText] = useState('')
+  const [aiOpen, setAiOpen] = useState(false)
+  const fullUrl = url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`) : ''
+
+  async function askAi(ai: 'chatgpt' | 'gemini' | 'claude') {
+    const prompt = competitorFromLinkPrompt(fullUrl, m.listing)
+    let copied = true
+    try { await navigator.clipboard.writeText(prompt) } catch { copied = false }
+    const q = encodeURIComponent(prompt)
+    window.open(ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app', '_blank', 'noopener')
+    setAiOpen(true)
+    setAiNote(copied ? 'Petición copiada. Cuando conteste, copia su respuesta y pulsa «Pegar respuesta».' : 'No se ha podido copiar: dale permiso al portapapeles.')
+  }
+  function fillFrom(t: string) {
+    const r = parseCompetitors(t)
+    const x = r.items[0]
+    if (r.error || !x) { setAiNote(r.error ?? 'La respuesta no trae el piso.'); return }
+    let n = 0
+    const put = <T,>(empty: boolean, v: T | null | undefined, set: (v: T) => void) => { if (empty && v != null && v !== '') { set(v); n++ } }
+    put(!title.trim(), x.title !== 'Piso parecido' ? x.title : null, setTitle)
+    put(!zone.trim() || zone === m.listing?.zone, x.zone, setZone)
+    put(!amount.trim(), x.price_cents != null ? priceInput(x.price_cents) : null, setAmount)
+    put(!m2.trim(), x.size_m2 != null ? String(x.size_m2) : null, setM2)
+    put(!rooms.trim(), x.rooms != null ? String(Math.round(x.rooms)) : null, setRooms)
+    put(!baths.trim(), x.baths != null ? String(Math.round(x.baths)) : null, setBaths)
+    put(!floor.trim(), x.floor, setFloor)
+    put(!cond, x.condition, setCond)
+    put(!reformYear.trim(), x.reform_year != null ? String(Math.round(x.reform_year)) : null, setReformYear)
+    put(!fee.trim(), x.community_fee_cents != null ? priceInput(x.community_fee_cents) : null, setFee)
+    put(!energy, x.energy, setEnergy)
+    put(!building, x.building_state, setBuilding)
+    put(!derrama.trim(), x.derrama_cents != null ? priceInput(x.derrama_cents) : null, setDerrama)
+    put(!noise, x.noise, setNoise)
+    put(!light, x.light, setLight)
+    put(!notes.trim(), x.notes, setNotes)
+    if (x.heating_type === 'central' && !central) { setCentral(true); n++ }
+    const newF = x.features.filter(f => COMP_FEATURES.includes(f) && !features.includes(f))
+    if (newF.length) { setFeatures(f => [...f, ...newF]); n++ }
+    if (x.status !== 'activo' && status === 'activo') { setStatus(x.status); n++ }
+    setAiText(''); setAiOpen(false)
+    setAiNote(n ? `✨ Rellenados ${n} dato${n === 1 ? '' : 's'}. Revísalos antes de guardar (lo que ya tenías no se ha tocado).` : 'La respuesta no añade nada a lo que ya tienes.')
+  }
+  async function pasteAi() {
+    try { const t = await navigator.clipboard.readText(); setAiText(t); fillFrom(t) } catch { setAiOpen(true); setAiNote('No puedo leer el portapapeles: pega la respuesta en el recuadro.') }
+  }
 
   async function save() {
     if (!title.trim()) { setError('Pon un título'); return }
@@ -242,6 +289,29 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
       <div className="flex flex-col gap-3">
         <Field label="Enlace del anuncio" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.idealista.com/…" />
         {c?.url && <a href={c.url} target="_blank" rel="noopener noreferrer" className="self-start text-[13px] font-semibold text-accent">🔗 Abrir en {portalName(c.url) ?? 'el portal'} ↗</a>}
+        <div className="rounded-2xl bg-card p-3 flex flex-col gap-2">
+          <span className="text-[13px] font-semibold">✨ Rellenar con la IA</span>
+          {!fullUrl ? <span className="text-[12px] text-muted">Pega arriba el enlace del anuncio y la IA te saca los datos.</span> : (
+            <>
+              <div className="flex gap-1.5 flex-wrap">
+                {(['chatgpt', 'claude', 'gemini'] as const).map(ai => (
+                  <button key={ai} type="button" onClick={() => askAi(ai)} className="min-h-10 px-3 rounded-xl border border-line bg-bg text-[13px] font-semibold">
+                    {ai === 'chatgpt' ? 'ChatGPT' : ai === 'claude' ? 'Claude' : 'Gemini'} ↗
+                  </button>
+                ))}
+                <button type="button" onClick={pasteAi} className="min-h-10 px-3 rounded-xl bg-accent text-white dark:text-bg text-[13px] font-semibold">📋 Pegar respuesta</button>
+              </div>
+              {aiOpen && (
+                <div className="flex flex-col gap-1.5">
+                  <textarea value={aiText} onChange={e => setAiText(e.target.value)} rows={3} placeholder="O pega aquí la respuesta de la IA"
+                    className="w-full px-3 py-2 rounded-xl border border-line bg-bg text-[14px]" />
+                  {aiText.trim() && <button type="button" onClick={() => fillFrom(aiText)} className="self-start min-h-10 px-3 rounded-xl border border-line text-[13px] font-semibold">Rellenar</button>}
+                </div>
+              )}
+            </>
+          )}
+          {aiNote && <span className="text-[12px] text-muted">{aiNote}</span>}
+        </div>
         <Field label="Título" value={title} onChange={e => setTitle(e.target.value)} maxLength={160} placeholder="Piso 2 hab. en Vallehermoso" />
         <div className="grid grid-cols-2 gap-2">
           <Field label="Zona" value={zone} onChange={e => setZone(e.target.value)} />

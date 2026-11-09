@@ -301,6 +301,19 @@ export function competitorsPrompt(l: Listing, existing: Competitor[]) {
   ].filter(Boolean).join('\n\n')
 }
 
+/** Un solo piso a partir de su enlace (para «Añadir un piso parecido»): mismo JSON que la búsqueda */
+export function competitorFromLinkPrompt(url: string, l: Listing | null) {
+  const ours = l ? `${l.property_type ?? 'piso'} en ${[l.zone, l.municipality].filter(Boolean).join(', ')}, ${l.size_m2 ?? '¿?'} m², ${l.rooms ?? '¿?'} hab., ${l.baths ?? '¿?'} baños` : ''
+  return [
+    `Abre este anuncio de un piso en venta y saca sus datos: ${url}`,
+    'Si no puedes abrirlo, dímelo y te pego el texto o capturas del anuncio. No inventes datos: lo que no diga el anuncio, ponlo a null.',
+    ours ? `Lo comparo con el nuestro (${ours}): en «nota», una frase sobre en qué se diferencia.` : '',
+    'RESPONDE SOLO con este JSON (sin texto antes ni después):',
+    `{"pisos": [{"titulo": "", "url": "${url}", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": ""}]}`,
+    'Precio y comunidad en euros (la comunidad, al mes). exterior, aire, ascensor…: true solo si el anuncio lo dice; false si dice que no; null si no lo dice. ruido y luz solo si el anuncio lo dice expresamente.'
+  ].filter(Boolean).join('\n\n')
+}
+
 export function parseCompetitors(text: string): CompParse {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   const raw = fence ? fence[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)
