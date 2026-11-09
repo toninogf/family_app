@@ -18,8 +18,8 @@ import { GroupBox, Tile, useOpenGroups } from '../../components/Groups'
 
 type SaleGroup = 'resumen' | 'competencia' | 'visitas' | 'casa' | 'cuentas' | 'docs' | 'pasos' | 'enlaces' | 'fotos'
 const SALE_GROUPS: { k: SaleGroup; icon: string; title: string }[] = [
-  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'competencia', icon: '🏘️', title: 'Competencia' }, { k: 'visitas', icon: '👀', title: 'Visitas y ofertas' }, { k: 'casa', icon: '🏠', title: 'Nuestra casa' },
-  { k: 'cuentas', icon: '💶', title: '¿Cuánto nos queda?' }, { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'pasos', icon: '✍️', title: 'Pasos hasta la firma' },
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'casa', icon: '🏠', title: 'Nuestra casa' }, { k: 'competencia', icon: '🏘️', title: 'Competencia' },
+  { k: 'cuentas', icon: '💶', title: '¿Cuánto nos queda?' }, { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'visitas', icon: '👀', title: 'Visitas y ofertas' }, { k: 'pasos', icon: '✍️', title: 'Pasos hasta la firma' },
   { k: 'enlaces', icon: '🔗', title: 'Enlaces' }, { k: 'fotos', icon: '📷', title: 'Fotos y capturas' }
 ]
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
@@ -205,8 +205,21 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         <MarketCard m={m} householdId={householdId} />
       </>)}
 
+      {grp('casa', null, <>
+        <SaleFacts m={m} onEdit={() => setListingOpen('casa')} onEditValue={() => setListingOpen('valor')} />
+      </>)}
+
       {grp('competencia', null, <>
         <Competitors m={m} householdId={householdId} />
+      </>)}
+
+      {grp('cuentas', null, <>
+        <VentaCuentas m={m} onEdit={() => setListingOpen('cuentas')} />
+        <SaleMonthly m={m} onEdit={() => setListingOpen('mes')} />
+      </>)}
+
+      {grp('docs', null, <>
+        <VentaDocs m={m} householdId={householdId} />
       </>)}
 
       {grp('visitas', <span className="flex">
@@ -323,19 +336,6 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
       )}
 
       <ObjectionHelp objections={stats.objections} />
-      </>)}
-
-      {grp('casa', null, <>
-        <SaleFacts m={m} onEdit={() => setListingOpen('casa')} onEditValue={() => setListingOpen('valor')} />
-      </>)}
-
-      {grp('cuentas', null, <>
-        <VentaCuentas m={m} onEdit={() => setListingOpen('cuentas')} />
-        <SaleMonthly m={m} onEdit={() => setListingOpen('mes')} />
-      </>)}
-
-      {grp('docs', null, <>
-        <VentaDocs m={m} householdId={householdId} />
       </>)}
 
       {grp('pasos', null, <>
