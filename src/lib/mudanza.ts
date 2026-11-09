@@ -70,7 +70,7 @@ export type BuyerOffer = {
 }
 
 export type Criteria = { household_id: string; max_price_cents: number | null; min_rooms: number | null; min_m2: number | null; zones: string[]; municipalities: string[]; must_haves: string[]; nice_to_haves: string[] }
-export type HomeStatus = 'interesa' | 'llamar' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta'
+export type HomeStatus = 'propuesta' | 'interesa' | 'llamar' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta'
 export type Home = {
   id: string
   title: string
@@ -249,10 +249,10 @@ export function reformFor(h: { reform?: Reform | null }, k: string): ReformItem 
 }
 export type Check = { label: string; ok: boolean | null; reform?: { label: string; cents: number } }
 export const HOME_STATUS: Record<HomeStatus, string> = {
-  interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',
+  propuesta: '🤖 Propuesta', interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',
   favorito: 'Favorito', descartado: 'Descartado', oferta: 'Oferta hecha'
 }
-export const HOME_STATUS_ORDER: HomeStatus[] = ['favorito', 'oferta', 'visitado', 'visita_pedida', 'llamar', 'interesa', 'descartado']
+export const HOME_STATUS_ORDER: HomeStatus[] = ['favorito', 'oferta', 'visitado', 'visita_pedida', 'llamar', 'interesa', 'propuesta', 'descartado']
 export const VISIT_CHECKLIST: { key: string; label: string; hint?: string }[] = [
   { key: 'luz', label: 'Luz y orientación', hint: 'Mira a qué hora da el sol en el salón' },
   { key: 'ruido', label: 'Ruido', hint: 'Calle, vecinos, bares, ascensor' },

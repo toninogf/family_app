@@ -43,7 +43,7 @@ const ALL_MUNICIPALITIES = PROVINCES.flatMap(p => MUNICIPALITIES[p.code].map(x =
 
 /** «En marcha» (todo menos descartados), «Todos» o un estado concreto */
 type Filter = 'activos' | 'todos' | HomeStatus
-const STATUS_FILTERS: HomeStatus[] = ['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado']
+const STATUS_FILTERS: HomeStatus[] = ['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado']
 
 /** Número para WhatsApp: con prefijo de España si no lo trae */
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.length === 9 ? `34${d}` : d.replace(/^00/, '') }
@@ -57,6 +57,7 @@ const num = (s: string) => {
 
 export default function Buscamos({ m, members, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
   const [filter, setFilter] = useState<Filter>('activos')
+  const proposals = m.homes.filter(h => h.status === 'propuesta').length
   const [view, setView] = useState<'lista' | 'mapa'>('lista')
   const [openId, setOpenId] = useState<string | null>(null)
   const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared; focus?: EditFocus }>({ open: false })
@@ -85,7 +86,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   const list = useMemo(() => {
     const f = m.homes.filter(h =>
       filter === 'todos' ? true
-        : filter === 'activos' ? h.status !== 'descartado'
+        : filter === 'activos' ? h.status !== 'descartado' && h.status !== 'propuesta'
           : h.status === filter)
     const lo = minP.trim() ? parsePrice(minP) : null
     const hi = maxP.trim() ? parsePrice(maxP) : null
@@ -148,12 +149,19 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         <span className="text-[13px] font-semibold text-muted shrink-0">Estado</span>
         <select value={filter} onChange={e => setFilter(e.target.value as Filter)} aria-label="Filtrar por estado"
           className="flex-1 min-w-0 w-full min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold truncate">
-          {([['activos', 'En marcha (sin descartados)'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
-            const n = k === 'todos' ? m.homes.length : k === 'activos' ? m.homes.filter(h => h.status !== 'descartado').length : m.homes.filter(h => h.status === k).length
+          {([['activos', 'En marcha (sin descartados ni propuestas)'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
+            const n = k === 'todos' ? m.homes.length : k === 'activos' ? m.homes.filter(h => h.status !== 'descartado' && h.status !== 'propuesta').length : m.homes.filter(h => h.status === k).length
             return <option key={k} value={k}>{l} ({n})</option>
           })}
         </select>
       </label>
+      {proposals > 0 && filter !== 'propuesta' && (
+        <button onClick={() => setFilter('propuesta')} className="-mt-1 rounded-2xl bg-accent-soft p-3 text-left flex items-center gap-2">
+          <span className="text-[20px]" aria-hidden="true">🤖</span>
+          <span className="flex-1 text-[14px]"><b>{proposals} propuesta{proposals === 1 ? '' : 's'}</b> de la búsqueda automática por revisar</span>
+          <span className="text-sm font-semibold text-accent">Ver ›</span>
+        </button>
+      )}
       <div className="flex gap-2 -mt-2">
         <button onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters} className="min-h-10 px-3 rounded-xl border border-line bg-card text-sm font-semibold">
           Filtrar y ordenar{town !== 'all' || minP || maxP || sort !== 'estado' ? ' •' : ''}
@@ -353,6 +361,12 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
       {h.status === 'descartado' && h.discard_reason && <span className="text-[13px] text-muted italic">Descartado: «{h.discard_reason}»</span>}
     </button>
     {h.links?.length > 0 && <div className="px-4 pb-3 -mt-1"><LinkChips links={h.links} ourPrice={h.price_cents} /></div>}
+    {h.status === 'propuesta' && (
+      <div className="flex border-t border-line">
+        <button type="button" onClick={() => void m.write('homes', { status: 'interesa' }, h.id)} className="flex-1 min-h-11 text-[14px] font-bold text-accent">👍 Me interesa</button>
+        <button type="button" onClick={() => void m.write('homes', { status: 'descartado', discard_reason: 'Propuesta automática descartada' }, h.id)} className="flex-1 min-h-11 text-[14px] font-semibold text-muted border-l border-line">👎 Descartar</button>
+      </div>
+    )}
     <div className="flex border-t border-line">
       <button type="button" onClick={onPick} aria-pressed={picked}
         className={`min-h-11 px-3 flex items-center gap-1.5 text-[13px] font-semibold shrink-0 ${picked ? 'text-accent bg-accent-soft' : 'text-muted'}`}>
@@ -412,7 +426,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
           <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
             onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null }) } }}
             className="max-w-[52%] min-h-10 px-2 rounded-xl border border-line bg-card text-[13px] font-semibold">
-            {(['interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(st => (
+            {(['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(st => (
               <option key={st} value={st}>{st === 'favorito' ? '★ ' : st === 'llamar' ? '📞 ' : ''}{HOME_STATUS[st]}</option>
             ))}
           </select>
@@ -433,7 +447,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       {/* 2. Lo que toca hacer ahora */}
       <PrimaryActions h={h} offers={offers} maps={maps}
         onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
-        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null })} />
+        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null })} onDiscard={() => setDiscarding(true)} />
 
       {/* 3. De un vistazo */}
       <QuickFacts h={h} m={m} onEdit={onEdit} />
@@ -549,9 +563,9 @@ function Gallery({ h, m, onAdd }: { h: Home; m: Mudanza; onAdd: () => void }) {
 }
 
 /** La acción que toca según el estado, y los accesos rápidos */
-function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }: {
+function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, onDiscard }: {
   h: Home; offers: HomeOffer[]; maps: string | null | undefined; onVisit: () => void; onOffer: (o?: HomeOffer) => void
-  onEdit: (focus?: EditFocus) => void; onRecover: () => void
+  onEdit: (focus?: EditFocus) => void; onRecover: () => void; onDiscard: () => void
 }) {
   const who = h.agency || h.contact || (h.advertiser === 'particular' ? 'el particular' : 'el anunciante')
   const tel = h.contact_phone ? `tel:${h.contact_phone.replace(/[^\d+]/g, '')}` : null
@@ -565,6 +579,7 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }
   const lastOffer = offers[0]
   let row: ReactNode
   switch (h.status) {
+    case 'propuesta': row = <><button onClick={onRecover} className={`${btn} ${main} flex-1`}>👍 Me interesa</button><button onClick={onDiscard} className={`${btn} ${second}`}>👎 Descartar</button></>; break
     case 'interesa': case 'llamar': row = <>{call}{wa}</>; break
     case 'visita_pedida': row = <><button onClick={onVisit} className={`${btn} ${main} flex-1`}>📅 Apuntar la visita</button>{tel && <a href={tel} className={`${btn} ${second}`}>📞</a>}</>; break
     case 'visitado': case 'favorito': row = <><button onClick={() => onOffer()} className={`${btn} ${main} flex-1`}>💶 Hacer oferta</button><button onClick={onVisit} className={`${btn} ${second}`}>📅 Otra visita</button></>; break
