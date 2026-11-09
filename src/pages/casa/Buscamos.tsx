@@ -300,6 +300,7 @@ function Verdict({ h, m, onGo }: { h: Home; m: Mudanza; onGo: (k: GroupKey) => v
   const ok = checks.filter(c => c.ok).length
   const viaReform = checks.filter(c => c.ok === false && c.reform).length
   const hc = healthCounts(h)
+  const rec = recommend(h, m.homes)
   const school = useNearestSchool(h)
   const tile = (tone: 'ok' | 'warn' | 'bad' | 'none') =>
     `rounded-2xl p-3 text-left flex flex-col gap-0.5 min-w-0 ${tone === 'ok' ? 'bg-accent-soft' : tone === 'warn' ? 'bg-[#C77A12]/12' : tone === 'bad' ? 'bg-danger/10' : 'bg-card'}`
@@ -417,7 +418,6 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   const viaReform = fails.filter(c => c.reform).length
   const unknown = checks.filter(c => c.ok == null).length
   const nice = niceCount(h, m.criteria)
-  const rec = recommend(h, m.homes)
   const facts = [h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`, pm2 && `${price(pm2)}/m²`].filter(Boolean)
   const extra = [
     school && `🏫 ${school.type_abbr === 'CP INF-PRI' ? 'CEIP' : school.ownership === 'publico' ? 'Público' : OWN_LABEL[school.ownership]} a ${distLabel(school.dist)}`,
