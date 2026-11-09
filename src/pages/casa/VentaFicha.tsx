@@ -60,6 +60,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
   const [heating, setHeating] = useState(priceInput(l?.heating_cents))
   const [year, setYear] = useState(l?.year_built?.toString() ?? '')
   const [reformYear, setReformYear] = useState(l?.reform_year?.toString() ?? '')
+  const [buildingRehab, setBuildingRehab] = useState(l?.building_reform_year?.toString() ?? '')
   const [orientation, setOrientation] = useState<string | null>(l?.orientation ?? null)
   const [building, setBuilding] = useState<BuildingState | null>(l?.building_state ?? null)
   const [derrama, setDerrama] = useState(priceInput(l?.derrama_cents))
@@ -139,7 +140,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
   const flashedIn = (id: string) => fieldsOf(id).some(([k]) => flash[k])
   const missingForAi = VSECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([k, v]) => !v.trim() && k !== 'hipoteca').map(([k]) => k)
   const fl = (k: string) => flash[k]
-  const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, reformYear, orientation, building, derrama, noise, light, features, energy, heatType, cooling,
+  const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, reformYear, buildingRehab, orientation, building, derrama, noise, light, features, energy, heatType, cooling,
     fee, ibi, power, water, heating, year, ref, description, notes, mortgage, costs, shots: shots.length, ad: adPhotos.length, extraLinks, links })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
@@ -170,7 +171,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
       rooms: ints[0], baths: ints[1], floor: floor.trim() || null, features, energy, heating_type: heatType, cooling,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null,
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
-      year_built: ints[2], reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear.trim()) : null, orientation, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light, listing_ref: ref.trim() || null, description: description.trim() || null,
+      year_built: ints[2], reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear.trim()) : null, building_reform_year: /^\d{4}$/.test(buildingRehab.trim()) ? Number(buildingRehab.trim()) : null, orientation, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light, listing_ref: ref.trim() || null, description: description.trim() || null,
       notes: notes.trim() || null, mortgage_cents: mortgageCents, costs: costList
     }, undefined, 'household_id')
     if (!err && shots.length) {
@@ -221,7 +222,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
             <Field label="Hab." inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} flash={fl('habitaciones')} />
             <Field label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} flash={fl('baños')} />
             <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} flash={fl('planta')} />
-            <Field label="Año" inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} flash={fl('año')} />
+            <Field label="Año finca" inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} flash={fl('año')} />
           </div>
           <SubHead id="casa-equip">Equipamiento</SubHead>
           <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
@@ -237,7 +238,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
           <SubHead id="casa-valor">⚖️ Lo que pesa en el precio</SubHead>
           <p className="text-xs text-muted -mt-2">Se usa en «¿Estamos en precio?» para comparar con pisos parecidos más allá del €/m².</p>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Año de la última reforma" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} placeholder="Ej. 2018" />
+            <Field label="Reforma del piso (año)" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} placeholder="Ej. 2018" />
             <SelectField label="Orientación" value={orientation} onChange={v => setOrientation(v)} empty="Sin saber"
               options={['sur', 'sureste', 'suroeste', 'este', 'oeste', 'norte', 'noreste', 'noroeste'].map(x => ({ value: x, label: x[0].toUpperCase() + x.slice(1) }))} />
           </div>
@@ -249,6 +250,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
             <SelectField<BuildingState> label="Estado del edificio" value={building} onChange={setBuilding} options={(Object.keys(BUILDING_LABEL) as BuildingState[]).map(k => ({ value: k, label: BUILDING_LABEL[k] }))} />
             <Field label="Derrama pendiente" suffix="€" inputMode="decimal" value={derrama} onChange={e => setDerrama(e.target.value)} placeholder="Si la hay" />
           </div>
+          <Field label="Rehabilitación de la finca (año)" inputMode="numeric" value={buildingRehab} onChange={e => setBuildingRehab(e.target.value)} placeholder="Fachada, cubierta, ascensor… Ej. 1995" />
           <SubHead id="casa-ubicacion">📍 Ubicación</SubHead>
           <div className={`rounded-xl ${fl('localidad') ? 'ring-2 ring-accent' : ''}`}>
             <Combobox label="Localidad" value={municipality} onChange={setMunicipality} options={TOWNS} placeholder="Escribe: Galap…" />

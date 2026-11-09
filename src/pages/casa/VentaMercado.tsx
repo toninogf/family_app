@@ -191,7 +191,7 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
               <span className="text-[15px] font-bold shrink-0">{price(c.price_cents)}</span>
             </span>
             <span className="text-[12px] text-muted">
-              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, c.status !== 'activo' && (c.status === 'vendido' ? 'vendido' : 'retirado'), dropped && `📉 ha bajado ${price(c.first_price_cents! - c.price_cents!)}`, hist.length > 1 && `${hist.length - 1} cambio${hist.length > 2 ? 's' : ''} de precio`].filter(Boolean).join(' · ')}
+              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, c.year_built && `finca ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}`, c.status !== 'activo' && (c.status === 'vendido' ? 'vendido' : 'retirado'), dropped && `📉 ha bajado ${price(c.first_price_cents! - c.price_cents!)}`, hist.length > 1 && `${hist.length - 1} cambio${hist.length > 2 ? 's' : ''} de precio`].filter(Boolean).join(' · ')}
             </span>
             {raw != null && (
               <span className="text-[13px]">
@@ -231,6 +231,8 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
   const [floor, setFloor] = useState(c?.floor ?? '')
   const [cond, setCond] = useState<Condition | null>(c?.condition ?? null)
   const [reformYear, setReformYear] = useState(c?.reform_year?.toString() ?? '')
+  const [yearBuilt, setYearBuilt] = useState(c?.year_built?.toString() ?? '')
+  const [buildingRehab, setBuildingRehab] = useState(c?.building_reform_year?.toString() ?? '')
   const [features, setFeatures] = useState<string[]>(c?.features ?? [])
   const [status, setStatus] = useState<Competitor['status']>(c?.status ?? 'activo')
   const [notes, setNotes] = useState(c?.notes ?? '')
@@ -274,6 +276,8 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
     put(!floor.trim(), x.floor, setFloor)
     put(!cond, x.condition, setCond)
     put(!reformYear.trim(), x.reform_year != null ? String(Math.round(x.reform_year)) : null, setReformYear)
+    put(!yearBuilt.trim(), x.year_built != null ? String(x.year_built) : null, setYearBuilt)
+    put(!buildingRehab.trim(), x.building_reform_year != null ? String(x.building_reform_year) : null, setBuildingRehab)
     put(!fee.trim(), x.community_fee_cents != null ? priceInput(x.community_fee_cents) : null, setFee)
     put(!energy, x.energy, setEnergy)
     put(!building, x.building_state, setBuilding)
@@ -300,7 +304,8 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
     const data = {
       household_id: householdId, title: title.trim().slice(0, 160), url: u, zone: zone.trim() || null, price_cents: cents,
       first_price_cents: c?.first_price_cents ?? cents, size_m2: m2.trim() ? Number(m2.replace(',', '.')) : null, rooms: int(rooms), baths: int(baths),
-      floor: floor.trim() || null, condition: cond, reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear) : null, features, status, notes: notes.trim() || null,
+      floor: floor.trim() || null, condition: cond, reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear) : null,
+      year_built: /^\d{4}$/.test(yearBuilt.trim()) ? Number(yearBuilt) : null, building_reform_year: /^\d{4}$/.test(buildingRehab.trim()) ? Number(buildingRehab) : null, features, status, notes: notes.trim() || null,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, heating_type: central ? 'central' : c?.heating_type === 'central' ? null : c?.heating_type ?? null,
       energy, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light,
       price_history: cents != null && cents !== c?.price_cents ? [...hist, { date: today(), cents }].slice(-60) : hist
@@ -351,6 +356,10 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
         <div className="grid grid-cols-2 gap-2">
           <SelectField<Condition> label="Estado" value={cond} onChange={setCond} options={(Object.keys(CONDITION_LABEL) as Condition[]).map(k => ({ value: k, label: CONDITION_LABEL[k] }))} />
           <Field label="Año de reforma" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Año de la finca" inputMode="numeric" value={yearBuilt} onChange={e => setYearBuilt(e.target.value)} placeholder="Anuncio o Catastro" />
+          <Field label="Rehabilitación finca" inputMode="numeric" value={buildingRehab} onChange={e => setBuildingRehab(e.target.value)} placeholder="Si se sabe" />
         </div>
         <div className="flex gap-1.5 flex-wrap">
           {COMP_FEATURES.map(k => {

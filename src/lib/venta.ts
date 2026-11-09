@@ -66,7 +66,26 @@ export function adjustments(ours: Listing, c: Competitor): Adj[] {
   extra('terraza', 'terraza', 4); extra('balcon', 'balcón', 1.5); extra('garaje', 'garaje', 5); extra('trastero', 'trastero', 1.5)
   extra('portero', 'portero', 2); extra('piscina', 'piscina', 3)
   out.push(...extraAdjustments(ours, c))
+  const f = fincaAdjustment(ours, c)
+  if (f) add(f.label, f.pct)
   return out
+}
+
+/**
+ * La finca: año de construcción y de su última rehabilitación (fachada, cubierta, bajantes, ascensor…).
+ * Se compara la «edad efectiva» (la más reciente de las dos): ~1,5 % por década, hasta ±6 %.
+ * Las fincas clásicas (antes de 1940) van aparte: en barrios como Chamberí se pagan más que una de los 60–70.
+ */
+export function fincaAdjustment(ours: Listing, c: Competitor): Adj | null {
+  if (!ours.year_built || !c.year_built) return null
+  const eff = (built: number, rehab: number | null) => Math.max(built, rehab ?? 0)
+  const label = `finca de ${c.year_built}${c.building_reform_year ? `, rehab. ${c.building_reform_year}` : ''}`
+  const classic = (y: number) => y < 1940
+  if (classic(c.year_built) && !classic(ours.year_built)) return { label: `${label} (clásica)`, pct: -3 }
+  if (classic(ours.year_built) && !classic(c.year_built)) return { label, pct: 3 }
+  const diff = eff(ours.year_built, ours.building_reform_year) - eff(c.year_built, c.building_reform_year)
+  const pct = Math.max(-6, Math.min(6, (diff / 10) * 1.5))
+  return Math.abs(pct) >= 0.5 ? { label, pct: Math.round(pct * 10) / 10 } : null
 }
 
 const NOISE_SCORE = { tranquila: 3, normal: 0, ruidosa: -4 } as const
@@ -244,7 +263,7 @@ export function opinionPrompt(o: {
     `- ${l.property_type ?? 'piso'} en ${[l.zone, l.municipality].filter(Boolean).join(', ')}${l.address ? ` (${l.address})` : ''}`,
     `- ${l.size_m2 ?? '¿?'} m² construidos${l.useful_m2 ? ` / ${l.useful_m2} útiles` : ''}, ${l.rooms ?? '¿?'} habitaciones, ${l.baths ?? '¿?'} baños, planta ${l.floor ?? '¿?'}`,
     `- Extras: ${feats}${l.cooling ? `; aire: ${l.cooling}` : ''}${l.heating_type ? `; calefacción: ${l.heating_type}` : ''}`,
-    `- Construido en ${l.year_built ?? '¿?'}; última reforma: ${l.reform_year ?? '¿?'}; orientación: ${l.orientation ?? '¿?'}; certificado: ${l.energy ?? '¿?'}`,
+    `- Finca construida en ${l.year_built ?? '¿?'}${l.building_reform_year ? ` y rehabilitada en ${l.building_reform_year}` : ''}; última reforma del piso: ${l.reform_year ?? '¿?'}; orientación: ${l.orientation ?? '¿?'}; certificado: ${l.energy ?? '¿?'}`,
     `- Comunidad: ${eur(l.community_fee_cents)}/mes; IBI: ${eur(l.ibi_cents)}/año; edificio: ${l.building_state ? BUILDING_LABEL[l.building_state] : '¿?'}; derrama: ${l.derrama_cents ? eur(l.derrama_cents) : 'no'}; calle: ${l.noise ? NOISE_LABEL[l.noise] : '¿?'}; luz: ${l.light ? LIGHT_LABEL[l.light] : '¿?'}`,
     `- Precio pedido: ${eur(l.price_cents)}${l.size_m2 && l.price_cents ? ` (${eur(l.price_cents / Number(l.size_m2))}/m²)` : ''}; publicado el ${l.published_on ?? '¿?'}${o.prices.length > 1 ? `; historial: ${o.prices.map(p => `${p.changed_on} ${eur(p.price_cents)}`).join(' → ')}` : ''}`,
     ...(l.links?.length ? [`- Anuncio: ${l.links.map(x => x.url).join(' , ')}`] : []),
@@ -255,7 +274,7 @@ export function opinionPrompt(o: {
     `COMPETENCIA (${o.competitors.length} pisos parecidos; entre corchetes, los ajustes que aplica nuestra app a su €/m² para compararlo con el nuestro)`,
     ...o.competitors.slice(0, 12).map(c => {
       const adj = adjustments(l, c)
-      return `- ${c.title}${c.zone ? `, ${c.zone}` : ''}: ${eur(c.price_cents)}, ${c.size_m2 ?? '¿?'} m²${c.price_cents && c.size_m2 ? ` (${eur(c.price_cents / Number(c.size_m2))}/m²)` : ''}, ${c.rooms ?? '¿?'} hab., ${c.baths ?? '¿?'} baños, planta ${c.floor ?? '¿?'}; ${c.status}${c.first_price_cents && c.price_cents && c.price_cents < c.first_price_cents ? `, ha bajado desde ${eur(c.first_price_cents)}` : ''}${adj.length ? ` [${adj.map(a => `${a.label} ${a.pct > 0 ? '+' : ''}${a.pct}%`).join('; ')}]` : ''}${c.url ? ` ${c.url}` : ''}`
+      return `- ${c.title}${c.zone ? `, ${c.zone}` : ''}: ${eur(c.price_cents)}, ${c.size_m2 ?? '¿?'} m²${c.price_cents && c.size_m2 ? ` (${eur(c.price_cents / Number(c.size_m2))}/m²)` : ''}, ${c.rooms ?? '¿?'} hab., ${c.baths ?? '¿?'} baños, planta ${c.floor ?? '¿?'}${c.year_built ? `, finca de ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}` : ''}; ${c.status}${c.first_price_cents && c.price_cents && c.price_cents < c.first_price_cents ? `, ha bajado desde ${eur(c.first_price_cents)}` : ''}${adj.length ? ` [${adj.map(a => `${a.label} ${a.pct > 0 ? '+' : ''}${a.pct}%`).join('; ')}]` : ''}${c.url ? ` ${c.url}` : ''}`
     }),
     '',
     'LO QUE CALCULA NUESTRA APP',
@@ -286,7 +305,7 @@ export function competitorsPrompt(l: Listing, existing: Competitor[]) {
     `${l.property_type ?? 'piso'} en ${[l.zone, l.municipality].filter(Boolean).join(', ')}`,
     `${l.size_m2 ?? '¿?'} m², ${l.rooms ?? '¿?'} hab., ${l.baths ?? '¿?'} baños, planta ${l.floor ?? '¿?'}`,
     `extras: ${l.features.join(', ') || '—'}`,
-    `reformado en ${l.reform_year ?? '¿?'}`, `precio ${l.price_cents ? Math.round(l.price_cents / 100).toLocaleString('es-ES') + ' €' : '¿?'}`
+    `reformado en ${l.reform_year ?? '¿?'}`, `finca de ${l.year_built ?? '¿?'}${l.building_reform_year ? `, rehabilitada en ${l.building_reform_year}` : ''}`, `precio ${l.price_cents ? Math.round(l.price_cents / 100).toLocaleString('es-ES') + ' €' : '¿?'}`
   ].join('; ')
   const known = existing.filter(c => c.url).map(c => `- ${c.url}`).join('\n')
   return [
@@ -296,8 +315,8 @@ export function competitorsPrompt(l: Listing, existing: Competitor[]) {
     known ? `Ya los tenemos (no los repitas salvo que hayan cambiado de precio o se hayan vendido):\n${known}` : '',
     'Busca también, si hay datos fiables y recientes del barrio: €/m² PAGADO en compraventas (portal del Notariado, penotariado.com), €/m² PEDIDO en portales y días medios de venta.',
     'RESPONDE SOLO con este JSON (sin texto antes ni después):',
-    '{"pisos": [{"titulo": "", "url": "https://…", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": "1 frase: en qué se diferencia del nuestro"}], "zona": {"pagado_m2": null, "pedido_m2": null, "dias_venta": null}}',
-    'Precios y comunidad en euros (la comunidad, al mes). ruido y luz solo si el anuncio lo dice expresamente; si no, null.'
+    '{"pisos": [{"titulo": "", "url": "https://…", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "ano_construccion": null, "ano_rehabilitacion_finca": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": "1 frase: en qué se diferencia del nuestro"}], "zona": {"pagado_m2": null, "pedido_m2": null, "dias_venta": null}}',
+    'Precios y comunidad en euros (la comunidad, al mes). ruido y luz solo si el anuncio lo dice expresamente; si no, null. ano_construccion = año de la finca (el anuncio o el Catastro); ano_rehabilitacion_finca = última rehabilitación del edificio (fachada, cubierta, ascensor…), solo si se sabe.'
   ].filter(Boolean).join('\n\n')
 }
 
@@ -309,8 +328,8 @@ export function competitorFromLinkPrompt(url: string, l: Listing | null) {
     'Si no puedes abrirlo, dímelo y te pego el texto o capturas del anuncio. No inventes datos: lo que no diga el anuncio, ponlo a null.',
     ours ? `Lo comparo con el nuestro (${ours}): en «nota», una frase sobre en qué se diferencia.` : '',
     'RESPONDE SOLO con este JSON (sin texto antes ni después):',
-    `{"pisos": [{"titulo": "", "url": "${url}", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": ""}]}`,
-    'Precio y comunidad en euros (la comunidad, al mes). exterior, aire, ascensor…: true solo si el anuncio lo dice; false si dice que no; null si no lo dice. ruido y luz solo si el anuncio lo dice expresamente.'
+    `{"pisos": [{"titulo": "", "url": "${url}", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "ano_construccion": null, "ano_rehabilitacion_finca": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": ""}]}`,
+    'ano_construccion = año de la finca (anuncio o Catastro); ano_rehabilitacion_finca = última rehabilitación del edificio (fachada, cubierta, ascensor…), solo si se sabe. Precio y comunidad en euros (la comunidad, al mes). exterior, aire, ascensor…: true solo si el anuncio lo dice; false si dice que no; null si no lo dice. ruido y luz solo si el anuncio lo dice expresamente.'
   ].filter(Boolean).join('\n\n')
 }
 
@@ -321,6 +340,7 @@ export function parseCompetitors(text: string): CompParse {
   try { data = JSON.parse(raw) } catch { return { items: [], market: null, error: 'No entiendo la respuesta: copia solo el bloque JSON que devuelve la IA.' } }
   const num = (x: unknown) => { const n = typeof x === 'string' ? Number(x.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, '')) : Number(x); return Number.isFinite(n) && n > 0 ? n : null }
   const str = (x: unknown, max = 160) => (typeof x === 'string' && x.trim() ? x.trim().slice(0, max) : null)
+  const yr = (x: unknown) => { const n = Math.round(Number(x)); return Number.isFinite(n) && n >= 1700 && n <= 2100 ? n : null }
   const one = <T extends string>(x: unknown, ok: readonly T[]) => (typeof x === 'string' && (ok as readonly string[]).includes(x) ? x as T : null)
   const items: CompDraft[] = []
   for (const p of (data.pisos ?? []) as Record<string, unknown>[]) {
@@ -339,7 +359,8 @@ export function parseCompetitors(text: string): CompParse {
       community_fee_cents: num(p.comunidad) != null ? Math.round(num(p.comunidad)! * 100) : null,
       heating_type: p.calefaccion_central === true ? 'central' : null, energy: one(p.certificado, ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const),
       building_state: one(p.edificio, ['bien', 'ite_pendiente', 'obras_previstas'] as const), derrama_cents: num(p.derrama) != null ? Math.round(num(p.derrama)! * 100) : null,
-      noise: one(p.ruido, ['tranquila', 'normal', 'ruidosa'] as const), light: one(p.luz, ['mucha', 'normal', 'poca'] as const), notes: str(p.nota, 600)
+      noise: one(p.ruido, ['tranquila', 'normal', 'ruidosa'] as const), light: one(p.luz, ['mucha', 'normal', 'poca'] as const), notes: str(p.nota, 600),
+      year_built: yr(p.ano_construccion), building_reform_year: yr(p.ano_rehabilitacion_finca)
     })
   }
   const z = data.zona ?? {}

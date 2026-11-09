@@ -18,6 +18,8 @@ export type Listing = {
   heating_type: HeatingType | null; cooling: Cooling | null
   description: string | null; listing_ref: string | null
   reform_year: number | null; orientation: string | null
+  /** Año de la última rehabilitación de la finca (fachada, cubierta, instalaciones comunes…) */
+  building_reform_year: number | null
   building_state: BuildingState | null; derrama_cents: number | null; noise: Noise | null; light: Light | null
   /** Referencias de la zona: €/m² pagado (notarías) y pedido (portales), días medios a la venta */
   market: { paid_m2?: number; asking_m2?: number; avg_days?: number; source?: string; at?: string; paid_note?: string; asking_note?: string }
@@ -37,6 +39,7 @@ export type Competitor = {
   first_seen: string; last_seen: string; price_history: { date: string; cents: number }[]; notes: string | null; source: 'manual' | 'ia'
   community_fee_cents: number | null; heating_type: string | null; energy: string | null
   building_state: BuildingState | null; derrama_cents: number | null; noise: Noise | null; light: Light | null
+  year_built: number | null; building_reform_year: number | null
 }
 export type SalePhoto = { id: string; path: string; kind: 'foto' | 'anuncio'; created_at: string }
 /** Archivo de un documento (PDF o foto) en el bucket privado sale-docs */
@@ -375,7 +378,7 @@ export function useMudanza() {
       supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, files, notes, position, updated_at').order('position').order('title'),
       supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position'),
       supabase.from('home_rejections').select('id, title, url, municipality, zone, price_cents, size_m2, plot_m2, reason, created_at, reproposed_at').order('created_at', { ascending: false }).limit(200),
-      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light').order('created_at', { ascending: false })
+      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light, year_built, building_reform_year').order('created_at', { ascending: false })
     ])
     const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp].find(x => x.error)?.error
     if (firstError) setError(firstError.message)

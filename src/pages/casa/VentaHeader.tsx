@@ -63,7 +63,7 @@ export function SaleFacts({ m, onEdit, onEditValue }: { m: Mudanza; onEdit: () =
   const place = [l.address, l.zone, l.municipality].filter(Boolean).join(' · ')
   // «Lo que pesa en el precio» (lo usa «¿Estamos en precio?» para comparar más allá del €/m²)
   const value = [
-    l.reform_year && `reformada en ${l.reform_year}`, l.orientation && `orientación ${l.orientation}`,
+    l.year_built && `finca de ${l.year_built}${l.building_reform_year ? `, rehabilitada en ${l.building_reform_year}` : ''}`, l.reform_year && `piso reformado en ${l.reform_year}`, l.orientation && `orientación ${l.orientation}`,
     l.noise && NOISE_LABEL[l.noise].toLowerCase(), l.light && LIGHT_LABEL[l.light].toLowerCase(),
     l.building_state && BUILDING_LABEL[l.building_state].toLowerCase(), l.derrama_cents ? `derrama ${price(l.derrama_cents)}` : null
   ].filter(Boolean) as string[]
