@@ -22,7 +22,7 @@ import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
 import { aiStatus, allChecks, healthCounts, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
-import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
+import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, readyPriceAt, reformTotal, type Reform } from '../../lib/reforma'
 import { HomeGastos } from './HomeGastos'
 import { HomeSchools, useSchoolSummaries } from './HomeSchools'
 import { FilterBar, FilterSheet, useHomeFilters } from './HomeFilters'
@@ -301,7 +301,6 @@ function Verdict({ h, m, onGo }: { h: Home; m: Mudanza; onGo: (k: GroupKey) => v
   const viaReform = checks.filter(c => c.ok === false && c.reform).length
   const hc = healthCounts(h)
   const school = useNearestSchool(h)
-  const rec = recommend(h, m.homes)
   const tile = (tone: 'ok' | 'warn' | 'bad' | 'none') =>
     `rounded-2xl p-3 text-left flex flex-col gap-0.5 min-w-0 ${tone === 'ok' ? 'bg-accent-soft' : tone === 'warn' ? 'bg-[#C77A12]/12' : tone === 'bad' ? 'bg-danger/10' : 'bg-card'}`
   const crit: 'ok' | 'warn' | 'bad' | 'none' = !checks.length ? 'none' : ok === checks.length ? 'ok' : checks.length - ok - viaReform <= 1 ? 'warn' : 'bad'
@@ -423,7 +422,6 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   const extra = [
     school && `🏫 ${school.type_abbr === 'CP INF-PRI' ? 'CEIP' : school.ownership === 'publico' ? 'Público' : OWN_LABEL[school.ownership]} a ${distLabel(school.dist)}`,
     next && `📅 Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`,
-    rec && `💡 Oferta ~${priceShort(rec.open)}`
   ].filter(Boolean)
 
   return (
@@ -456,6 +454,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
             <span className={`text-[17px] font-bold shrink-0 ${over ? 'text-danger' : budget != null ? 'text-accent' : ''}`}>{price(ready)}</span>
           </span>
         )}
+        <OfferLine h={h} m={m} compact />
       </span>
       {facts.length > 0 && <span className="text-[13px] text-muted">{facts.join(' · ')}</span>}
       {(checks.length > 0 || nice.want.length > 0) && (
@@ -549,7 +548,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
       {/* 1. Cabecera visual */}
       <div className="-mt-3 flex flex-col gap-2">
         <Gallery h={h} m={m} onAdd={() => onEdit('fotos')} />
-        <TwoPrices h={h} budget={m.criteria?.max_price_cents ?? null} />
+        <TwoPrices h={h} m={m} budget={m.criteria?.max_price_cents ?? null} />
         <div className="flex justify-between items-center gap-2">
           <span className="text-[13px] text-muted truncate min-w-0">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
           <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
@@ -752,7 +751,7 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, 
 }
 
 /** Los dos precios que deciden: lo que piden (para ofertar) y lo que nos cuesta entrar a vivir (para comparar) */
-function TwoPrices({ h, budget }: { h: Home; budget: number | null }) {
+function TwoPrices({ h, m, budget }: { h: Home; m: Mudanza; budget: number | null }) {
   const ready = readyPrice(h)
   const t = reformTotal(h.reform, h)
   const costs = buyingCosts(h)
@@ -777,6 +776,43 @@ function TwoPrices({ h, budget }: { h: Home; budget: number | null }) {
         <span className={`text-[24px] font-bold leading-tight shrink-0 ${bad ? 'text-danger' : over != null ? 'text-accent' : ''}`}>{price(ready)}</span>
       </div>
       {over != null && <span className={`text-[12px] font-semibold text-right -mt-1 ${bad ? 'text-danger' : 'text-accent'}`}>{bad ? `${kShort(over)} por encima del presupuesto` : `${kShort(-over)} por debajo del presupuesto`}</span>}
+      <OfferLine h={h} m={m} />
+    </div>
+  )
+}
+
+/** Tercera cifra: nuestra oferta (si la hay) o la recomendada, y lo que costaría entrar a vivir si la aceptan */
+function OfferLine({ h, m, compact }: { h: Home; m: Mudanza; compact?: boolean }) {
+  const last = m.homeOffers.filter(o => o.home_id === h.id).sort((a, b) => b.offer_date.localeCompare(a.offer_date))[0]
+  const rec = last ? null : recommend(h, m.homes)
+  if (!last && !rec) return null
+  const p = last ? (last.status === 'countered' && last.counter_cents ? last.counter_cents : last.amount_cents) : rec!.open
+  const ready = readyPriceAt(h, p)
+  const budget = m.criteria?.max_price_cents ?? null
+  const diff = budget != null ? ready - budget : null
+  const st = last ? (last.status === 'pending' ? '⏳ pendiente' : last.status === 'countered' ? `↩️ contraoferta ${last.counter_cents ? price(last.counter_cents) : ''}` : last.status === 'accepted' ? '✅ aceptada' : last.status === 'rejected' ? '❌ rechazada' : 'retirada') : null
+  const fit = diff == null ? null : diff > 0 ? <span className="text-danger">{kShort(diff)} por encima</span> : <span className="text-accent">✅ dentro del presupuesto</span>
+  if (compact) {
+    return (
+      <span className="flex flex-col">
+        <span className="flex justify-between items-baseline gap-2">
+          <span className="text-[13px] text-muted min-w-0 truncate">{last ? 'Nuestra oferta' : 'Oferta recomendada'}{last ? <span className="text-[11px]"> · {st}</span> : <span className="text-[11px]"> · tope {priceShort(rec!.max)}</span>}</span>
+          <span className="text-[15px] font-bold shrink-0">{last ? price(last.amount_cents) : `~${priceShort(rec!.open)}`}</span>
+        </span>
+        <span className="text-[11px] text-muted text-right">si os la aceptan: entrar a vivir {priceShort(ready)}{fit ? <> · {fit}</> : null}</span>
+      </span>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-0.5 border-t border-line pt-2">
+      <div className="flex justify-between items-baseline gap-2">
+        <span className="flex flex-col min-w-0">
+          <span className="text-[13px] text-muted">{last ? 'Nuestra oferta' : 'Oferta recomendada'}</span>
+          <span className="text-[11px] text-muted">{last ? st : `tope razonable ${price(rec!.max)}`}</span>
+        </span>
+        <span className="text-[20px] font-bold leading-tight shrink-0">{last ? price(last.amount_cents) : `~${price(rec!.open)}`}</span>
+      </div>
+      <span className="text-[12px] text-muted text-right">si os la aceptan: entrar a vivir {price(ready)}{fit ? <> · {fit}</> : null}</span>
     </div>
   )
 }

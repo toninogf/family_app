@@ -2,7 +2,7 @@
 // Precios de gama media en Madrid, 2026, con IVA del 10 % aparte. Fuentes: habitissimo (sept. 2026),
 // cuantomecuesta.com (abril 2026) y Selectra (aerotermia, julio 2026). Son horquillas para comparar, no presupuestos.
 import type { DocFile } from './mudanza'
-import { purchaseMid } from './gastos'
+import { purchaseCosts, purchaseMid } from './gastos'
 
 export type ReformState = 'listo' | 'lavado' | 'parcial' | 'integral'
 export type Tier = 'basica' | 'media' | 'alta'
@@ -171,6 +171,10 @@ export const buyingCosts = (h: ReadyLike) => (h.price_cents == null ? 0 : purcha
 /** Precio para entrar a vivir = precio + reforma + gastos de la compra (céntimos) */
 export function readyPrice(h: ReadyLike) {
   return h.price_cents == null ? null : h.price_cents + reformMid(h) + buyingCosts(h)
+}
+/** Para entrar a vivir si se compra a otro precio (la oferta): reforma + impuestos y honorarios calculados sobre ese precio */
+export function readyPriceAt(h: ReadyLike, p: number) {
+  return p + reformMid(h) + (purchaseCosts(h, p)?.mid ?? 0) + (buyerFee(h, p) ?? 0)
 }
 /** Para valorar la casa (sin impuestos ni gastos, que no cambian lo que vale): precio + reforma + honorarios */
 export function valuePrice(h: ReadyLike) {
