@@ -254,9 +254,9 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   return {
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
-    dinero: join(t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs > 0 && `gastos ${kShort(costs)}`,
+    dinero: join(monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`,
       h.advertiser !== 'particular' && (!h.buyer_fee_kind ? 'honorarios ¿?' : (buyerFee(h) ?? 0) > 0 ? `honorarios ${kShort(buyerFee(h)!)}` : 'sin honorarios'),
-      monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`),
+      costs > 0 && `gastos ${kShort(costs)}`, t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar'),
     docs: join(`✅ ${hc.ok}`, `⚠️ ${hc.warn}`, hc.bad > 0 && `⛔ ${hc.bad}`, `❓ ${hc.unknown}`, `Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`,
       `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
@@ -570,10 +570,10 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
       </Group>
 
       <Group k="dinero" g={groups} line={sum.dinero}>
-        <HomeReforma h={h} onEdit={() => onEdit('reforma')} />
+        <MonthlyCard h={h} onEdit={() => onEdit('gastos')} />
         <FeeCard h={h} onEdit={() => onEdit('honorarios')} />
         <HomeGastos h={h} onEdit={() => onEdit('compra')} />
-        <MonthlyCard h={h} onEdit={() => onEdit('gastos')} />
+        <HomeReforma h={h} onEdit={() => onEdit('reforma')} />
       </Group>
 
       <Group k="docs" g={groups} line={sum.docs} lineAlways>
@@ -1667,14 +1667,17 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
         </EditSection>
 
         <EditSection id="dinero" icon="💶" title="El dinero" {...cnt('dinero')} flashed={flashedIn('dinero')} open={sections.isOpen('dinero')} onToggle={() => sections.toggle('dinero')}>
-          <SubHead id="dinero-reforma" first>🔨 Reforma</SubHead>
-          <ReformaEditor m={m} householdId={householdId} value={reform} onChange={setReform}
-            h={{ ...(home ?? {}), id: home?.id, price_cents: parsePrice(amount) ?? null, size_m2: num(m2) ?? null, useful_m2: num(useful) ?? null,
-              rooms: rooms.trim() ? parseInt(rooms, 10) : null, baths: baths.trim() ? parseInt(baths, 10) : null, year_built: year.trim() ? parseInt(year, 10) : null,
-              features, energy, heating_type: heatType, cooling, advertiser, buyer_fee_kind: feeKind, buyer_fee_vat: feeVat,
-              buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Number(feePct.replace(',', '.')) || 0 : null,
-              buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null,
-              ref_value_cents: refValue.trim() ? parsePrice(refValue) : null, new_build: newBuild } as Home} />
+          <SubHead id="dinero-mes" first>📆 Gastos al mes</SubHead>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
+            <Field label="IBI" suffix="€/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} onBlur={() => setIbi(thousands)} flash={fl('IBI')} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Luz" suffix="€" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} flash={fl('luz')} />
+            <Field label="Agua" suffix="€" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} flash={fl('agua')} />
+            <Field label="Calefacción" suffix="€" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} flash={fl('calefacción')} />
+          </div>
+          <p className="text-xs text-muted -mt-2">Luz, agua y calefacción: gasto medio al mes (si la factura es bimestral, divídela entre dos).</p>
           <SubHead id="dinero-honorarios">💼 Honorarios de la agencia</SubHead>
           {advertiser === 'particular'
             ? <p className="text-[13px] text-muted">Lo anuncia un particular: no hay honorarios (se cambia en Contacto).</p>
@@ -1701,17 +1704,14 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <input type="checkbox" checked={newBuild} onChange={e => setNewBuild(e.target.checked)} className="w-5 h-5" />
             <span>Obra nueva (IVA 10 % + AJD en lugar de ITP)</span>
           </label>
-          <SubHead id="dinero-mes">📆 Gastos al mes</SubHead>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
-            <Field label="IBI" suffix="€/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} onBlur={() => setIbi(thousands)} flash={fl('IBI')} />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Luz" suffix="€" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} flash={fl('luz')} />
-            <Field label="Agua" suffix="€" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} flash={fl('agua')} />
-            <Field label="Calefacción" suffix="€" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} flash={fl('calefacción')} />
-          </div>
-          <p className="text-xs text-muted -mt-2">Luz, agua y calefacción: gasto medio al mes (si la factura es bimestral, divídela entre dos).</p>
+          <SubHead id="dinero-reforma">🔨 Reforma</SubHead>
+          <ReformaEditor m={m} householdId={householdId} value={reform} onChange={setReform}
+            h={{ ...(home ?? {}), id: home?.id, price_cents: parsePrice(amount) ?? null, size_m2: num(m2) ?? null, useful_m2: num(useful) ?? null,
+              rooms: rooms.trim() ? parseInt(rooms, 10) : null, baths: baths.trim() ? parseInt(baths, 10) : null, year_built: year.trim() ? parseInt(year, 10) : null,
+              features, energy, heating_type: heatType, cooling, advertiser, buyer_fee_kind: feeKind, buyer_fee_vat: feeVat,
+              buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Number(feePct.replace(',', '.')) || 0 : null,
+              buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null,
+              ref_value_cents: refValue.trim() ? parsePrice(refValue) : null, new_build: newBuild } as Home} />
         </EditSection>
 
         <EditSection id="zona" icon="📍" title="La zona" {...cnt('zona')} flashed={flashedIn('zona')} open={sections.isOpen('zona')} onToggle={() => sections.toggle('zona')}>
