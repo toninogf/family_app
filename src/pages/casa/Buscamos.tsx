@@ -20,7 +20,7 @@ import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../co
 import { StatusPill } from './Vendemos'
 import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
-import { aiStatus, healthCounts, type Health, type Market } from '../../lib/health'
+import { aiStatus, allChecks, healthCounts, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
 import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
 import { HomeGastos } from './HomeGastos'
@@ -222,9 +222,10 @@ function StatusBadge({ s }: { s: HomeStatus }) {
 }
 
 // ---------- Ficha por grupos plegables ----------
-type GroupKey = 'resumen' | 'casa' | 'dinero' | 'zona' | 'seguimiento' | 'enlaces' | 'fotos'
+type GroupKey = 'resumen' | 'casa' | 'dinero' | 'docs' | 'zona' | 'seguimiento' | 'enlaces' | 'fotos'
 const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
   { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'casa', icon: '🏠', title: 'La casa' }, { k: 'dinero', icon: '💶', title: 'El dinero' },
+  { k: 'docs', icon: '📋', title: 'Estado y documentos' },
   { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'seguimiento', icon: '📅', title: 'Seguimiento' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
   { k: 'fotos', icon: '📷', title: 'Fotos' }
 ]
@@ -272,6 +273,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const rec = recommend(h, m.homes)
   const checks = mustHaveCheck(h, m.criteria)
   const hc = healthCounts(h)
+  const checksAll = allChecks(h)
   const t = reformTotal(h.reform, h)
   const costs = buyingCosts(h)
   const nPhotos = m.photos.filter(p => p.home_id === h.id).length
@@ -281,12 +283,15 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
     dinero: join(t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs > 0 && `gastos ${kShort(costs)}`),
-    zona: join(school && `${schoolShort(school)} a ${distLabel(school.dist)}`, hc.bad ? `❌ ${hc.bad} problema${hc.bad > 1 ? 's' : ''}` : hc.warn ? `⚠️ ${hc.warn} aviso${hc.warn > 1 ? 's' : ''}` : hc.ok ? '✅ sin problemas' : 'riesgos sin revisar'),
+    docs: join(`Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`, `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`,
+      hc.bad ? `❌ ${hc.bad} problema${hc.bad > 1 ? 's' : ''}` : hc.warn ? `⚠️ ${hc.warn} aviso${hc.warn > 1 ? 's' : ''}` : hc.ok ? '✅ sin problemas' : 'sin revisar'),
+    zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
     seguimiento: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas', offers[0] && `oferta ${priceShort(offers[0].amount_cents)}`, h.contact_phone && '📞'),
     enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
     fotos: nPhotos ? `${nPhotos} foto${nPhotos > 1 ? 's' : ''}` : 'sin fotos'
   }
 }
+const statusIcon = (st?: string) => (st === 'ok' ? '✅' : st === 'warn' ? '⚠️' : st === 'bad' ? '❌' : '¿?')
 const schoolShort = (s: NearSchool) => (s.type_abbr === 'CP INF-PRI' ? 'CEIP' : s.type_abbr === 'IES' ? 'IES' : OWN_LABEL[s.ownership])
 
 /** Veredicto en 4 casillas: criterios, riesgos, colegio y oferta (cada una lleva a su detalle) */
@@ -307,7 +312,7 @@ function Verdict({ h, m, onGo }: { h: Home; m: Mudanza; onGo: (k: GroupKey) => v
         <span className="text-[12px] text-muted">🎯 Criterios</span>
         <span className="text-[17px] font-bold">{checks.length ? `${ok}/${checks.length}` : '—'}{viaReform ? <span className="text-[#C77A12] text-[14px]"> · 🔨{viaReform}</span> : null}</span>
       </button>
-      <button onClick={() => onGo('zona')} className={tile(risk)}>
+      <button onClick={() => onGo('docs')} className={tile(risk)}>
         <span className="text-[12px] text-muted">🩺 Riesgos</span>
         <span className="text-[17px] font-bold">{hc.bad ? `❌ ${hc.bad}` : hc.warn ? `⚠️ ${hc.warn}` : hc.ok ? '✅ Bien' : 'Sin revisar'}</span>
       </button>
@@ -603,10 +608,13 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         <HomeGastos h={h} m={m} />
       </Group>
 
+      <Group k="docs" g={groups} line={sum.docs}>
+        <HomeHealth h={h} m={m} householdId={householdId} />
+      </Group>
+
       <Group k="zona" g={groups} line={sum.zona}>
         {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="self-start min-h-10 px-3 rounded-xl border border-line text-[13px] font-semibold text-accent flex items-center">📍 Cómo llegar ↗</a>}
         <HomeSchools h={h} m={m} />
-        <HomeHealth h={h} m={m} householdId={householdId} />
       </Group>
 
       <Group k="seguimiento" g={groups} line={sum.seguimiento}
