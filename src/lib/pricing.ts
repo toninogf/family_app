@@ -2,7 +2,8 @@
 // Es orientativo: combina referencias de la zona, los pisos parecidos que habéis guardado y los riesgos detectados.
 import type { Home } from './mudanza'
 import type { Health } from './health'
-import { buyerFee, readyPrice, reformKnown, reformMid } from './reforma'
+import { buyerFee, reformKnown, reformMid, valuePrice } from './reforma'
+import { purchaseMid } from './gastos'
 
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 const eur = (n: number) => `${Math.round(n).toLocaleString('es-ES')} €`
@@ -16,7 +17,7 @@ export function comparables(h: Home, homes: Home[]) {
   return homes
     .filter(x => x.id !== h.id && x.municipality === h.municipality && x.status !== 'descartado' && x.price_cents && x.size_m2)
     .filter(x => { const r = Number(x.size_m2) / size; return r >= 0.6 && r <= 1.4 })
-    .map(x => ({ home: x, m2Price: readyPrice(x)! / 100 / Number(x.size_m2), reform: reformMid(x) }))
+    .map(x => ({ home: x, m2Price: valuePrice(x)! / 100 / Number(x.size_m2), reform: reformMid(x) }))
     .sort((a, b) => a.m2Price - b.m2Price)
 }
 
@@ -35,7 +36,7 @@ export function zoneLine(h: Home) {
 export type Recommendation = {
   asking: number; open: number; max: number; fair: number | null
   /** Reforma estimada (céntimos) y lo que valdría ya reformado */
-  reform: number; fee: number; fairReady: number | null; reformKnown: boolean
+  reform: number; fee: number; costs: number; fairReady: number | null; reformKnown: boolean
   confidence: 'alta' | 'media' | 'baja'; reasons: string[]; warnings: string[]
 }
 
@@ -139,5 +140,5 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
 
   const sources = refs.length + (h.cadastre ? 1 : 0)
   const confidence = refs.length >= 2 && comps.length >= 2 ? 'alta' : sources >= 2 ? 'media' : 'baja'
-  return { asking, open, max, fair, fairReady, reform, fee: buyerFee(h) ?? 0, reformKnown: known, confidence, reasons, warnings }
+  return { asking, open, max, fair, fairReady, reform, fee: buyerFee(h) ?? 0, costs: purchaseMid(h), reformKnown: known, confidence, reasons, warnings }
 }

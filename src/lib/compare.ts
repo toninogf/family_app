@@ -41,7 +41,7 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
   const ready = homes.filter(h => reformKnown(h.reform) && readyPrice(h) != null).sort((a, b) => readyPrice(a)! - readyPrice(b)!)
   if (ready.length >= 2) {
     const lo = ready[0], hi = ready[ready.length - 1]
-    if (readyPrice(hi)! > readyPrice(lo)!) out.push(`🔨 Para entrar a vivir (precio + reforma), el más barato es **${n(lo)}** (${price(readyPrice(lo))}): ${price(readyPrice(hi)! - readyPrice(lo)!)} menos que **${n(hi)}**.`)
+    if (readyPrice(hi)! > readyPrice(lo)!) out.push(`🔨 Para entrar a vivir (precio + reforma + gastos), el más barato es **${n(lo)}** (${price(readyPrice(lo))}): ${price(readyPrice(hi)! - readyPrice(lo)!)} menos que **${n(hi)}**.`)
     if (priced.length >= 2 && lo.id !== priced[0].id) out.push(`⚠️ **${n(priced[0])}** es el más barato de precio, pero con la reforma deja de serlo.`)
   }
   const unknown = homes.filter(h => !reformKnown(h.reform))

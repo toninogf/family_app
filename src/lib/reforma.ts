@@ -2,6 +2,7 @@
 // Precios de gama media en Madrid, 2026, con IVA del 10 % aparte. Fuentes: habitissimo (sept. 2026),
 // cuantomecuesta.com (abril 2026) y Selectra (aerotermia, julio 2026). Son horquillas para comparar, no presupuestos.
 import type { DocFile } from './mudanza'
+import { purchaseMid } from './gastos'
 
 export type ReformState = 'listo' | 'lavado' | 'parcial' | 'integral'
 export type Tier = 'basica' | 'media' | 'alta'
@@ -162,8 +163,15 @@ export function feeLabel(h: FeeLike) {
   if (h.buyer_fee_kind === 'pct') return h.buyer_fee_pct != null ? `${Number(h.buyer_fee_pct).toLocaleString('es-ES')} %${vat}` : '¿%?'
   return h.buyer_fee_cents != null ? `${Math.round(h.buyer_fee_cents / 100).toLocaleString('es-ES')} €${vat}` : '¿importe?'
 }
-/** Precio para entrar a vivir = precio + reforma + honorarios del comprador (céntimos) */
-export function readyPrice(h: HomeLike & FeeLike & { price_cents: number | null; reform?: Reform | null }) {
+type ReadyLike = HomeLike & FeeLike & { price_cents: number | null; reform?: Reform | null; ref_value_cents?: number | null; new_build?: boolean }
+/** Gastos de la compra = impuestos y gastos (notaría, registro…) + honorarios de la inmobiliaria (céntimos) */
+export const buyingCosts = (h: ReadyLike) => (h.price_cents == null ? 0 : purchaseMid(h) + (buyerFee(h) ?? 0))
+/** Precio para entrar a vivir = precio + reforma + gastos de la compra (céntimos) */
+export function readyPrice(h: ReadyLike) {
+  return h.price_cents == null ? null : h.price_cents + reformMid(h) + buyingCosts(h)
+}
+/** Para valorar la casa (sin impuestos ni gastos, que no cambian lo que vale): precio + reforma + honorarios */
+export function valuePrice(h: ReadyLike) {
   return h.price_cents == null ? null : h.price_cents + reformMid(h) + (buyerFee(h) ?? 0)
 }
 /** ¿Se ha valorado la reforma? (estado puesto o alguna partida) */

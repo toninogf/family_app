@@ -22,7 +22,10 @@ import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
 import { aiStatus, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
-import { buyerFee, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
+import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
+import { HomeGastos } from './HomeGastos'
+import { HomeSchools, useSchoolSummaries } from './HomeSchools'
+import { distLabel } from '../../lib/colegios'
 import { HomeReforma } from './HomeReforma'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
@@ -378,10 +381,12 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       {/* 3. De un vistazo */}
       <QuickFacts h={h} m={m} onEdit={onEdit} />
       <HomeReforma h={h} m={m} householdId={householdId} />
+      <HomeGastos h={h} m={m} />
 
       {/* 4. ¿Nos conviene? */}
       <HomePrice h={h} m={m} />
       <HomeHealth h={h} m={m} householdId={householdId} />
+      <HomeSchools h={h} m={m} />
 
       {/* 5. Seguimiento: visitas y ofertas, lo último primero, y las notas */}
       <section className="flex flex-col gap-2">
@@ -522,14 +527,20 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }
   )
 }
 
+/** «41,5 k€» */
+const kShort = (c: number) => `${(c / 100000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} k€`
+
 /** «🔨 +35 k€ de reforma → 640.000 € para entrar a vivir» (o «✅ para entrar a vivir») */
 function ReadyLine({ h }: { h: Home }) {
   const t = reformTotal(h.reform, h)
-  const fee = buyerFee(h) ?? 0
+  const costs = buyingCosts(h)
   if (h.price_cents == null) return null
-  if (!t && !fee) return h.reform?.state === 'listo' ? <span className="text-[13px] text-accent">✅ Para entrar a vivir</span> : null
-  const parts = [t && `${rangeK(t.lo, t.hi)} de reforma`, fee && `${price(fee)} de honorarios`].filter(Boolean).join(' y ')
-  return <span className="text-[13px]">{t ? '🔨' : '💼'} <span className="text-muted">+{parts} →</span> <b>{price(readyPrice(h))}</b> <span className="text-muted">para entrar a vivir</span></span>
+  const parts = [t && `${rangeK(t.lo, t.hi)} de reforma`, costs && `${kShort(costs)} de gastos`].filter(Boolean).join(' + ')
+  return (
+    <span className="text-[13px]">
+      {h.reform?.state === 'listo' ? '✅ ' : t ? '🔨 ' : '🧾 '}<span className="text-muted">+{parts} →</span> <b>{price(readyPrice(h))}</b> <span className="text-muted">para entrar a vivir</span>
+    </span>
+  )
 }
 
 /** «Qué buscamos» en la portada: lo básico siempre a la vista y el detalle al desplegar */
@@ -1529,6 +1540,7 @@ function Rich({ text }: { text: string }) {
 
 function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudanza; onRemove: (id: string) => void; onClose: () => void }) {
   const summary = compareSummary(homes, m.criteria, m.homeVisits)
+  const schools = useSchoolSummaries(homes)
   const musts = (h: Home) => { const c = mustHaveCheck(h, m.criteria); return c.length ? c.filter(x => x.ok).length / c.length : null }
   const ENERGY = 'ABCDEFG'
 
@@ -1537,6 +1549,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
   const rows: Row[] = [
     { label: 'Precio', show: h => price(h.price_cents), value: h => h.price_cents, better: 'low' },
     { label: 'Reforma', show: h => { const t = reformTotal(h.reform, h); return t ? rangeK(t.lo, t.hi) : h.reform?.state === 'listo' ? 'No necesita' : '¿?' }, value: h => (h.reform?.state || h.reform?.items?.length ? reformTotal(h.reform, h)?.mid ?? 0 : null), better: 'low' },
+    { label: 'Gastos de compra', show: h => (h.price_cents != null ? price(buyingCosts(h)) : '—'), value: h => (h.price_cents != null ? buyingCosts(h) : null), better: 'low' },
     { label: 'Honorarios comprador', show: h => (h.advertiser === 'particular' ? 'No (particular)' : h.buyer_fee_kind === 'no' ? 'No' : buyerFee(h) != null ? price(buyerFee(h)) : '¿?'), value: h => (h.advertiser === 'particular' ? 0 : buyerFee(h)), better: 'low' },
     { label: 'Para entrar a vivir', show: h => price(readyPrice(h)), value: readyPrice, better: 'low' },
     { label: 'm²', show: h => (h.size_m2 != null ? Number(h.size_m2) : '—'), value: h => (h.size_m2 != null ? Number(h.size_m2) : null), better: 'high' },
@@ -1562,6 +1575,9 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Placas solares', show: h => (h.features.includes('placas_solares') ? `Sí${h.health?.solar?.n ? ` (${h.health.solar.n.slice(0, 40)})` : ''}` : h.features.includes('solar_termica') ? 'Térmicas' : '—'), value: h => (h.features.includes('placas_solares') ? 1 : 0), better: 'high' },
     { label: 'Aire', show: h => (h.cooling ? COOLING[h.cooling] : '—'), value: () => null, better: 'high' },
     { label: 'Energía', show: h => h.energy ?? '—', value: h => (h.energy ? ENERGY.indexOf(h.energy) : null), better: 'low' },
+    { label: 'Colegios < 1,5 km', show: h => (schools[h.id] ? schools[h.id].near : '—'), value: h => schools[h.id]?.near ?? null, better: 'high' },
+    { label: 'Público primaria', show: h => { const s = schools[h.id]?.pubPri; return s ? `${distLabel(s.dist)}${s.bilingual ? ' · bil.' : ''}` : '—' }, value: h => schools[h.id]?.pubPri?.dist ?? null, better: 'low' },
+    { label: 'Instituto público', show: h => { const s = schools[h.id]?.pubSec; return s ? distLabel(s.dist) : '—' }, value: h => schools[h.id]?.pubSec?.dist ?? null, better: 'low' },
     { label: 'Al cole', show: h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—'), value: h => h.minutes_to_school, better: 'low' },
     { label: 'Puntos malos', show: h => badPoints(h, m.homeVisits).length || '—', value: h => badPoints(h, m.homeVisits).length, better: 'low' }
   ]

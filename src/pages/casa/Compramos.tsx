@@ -12,6 +12,7 @@ import DocFiles, { openDocFile } from '../../components/DocFiles'
 import { Fold, saleNet } from './VentaGestion'
 import { HomePrice } from './HomePrice'
 import { buyerFee, feeLabel, reformTotal } from '../../lib/reforma'
+import { OPTIONAL_COSTS, purchaseLines } from '../../lib/gastos'
 
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const pct = (n: number) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 2 })} %`
@@ -675,11 +676,25 @@ function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra;
     })
     setError(err ?? '')
   }
-  function itp() {
+  // Rellena impuestos y gastos estimados sobre el precio de compra (solo las líneas vacías: lo que ya sea real no se toca)
+  const MATCH: Record<string, RegExp> = { itp: /ITP|transmisiones/i, iva: /^IVA/i, ajd: /^AJD/i, notaria: /notar/i, registro: /registro/i, gestoria: /gestor/i, nota: /nota simple/i, tasacion: /tasaci/i }
+  function fillCosts() {
     if (!buyPrice) return
-    const v = priceInput(Math.round(buyPrice * 0.06))
-    const i = costs.findIndex(x => /ITP|transmisiones/i.test(x.label))
-    const next = i >= 0 ? costs.map((x, j) => (j === i ? { ...x, amount: v } : x)) : [{ label: 'ITP (impuesto de transmisiones)', amount: v }, ...costs]
+    let next = [...costs]
+    for (const l of purchaseLines(home, buyPrice)) {
+      if (l.zero) continue
+      const v = priceInput(Math.round((l.lo + l.hi) / 2))
+      const re = MATCH[l.k]
+      const i = re ? next.findIndex(x => re.test(x.label)) : -1
+      if (i >= 0) { if (!next[i].amount.trim()) next[i] = { ...next[i], amount: v } }
+      else next = [{ label: l.label.slice(0, 60), amount: v }, ...next]
+    }
+    next = next.slice(0, 20)
+    setCosts(next); void save(next)
+  }
+  function addOptional(label: string, cents: number) {
+    if (costs.some(x => x.label.toLowerCase() === label.toLowerCase())) return
+    const next = [...costs, { label, amount: priceInput(cents) }].slice(0, 20)
     setCosts(next); void save(next)
   }
   // La reforma estimada en Buscamos (punto medio) pasa a la línea «Reforma»
@@ -727,12 +742,18 @@ function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra;
         ))}
         <div className="flex gap-2">
           {costs.length < 20 && <button type="button" onClick={() => setCosts([...costs, { label: '', amount: '' }])} className="flex-1 min-h-10 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir gasto</button>}
-          {buyPrice != null && <button type="button" onClick={itp} className="min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">ITP al 6 %</button>}
         </div>
+        {buyPrice != null && <button type="button" onClick={fillCosts} className="min-h-11 px-3 rounded-xl bg-accent-soft text-accent text-sm font-semibold text-left">🧾 Rellenar impuestos y gastos estimados (ITP 6 %, notaría, registro, gestoría, tasación)</button>}
+        <span className="flex gap-1.5 flex-wrap">
+          {OPTIONAL_COSTS.filter(o => !costs.some(x => x.label.toLowerCase() === o.label.toLowerCase())).map(o => (
+            <button key={o.label} type="button" onClick={() => addOptional(o.label, o.cents)} className="min-h-9 px-2.5 rounded-full border border-dashed border-line text-[12px] font-semibold">+ {o.label}</button>
+          ))}
+        </span>
         {fee ? <button type="button" onClick={bringFee} className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">💼 Honorarios inmobiliaria ({feeLabel(home)} → {price(fee)})</button> : null}
         {home.advertiser !== 'particular' && !home.buyer_fee_kind && <p className="text-[12px] text-[#C77A12]">💼 ¿Cobra la inmobiliaria honorarios al comprador? Apúntalo en el contacto del piso (Buscamos) para sumarlo aquí.</p>}
         {reformT && <button type="button" onClick={bringReform} className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">🔨 Reforma estimada (~{price(reformT.mid)})</button>}
-        <p className="text-[11px] text-muted">En la Comunidad de Madrid el ITP general de vivienda usada es el 6 %; hay reducciones en algunos casos (por ejemplo familia numerosa o jóvenes). Confirmadlo con la gestoría.</p>
+        <p className="text-[11px] text-muted">ITP del 6 % en Madrid (vivienda usada), sobre el mayor entre el precio y el valor de referencia del Catastro. La notaría y el registro de la hipoteca los paga el banco. Cambia cada estimación por la cifra real cuando la tengáis.</p>
+        <p className="text-[12px] font-semibold">💡 Los impuestos y gastos no los financia el banco: salen de ahorros o de la venta.</p>
       </fieldset>
       <div className="flex justify-between text-[16px] font-bold border-t border-line pt-3"><span>Total</span><span>{price(total)}</span></div>
 
