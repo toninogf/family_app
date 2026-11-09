@@ -20,7 +20,7 @@ export type Listing = {
   reform_year: number | null; orientation: string | null
   building_state: BuildingState | null; derrama_cents: number | null; noise: Noise | null; light: Light | null
   /** Referencias de la zona: €/m² pagado (notarías) y pedido (portales), días medios a la venta */
-  market: { paid_m2?: number; asking_m2?: number; avg_days?: number; source?: string; at?: string }
+  market: { paid_m2?: number; asking_m2?: number; avg_days?: number; source?: string; at?: string; paid_note?: string; asking_note?: string }
   // Cuentas
   mortgage_cents: number | null; costs: SaleCost[]
 }

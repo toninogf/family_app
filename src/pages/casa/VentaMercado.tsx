@@ -78,9 +78,18 @@ function MarketRefs({ m, householdId }: { m: Mudanza; householdId: string }) {
   const [ask, setAsk] = useState(mk.asking_m2?.toString() ?? '')
   const [days, setDays] = useState(mk.avg_days?.toString() ?? '')
   const [msg, setMsg] = useState('')
+  // Si la búsqueda automática (u otro móvil) cambia las referencias, se ven aquí sin recargar
+  useEffect(() => { setPaid(mk.paid_m2?.toString() ?? ''); setAsk(mk.asking_m2?.toString() ?? ''); setDays(mk.avg_days?.toString() ?? '') }, [mk.paid_m2, mk.asking_m2, mk.avg_days])
   const n = (x: string) => { const v = Number(x.replace(/\./g, '').replace(',', '.')); return x.trim() && Number.isFinite(v) && v > 0 ? Math.round(v) : undefined }
   async function save() {
-    const err = await m.write('sale_listing', { household_id: householdId, market: { paid_m2: n(paid), asking_m2: n(ask), avg_days: n(days), source: 'manual', at: today() } }, undefined, 'household_id')
+    const p = n(paid), a = n(ask)
+    // Se conserva la fuente de cada dato si no se ha cambiado; si se cambia, queda como puesto a mano
+    const next = {
+      ...mk, paid_m2: p, asking_m2: a, avg_days: n(days), source: 'manual', at: today(),
+      paid_note: p === mk.paid_m2 ? mk.paid_note : p ? `Puesto a mano (${today()})` : undefined,
+      asking_note: a === mk.asking_m2 ? mk.asking_note : a ? `Puesto a mano (${today()})` : undefined
+    }
+    const err = await m.write('sale_listing', { household_id: householdId, market: JSON.parse(JSON.stringify(next)) }, undefined, 'household_id')
     setMsg(err ?? 'Guardado')
   }
   return (
@@ -90,7 +99,12 @@ function MarketRefs({ m, householdId }: { m: Mudanza; householdId: string }) {
         <Field label="Pedido €/m²" inputMode="numeric" value={ask} onChange={e => setAsk(e.target.value)} placeholder="Portales" />
         <Field label="Días a la venta" inputMode="numeric" value={days} onChange={e => setDays(e.target.value)} placeholder="Media" />
       </div>
-      <p className="text-[11px] text-muted">Pagado: portal del Notariado (penotariado.com) para vuestro barrio. Pedido: informe de precios de idealista o fotocasa. {mk.source === 'ia' ? 'Ahora mismo los puso la búsqueda automática.' : ''}</p>
+      {(mk.paid_note || mk.asking_note) ? (
+        <div className="text-[12px] text-muted flex flex-col gap-0.5">
+          {mk.paid_note && <span>Pagado: {mk.paid_note}</span>}
+          {mk.asking_note && <span>Pedido: {mk.asking_note}</span>}
+        </div>
+      ) : <p className="text-[11px] text-muted">Pagado: portal del Notariado (penotariado.com) para vuestro código postal. Pedido: informe de precios de idealista o fotocasa del barrio.</p>}
       <div className="flex gap-2 items-center">
         <button onClick={save} className="min-h-10 px-4 rounded-xl border border-line text-sm font-semibold">Guardar referencias</button>
         {msg && <span className="text-[12px] text-muted">{msg}</span>}
