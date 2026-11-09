@@ -13,7 +13,7 @@ import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS, VISIT_CHECKLIST,
   CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
-  type Check, type CheckValue, type RejectReason, REJECT_REASONS, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
+  type Check, type CheckValue, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -364,7 +364,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
         </span>
       )}
       {extra.length > 0 && <span className="text-[13px] text-muted">{extra.join(' · ')}</span>}
-      {h.status === 'descartado' && h.discard_reason && <span className="text-[13px] text-muted italic">Descartado: «{h.discard_reason}»</span>}
+      {h.status === 'descartado' && discardLabel(h) && <span className="text-[13px] text-muted">Descartado: {discardLabel(h)}</span>}
     </button>
     {h.links?.length > 0 && <div className="px-4 pb-3 -mt-1"><LinkChips links={h.links} ourPrice={h.price_cents} /></div>}
     {h.status === 'propuesta' && (
@@ -418,6 +418,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: HomeOffer }>({ open: false })
   const [discarding, setDiscarding] = useState(false)
   const [reason, setReason] = useState(h.discard_reason ?? '')
+  const [cat, setCat] = useState<DiscardCategory | null>(h.discard_category)
   const [confirming, setConfirming] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const adults = members.filter(x => x.kind === 'adult')
@@ -442,7 +443,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         <div className="flex justify-between items-center gap-2">
           <span className="text-[13px] text-muted truncate min-w-0">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
           <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
-            onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null }) } }}
+            onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null, discard_category: null }) } }}
             className="max-w-[52%] min-h-10 px-2 rounded-xl border border-line bg-card text-[13px] font-semibold">
             {(['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(st => (
               <option key={st} value={st}>{st === 'favorito' ? '★ ' : st === 'llamar' ? '📞 ' : ''}{HOME_STATUS[st]}</option>
@@ -453,19 +454,28 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
       </div>
       {discarding && (
         <div className="flex flex-col gap-2 bg-card rounded-2xl p-4">
-          <TextField label="¿Por qué lo descartáis?" value={reason} onChange={e => setReason(e.target.value)} maxLength={200} placeholder="Ej. demasiado ruido, reforma cara" autoFocus />
+          <span className="text-sm font-medium text-muted">¿Por qué lo descartáis?</span>
+          <div className="flex gap-1.5 flex-wrap">
+            {(Object.keys(DISCARD_CATS) as DiscardCategory[]).map(k => (
+              <button key={k} type="button" onClick={() => setCat(k)} aria-pressed={cat === k}
+                className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${cat === k ? 'bg-ink text-bg border-ink' : 'bg-bg border-line'}`}>{DISCARD_CATS[k]}</button>
+            ))}
+          </div>
+          <TextField label={cat === 'otro' ? 'Cuéntalo' : 'Detalle (opcional)'} value={reason} onChange={e => setReason(e.target.value)} maxLength={200}
+            placeholder={cat === 'ubicacion' ? 'Ej. carretera muy ruidosa' : cat === 'precio' ? 'Ej. no bajan de 640.000 €' : 'Ej. el vecino tiene perros'} />
           <div className="flex justify-end gap-2">
             <button onClick={() => setDiscarding(false)} className="min-h-10 px-3 text-sm text-muted">Cancelar</button>
-            <button onClick={async () => { await setStatus('descartado', { discard_reason: reason.trim() || null }); setDiscarding(false) }} className="min-h-10 px-4 rounded-lg bg-ink text-bg text-sm font-semibold">Descartar</button>
+            <button disabled={!cat || (cat === 'otro' && !reason.trim())} onClick={async () => { await setStatus('descartado', { discard_category: cat, discard_reason: reason.trim() || null }); setDiscarding(false) }}
+              className="min-h-10 px-4 rounded-lg bg-ink text-bg text-sm font-semibold disabled:opacity-40">Descartar</button>
           </div>
         </div>
       )}
-      {h.status === 'descartado' && h.discard_reason && <p className="text-sm text-muted -mt-3">Descartado: {h.discard_reason}</p>}
+      {h.status === 'descartado' && discardLabel(h) && <p className="text-sm text-muted -mt-3">Descartado: {discardLabel(h)}</p>}
 
       {/* 2. Lo que toca hacer ahora */}
       <PrimaryActions h={h} offers={offers} maps={maps}
         onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
-        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null })} onReject={onReject} />
+        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
       {/* 3. De un vistazo */}
       <QuickFacts h={h} m={m} onEdit={onEdit} />

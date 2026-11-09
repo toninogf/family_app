@@ -108,7 +108,7 @@ function LeaveSheet({ m, c, householdId, homeId, homeTitle, onClose }: { m: Muda
   async function wipe() {
     setBusy(true); setError('')
     const err = await c.resetPurchase(householdId, keepBank)
-    if (!err && discard) await m.write('homes', { status: 'descartado', discard_reason: reason.trim() || 'La compra no salió adelante' }, homeId)
+    if (!err && discard) await m.write('homes', { status: 'descartado', discard_category: 'otro', discard_reason: reason.trim() || 'La compra no salió adelante' }, homeId)
     setBusy(false)
     if (err) setError(err); else onClose()
   }

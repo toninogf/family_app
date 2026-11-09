@@ -128,6 +128,7 @@ export type Home = {
   minutes_to_school: number | null
   status: HomeStatus
   discard_reason: string | null
+  discard_category: DiscardCategory | null
   notes: string | null
   created_at: string
 }
@@ -315,6 +316,18 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
 // ---------- Datos ----------
 const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers', 'home_rejections']
 
+export type DiscardCategory = 'precio' | 'ubicacion' | 'parcela' | 'distribucion' | 'estado' | 'legal' | 'vendida' | 'otra' | 'otro'
+export const DISCARD_CATS: Record<DiscardCategory, string> = {
+  precio: '💶 Precio', ubicacion: '📍 Ubicación o entorno', parcela: '🌳 Parcela o exterior', distribucion: '🏠 Distribución o espacio',
+  estado: '🔨 Estado o reforma', legal: '⚖️ Problemas legales o riesgos', vendida: '🚫 Vendida o retirada', otra: '🏆 Hemos elegido otra', otro: 'Otro'
+}
+/** «📍 Ubicación o entorno — "carretera muy ruidosa"» */
+export function discardLabel(h: { discard_category: DiscardCategory | null; discard_reason: string | null }) {
+  const c = h.discard_category && h.discard_category !== 'otro' ? DISCARD_CATS[h.discard_category] : null
+  const r = h.discard_reason?.trim()
+  return [c, r && `«${r}»`].filter(Boolean).join(' — ') || null
+}
+
 export type RejectReason = 'precio' | 'ubicacion' | 'parcela' | 'estado' | 'no_gusta' | 'otro'
 export const REJECT_REASONS: Record<RejectReason, string> = {
   precio: '💶 Precio', ubicacion: '📍 Ubicación', parcela: '🌳 Parcela pequeña', estado: '🔨 Estado o reforma', no_gusta: '👎 No nos gusta', otro: 'Otro'
@@ -349,7 +362,7 @@ export function useMudanza() {
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves, nice_to_haves').maybeSingle(),
-      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, reform, ref_value_cents, new_build, plot_m2, useful_m2, year_built, contact, advertiser, buyer_fee_kind, buyer_fee_pct, buyer_fee_cents, buyer_fee_vat, buyer_fee_note, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
+      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, reform, ref_value_cents, new_build, plot_m2, useful_m2, year_built, contact, advertiser, buyer_fee_kind, buyer_fee_pct, buyer_fee_cents, buyer_fee_vat, buyer_fee_note, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, discard_category, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
