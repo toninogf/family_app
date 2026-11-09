@@ -276,7 +276,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const costs = buyingCosts(h)
   const nPhotos = m.photos.filter(p => p.home_id === h.id).length
   const nLinks = (h.links?.length ?? 0) + (h.url ? 1 : 0)
-  const join = (...x: (string | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
+  const join = (...x: (string | number | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
   return {
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
