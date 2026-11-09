@@ -478,12 +478,12 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
       {/* 3. De un vistazo */}
+      <HomePrice h={h} m={m} />
       <QuickFacts h={h} m={m} onEdit={onEdit} />
       <HomeReforma h={h} m={m} householdId={householdId} />
       <HomeGastos h={h} m={m} />
 
       {/* 4. ¿Nos conviene? */}
-      <HomePrice h={h} m={m} />
       <HomeHealth h={h} m={m} householdId={householdId} />
       <HomeSchools h={h} m={m} />
 

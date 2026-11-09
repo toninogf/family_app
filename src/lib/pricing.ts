@@ -128,17 +128,23 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
   }
   const days = Math.floor((Date.now() - new Date(h.created_at).getTime()) / 86400000)
   if (days > 60) { open *= 0.98; reasons.push(`Lleváis ${days} días viéndolo anunciado: suele dar más margen`) }
+  // Una oferta por debajo de ~80 % de lo que piden casi nunca abre negociación: si la referencia sale tan baja,
+  // lo normal es que falle un dato (metros) o que esté muy caro; se limita y se avisa
+  let clamped = false
+  if (open < asking * 0.82) { open = asking * 0.82; clamped = true }
+  if (max < asking * 0.88) { max = asking * 0.88; clamped = true }
   open = round1k(Math.min(open, max))
   max = round1k(max)
 
   if (health.ocupacion?.s === 'bad') warnings.push('Puede estar alquilada u ocupada: no ofertéis hasta aclararlo.')
   if (health.vpo?.s === 'bad') warnings.push('Puede ser vivienda protegida: tiene precio máximo y requisitos para comprarla.')
   if (health.nota_simple?.s === 'bad') warnings.push('La nota simple tiene cargas: la oferta debe incluir que se cancelen antes o en la firma.')
+  if (clamped && fair != null) warnings.push(`El valor de referencia (${eur(fair / 100)}) sale un ${Math.round((1 - fair / asking) * 100)} % por debajo de lo que piden. Revisa los metros (¿son construidos? ¿cuenta toda la casa?): si están bien, está muy caro. La oferta se limita a no bajar más de un 18 %.`)
   if (!h.cadastre) warnings.push('Consulta el Catastro para comprobar los metros antes de ofertar.')
   if (h.advertiser !== 'particular' && !h.buyer_fee_kind) warnings.push('Pregunta a la inmobiliaria si cobra honorarios al comprador: se suman al coste.')
   if (!known) warnings.push('Valora la reforma (aunque sea «para entrar a vivir»): así todos los pisos se comparan con el mismo baremo.')
 
   const sources = refs.length + (h.cadastre ? 1 : 0)
-  const confidence = refs.length >= 2 && comps.length >= 2 ? 'alta' : sources >= 2 ? 'media' : 'baja'
+  const confidence = clamped ? 'baja' : refs.length >= 2 && comps.length >= 2 ? 'alta' : sources >= 2 ? 'media' : 'baja'
   return { asking, open, max, fair, fairReady, reform, fee: buyerFee(h) ?? 0, costs: purchaseMid(h), reformKnown: known, confidence, reasons, warnings }
 }
