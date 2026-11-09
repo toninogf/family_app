@@ -90,8 +90,8 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
     const hi = maxP.trim() ? parsePrice(maxP) : null
     const g = f.filter(h =>
       (town === 'all' || (town === 'none' ? !h.municipality : h.municipality === town)) &&
-      (lo == null || (h.price_cents != null && h.price_cents >= lo)) &&
-      (hi == null || (h.price_cents != null && h.price_cents <= hi)))
+      (lo == null || (readyPrice(h) != null && readyPrice(h)! >= lo)) &&
+      (hi == null || (readyPrice(h) != null && readyPrice(h)! <= hi)))
     const nullsLast = (x: number | null) => (x == null ? Number.MAX_SAFE_INTEGER : x)
     return g.slice().sort((a, b) =>
       sort === 'recientes' ? b.created_at.localeCompare(a.created_at)
@@ -171,8 +171,9 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
               <option value="none">Sin localidad</option>
             </select>
           </label>
+          <span className="text-[13px] font-semibold -mb-2">Precio para entrar a vivir (precio + reforma + gastos)</span>
           <div className="grid grid-cols-2 gap-3">
-            <TextField label="Precio desde (€)" inputMode="decimal" value={minP} onChange={e => setMinP(e.target.value)} placeholder="200.000" />
+            <TextField label="Desde (€)" inputMode="decimal" value={minP} onChange={e => setMinP(e.target.value)} placeholder="200.000" />
             <TextField label="Hasta (€)" inputMode="decimal" value={maxP} onChange={e => setMaxP(e.target.value)} placeholder="400.000" />
           </div>
           <label className="flex flex-col gap-1.5">
@@ -530,21 +531,26 @@ function TwoPrices({ h, budget }: { h: Home; budget: number | null }) {
   const t = reformTotal(h.reform, h)
   const costs = buyingCosts(h)
   const over = budget != null && ready != null ? ready - budget : null
+  const bad = over != null && over > 0
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <div className="rounded-2xl bg-card p-3 flex flex-col min-w-0">
-        <span className="text-[12px] text-muted">Piden</span>
-        <span className="text-[22px] font-bold leading-tight">{price(h.price_cents)}</span>
-        <span className="text-[11px] text-muted">sobre esto se oferta</span>
-      </div>
-      <div className={`rounded-2xl p-3 flex flex-col min-w-0 ${over != null && over > 0 ? 'bg-danger/10' : 'bg-accent-soft'}`}>
-        <span className="text-[12px] text-muted">Para entrar a vivir</span>
-        <span className={`text-[22px] font-bold leading-tight ${over != null && over > 0 ? 'text-danger' : 'text-accent'}`}>{price(ready)}</span>
-        <span className="text-[11px] text-muted truncate">
-          {[t ? `+${rangeK(t.lo, t.hi)} reforma` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs ? `+${kShort(costs)} gastos` : null].filter(Boolean).join(' · ')}
+    <div className="rounded-2xl bg-card p-3 flex flex-col gap-2">
+      <div className="flex justify-between items-baseline gap-2">
+        <span className="flex flex-col min-w-0">
+          <span className="text-[13px] text-muted">Piden</span>
+          <span className="text-[11px] text-muted">sobre esto se oferta</span>
         </span>
-        {over != null && <span className={`text-[11px] font-semibold ${over > 0 ? 'text-danger' : 'text-accent'}`}>{over > 0 ? `${kShort(over)} por encima del presupuesto` : `${kShort(-over)} por debajo del presupuesto`}</span>}
+        <span className="text-[24px] font-bold leading-tight shrink-0">{price(h.price_cents)}</span>
       </div>
+      <div className={`flex justify-between items-baseline gap-2 border-t border-line pt-2`}>
+        <span className="flex flex-col min-w-0">
+          <span className="text-[13px] text-muted">Para entrar a vivir</span>
+          <span className="text-[11px] text-muted">
+            {[t ? `+${rangeK(t.lo, t.hi)} reforma` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs ? `+${kShort(costs)} gastos` : null].filter(Boolean).join(' · ')}
+          </span>
+        </span>
+        <span className={`text-[24px] font-bold leading-tight shrink-0 ${bad ? 'text-danger' : over != null ? 'text-accent' : ''}`}>{price(ready)}</span>
+      </div>
+      {over != null && <span className={`text-[12px] font-semibold text-right -mt-1 ${bad ? 'text-danger' : 'text-accent'}`}>{bad ? `${kShort(over)} por encima del presupuesto` : `${kShort(-over)} por debajo del presupuesto`}</span>}
     </div>
   )
 }
