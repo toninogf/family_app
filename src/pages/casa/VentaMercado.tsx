@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
-import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, opinionPrompt, threshold, thermometer, valuation, type Condition } from '../../lib/venta'
+import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
 import { Field, SelectField } from '../../components/FormKit'
@@ -140,6 +140,7 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[12px] text-muted">El €/m² de cada uno se corrige por lo que le falta o le sobra frente al vuestro (exterior, estado, aire, baños, planta, terraza…). La búsqueda de los martes y viernes añade y vigila pisos; también puedes añadirlos a mano.</p>
+      <AiCompetitorSearch m={m} householdId={householdId} />
       {list.length === 0 && <p className="text-sm text-muted">Aún no hay pisos de la competencia.</p>}
       {list.map(c => {
         const adj = l ? adjustments(l, c) : []
@@ -326,6 +327,116 @@ function AiOpinion({ m }: { m: Mudanza }) {
         ))}
       </div>
       {note && <p role="status" className="text-[12px] text-muted">{note}</p>}
+    </section>
+  )
+}
+
+/** Buscar pisos parecidos con una IA: se le pide, se pega su respuesta, se revisan y se añaden */
+function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: string }) {
+  const [note, setNote] = useState('')
+  const [parsed, setParsed] = useState<CompParse | null>(null)
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [saveMarket, setSaveMarket] = useState(true)
+  const l = m.listing
+  if (!l) return null
+
+  async function ask(ai: 'chatgpt' | 'gemini' | 'claude') {
+    const prompt = competitorsPrompt(l!, m.competitors)
+    let copied = true
+    try { await navigator.clipboard.writeText(prompt) } catch { copied = false }
+    const q = prompt.length < 6000 ? encodeURIComponent(prompt) : ''
+    const target = ai === 'chatgpt' ? `https://chatgpt.com/${q ? `?q=${q}` : ''}` : ai === 'claude' ? `https://claude.ai/new${q ? `?q=${q}` : ''}` : 'https://gemini.google.com/app'
+    setNote(copied ? 'Petición copiada. Cuando conteste, copia su respuesta y vuelve a «Pegar respuesta de la IA».' : 'No se ha podido copiar: dale permiso al portapapeles.')
+    window.open(target, '_blank', 'noopener')
+  }
+  function load(t: string) {
+    const r = parseCompetitors(t)
+    setParsed(r)
+    if (r.error) { setNote(r.error); return }
+    // Por defecto, todos menos los que ya estaban con el mismo precio
+    setPicked(new Set(r.items.map((x, i) => [x, i] as const).filter(([x]) => !m.competitors.some(c => sameUrl(c.url, x.url) && c.price_cents === x.price_cents)).map(([, i]) => i)))
+    setNote(r.items.length ? `${r.items.length} piso${r.items.length > 1 ? 's' : ''} en la respuesta. Revisa y añade.` : 'La respuesta no trae pisos.')
+  }
+  async function paste() {
+    try { const t = await navigator.clipboard.readText(); setText(t); load(t) } catch { setNote('No puedo leer el portapapeles: pega la respuesta en el recuadro.') }
+  }
+  async function add() {
+    if (!parsed) return
+    setBusy(true)
+    let added = 0, updated = 0
+    for (const [i, x] of parsed.items.entries()) {
+      if (!picked.has(i)) continue
+      const cur = m.competitors.find(c => sameUrl(c.url, x.url))
+      const base = { ...x, rooms: x.rooms != null ? Math.round(x.rooms) : null, baths: x.baths != null ? Math.round(x.baths) : null, reform_year: x.reform_year != null ? Math.round(x.reform_year) : null }
+      if (cur) {
+        const changed = x.price_cents != null && x.price_cents !== cur.price_cents
+        await m.write('sale_competitors', {
+          status: x.status, price_cents: x.price_cents ?? cur.price_cents, last_seen: today(),
+          price_history: changed ? [...cur.price_history, { date: today(), cents: x.price_cents! }].slice(-60) : cur.price_history
+        }, cur.id)
+        updated++
+      } else {
+        await m.write('sale_competitors', {
+          household_id: householdId, ...base, first_price_cents: x.price_cents, source: 'ia',
+          price_history: x.price_cents != null ? [{ date: today(), cents: x.price_cents }] : []
+        })
+        added++
+      }
+    }
+    if (saveMarket && parsed.market) {
+      await m.write('sale_listing', { household_id: householdId, market: { ...(l!.market ?? {}), ...parsed.market, source: 'ia', at: today() } }, undefined, 'household_id')
+    }
+    setBusy(false)
+    setParsed(null); setText('')
+    setNote(`Hecho: ${added} añadido${added === 1 ? '' : 's'}${updated ? ` y ${updated} actualizado${updated === 1 ? '' : 's'}` : ''}.`)
+  }
+
+  return (
+    <section className="rounded-2xl bg-accent-soft p-3 flex flex-col gap-2">
+      <span className="font-bold text-[14px]">🔎 Buscar pisos parecidos con IA</span>
+      <div className="grid grid-cols-3 gap-2">
+        {([['chatgpt', 'ChatGPT'], ['gemini', 'Gemini'], ['claude', 'Claude']] as const).map(([k, lb]) => (
+          <button key={k} onClick={() => void ask(k)} className="min-h-10 rounded-xl border border-line bg-card text-sm font-semibold">{lb}</button>
+        ))}
+      </div>
+      <button onClick={() => void paste()} className="min-h-10 rounded-xl bg-accent text-white dark:text-bg text-sm font-semibold">📋 Pegar respuesta de la IA</button>
+      <textarea value={text} onChange={e => setText(e.target.value)} onBlur={() => text.trim() && load(text)} rows={2} placeholder="…o pégala aquí"
+        className="w-full px-3 py-2 rounded-xl border border-line bg-card text-[14px]" />
+      {note && <p role="status" className="text-[12px] text-muted">{note}</p>}
+      {parsed && parsed.items.length > 0 && l && (
+        <div className="flex flex-col gap-1.5">
+          {parsed.items.map((x, i) => {
+            const fake = { ...x, id: String(i), first_seen: '', last_seen: '', price_history: [], source: 'ia', first_price_cents: x.price_cents } as Competitor
+            const adj = adjustments(l, fake)
+            const raw = x.price_cents && x.size_m2 ? x.price_cents / x.size_m2 : null
+            const cur = m.competitors.find(c => sameUrl(c.url, x.url))
+            const on = picked.has(i)
+            return (
+              <label key={i} className={`rounded-xl bg-card p-2.5 flex gap-2 items-start ${on ? '' : 'opacity-60'}`}>
+                <input type="checkbox" checked={on} onChange={() => setPicked(p => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n })} className="w-5 h-5 mt-0.5" />
+                <span className="flex flex-col gap-0.5 min-w-0 flex-1">
+                  <span className="flex justify-between gap-2"><span className="text-[13px] font-semibold truncate">{x.title}</span><b className="text-[13px] shrink-0">{price(x.price_cents)}</b></span>
+                  <span className="text-[11px] text-muted">{[x.zone, x.size_m2 && `${x.size_m2} m²`, x.rooms != null && `${x.rooms} hab.`, x.baths != null && `${x.baths} baños`, x.floor, x.status !== 'activo' && x.status, cur && (cur.price_cents !== x.price_cents ? `ya lo tenéis: precio ${priceShort(cur.price_cents ?? 0)} → ${priceShort(x.price_cents ?? 0)}` : 'ya lo tenéis')].filter(Boolean).join(' · ')}</span>
+                  {raw != null && <span className="text-[12px]">{price(Math.round(raw))}/m² → <b>{price(Math.round(raw * (1 + adjTotal(adj) / 100)))}/m²</b> comparado con el vuestro</span>}
+                  {adj.length > 0 && <span className="flex gap-1 flex-wrap">{adj.map(a => <span key={a.label} className={`px-1.5 rounded text-[10px] ${a.pct > 0 ? 'bg-accent-soft text-accent' : 'bg-danger/10 text-danger'}`}>{a.label} {a.pct > 0 ? '+' : ''}{a.pct}%</span>)}</span>}
+                  {x.notes && <span className="text-[11px] text-muted">{x.notes}</span>}
+                </span>
+              </label>
+            )
+          })}
+          {parsed.market && (
+            <label className="flex items-center gap-2 text-[13px] min-h-10">
+              <input type="checkbox" checked={saveMarket} onChange={e => setSaveMarket(e.target.checked)} className="w-5 h-5" />
+              <span>Guardar también las referencias de la zona ({[parsed.market.paid_m2 && `pagado ${parsed.market.paid_m2} €/m²`, parsed.market.asking_m2 && `pedido ${parsed.market.asking_m2} €/m²`, parsed.market.avg_days && `${parsed.market.avg_days} días`].filter(Boolean).join(', ')})</span>
+            </label>
+          )}
+          <button onClick={() => void add()} disabled={busy || picked.size === 0} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg text-sm font-bold disabled:opacity-50">
+            {busy ? 'Añadiendo…' : `Añadir ${picked.size} piso${picked.size === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      )}
     </section>
   )
 }

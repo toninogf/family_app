@@ -276,3 +276,61 @@ export function opinionPrompt(o: {
   ]
   return lines.join('\n')
 }
+
+// ---------- Buscar pisos parecidos con una IA (y pegar su respuesta) ----------
+export type CompDraft = Omit<Competitor, 'id' | 'first_seen' | 'last_seen' | 'price_history' | 'source' | 'first_price_cents'>
+export type CompParse = { items: CompDraft[]; market: { paid_m2?: number; asking_m2?: number; avg_days?: number } | null; error?: string }
+
+export function competitorsPrompt(l: Listing, existing: Competitor[]) {
+  const ours = [
+    `${l.property_type ?? 'piso'} en ${[l.zone, l.municipality].filter(Boolean).join(', ')}`,
+    `${l.size_m2 ?? '¿?'} m², ${l.rooms ?? '¿?'} hab., ${l.baths ?? '¿?'} baños, planta ${l.floor ?? '¿?'}`,
+    `extras: ${l.features.join(', ') || '—'}`,
+    `reformado en ${l.reform_year ?? '¿?'}`, `precio ${l.price_cents ? Math.round(l.price_cents / 100).toLocaleString('es-ES') + ' €' : '¿?'}`
+  ].join('; ')
+  const known = existing.filter(c => c.url).map(c => `- ${c.url}`).join('\n')
+  return [
+    'Busca en idealista, fotocasa, pisos.com, habitaclia y webs de inmobiliarias pisos PARECIDOS a este, EN VENTA o VENDIDOS en los últimos meses, en la misma zona o barrio:',
+    ours,
+    'Parecidos: mismo tipo, ±25 % de m², habitaciones ±1. Hasta 10. No inventes datos: si no sabes algo, ponlo a null. Solo pisos que hayas visto de verdad, con su enlace.',
+    known ? `Ya los tenemos (no los repitas salvo que hayan cambiado de precio o se hayan vendido):\n${known}` : '',
+    'Busca también, si hay datos fiables y recientes del barrio: €/m² PAGADO en compraventas (portal del Notariado, penotariado.com), €/m² PEDIDO en portales y días medios de venta.',
+    'RESPONDE SOLO con este JSON (sin texto antes ni después):',
+    '{"pisos": [{"titulo": "", "url": "https://…", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": "1 frase: en qué se diferencia del nuestro"}], "zona": {"pagado_m2": null, "pedido_m2": null, "dias_venta": null}}',
+    'Precios y comunidad en euros (la comunidad, al mes). ruido y luz solo si el anuncio lo dice expresamente; si no, null.'
+  ].filter(Boolean).join('\n\n')
+}
+
+export function parseCompetitors(text: string): CompParse {
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const raw = fence ? fence[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)
+  let data: { pisos?: unknown[]; zona?: Record<string, unknown> }
+  try { data = JSON.parse(raw) } catch { return { items: [], market: null, error: 'No entiendo la respuesta: copia solo el bloque JSON que devuelve la IA.' } }
+  const num = (x: unknown) => { const n = typeof x === 'string' ? Number(x.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, '')) : Number(x); return Number.isFinite(n) && n > 0 ? n : null }
+  const str = (x: unknown, max = 160) => (typeof x === 'string' && x.trim() ? x.trim().slice(0, max) : null)
+  const one = <T extends string>(x: unknown, ok: readonly T[]) => (typeof x === 'string' && (ok as readonly string[]).includes(x) ? x as T : null)
+  const items: CompDraft[] = []
+  for (const p of (data.pisos ?? []) as Record<string, unknown>[]) {
+    const url = str(p.url, 500)
+    const title = str(p.titulo) ?? 'Piso parecido'
+    const features = (['exterior', 'aire', 'ascensor', 'terraza', 'balcon', 'garaje', 'trastero', 'portero'] as const).filter(k => p[k] === true) as string[]
+    if (p.piscina === true) features.push('piscina_comunitaria')
+    const estado = one(p.estado, ['nuevo', 'reformado', 'buen_estado', 'a_reformar'] as const)
+    if (estado === 'reformado') features.push('reformado')
+    const sit = p.situacion === 'vendido' ? 'vendido' : p.situacion === 'retirado' ? 'retirado' : 'activo'
+    const price = num(p.precio)
+    items.push({
+      title, url: url && /^https:\/\//.test(url) ? url : url ? url.replace(/^http:/, 'https:') : null, zone: str(p.zona, 80),
+      price_cents: price ? Math.round(price * 100) : null, size_m2: num(p.m2), rooms: num(p.habitaciones), baths: num(p.banos),
+      floor: str(p.planta, 40), features, reform_year: num(p.ano_reforma), condition: estado, status: sit,
+      community_fee_cents: num(p.comunidad) != null ? Math.round(num(p.comunidad)! * 100) : null,
+      heating_type: p.calefaccion_central === true ? 'central' : null, energy: one(p.certificado, ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const),
+      building_state: one(p.edificio, ['bien', 'ite_pendiente', 'obras_previstas'] as const), derrama_cents: num(p.derrama) != null ? Math.round(num(p.derrama)! * 100) : null,
+      noise: one(p.ruido, ['tranquila', 'normal', 'ruidosa'] as const), light: one(p.luz, ['mucha', 'normal', 'poca'] as const), notes: str(p.nota, 600)
+    })
+  }
+  const z = data.zona ?? {}
+  const market = { paid_m2: num(z.pagado_m2) ?? undefined, asking_m2: num(z.pedido_m2) ?? undefined, avg_days: num(z.dias_venta) ?? undefined }
+  return { items: items.slice(0, 20), market: market.paid_m2 || market.asking_m2 || market.avg_days ? market : null }
+}
+export const sameUrl = (a: string | null, b: string | null) => !!a && !!b && a.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/^https?:\/\/(www\.)?/, '').toLowerCase() === b.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/^https?:\/\/(www\.)?/, '').toLowerCase()
