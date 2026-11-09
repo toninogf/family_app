@@ -25,7 +25,8 @@ import { HomePrice } from './HomePrice'
 import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
 import { HomeGastos } from './HomeGastos'
 import { HomeSchools, useSchoolSummaries } from './HomeSchools'
-import { distLabel } from '../../lib/colegios'
+import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } from '../../lib/colegios'
+import { recommend } from '../../lib/pricing'
 import { HomeReforma } from './HomeReforma'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
@@ -209,7 +210,8 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
         </div>
       )}
 
-      {pickedHomes.length > 0 && <div className="h-16" aria-hidden="true" />}
+      {/* Hueco al final para que «+ Piso» (y la barra de comparar) no tapen la última tarjeta */}
+      <div className={pickedHomes.length > 0 ? 'h-40' : 'h-24'} aria-hidden="true" />
       {pickedHomes.length > 0 && (
         // Fija justo encima del botón «+ Piso» para que no se tapen
         <div className="fixed inset-x-5 mx-auto max-w-[34rem] bottom-[calc(max(env(safe-area-inset-bottom),8px)+152px)] z-10 flex items-center gap-2 bg-ink text-bg rounded-2xl p-2 pl-4 shadow-lg">
@@ -250,48 +252,113 @@ function StatusBadge({ s }: { s: HomeStatus }) {
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</span>
 }
 
+/** Título sin repetir la zona ni la localidad (ya salen en la línea 📍) */
+function shortTitle(h: Home) {
+  const drop = [h.zone, h.municipality].filter(Boolean).map(x => x!.trim().toLowerCase())
+  const parts = h.title.split(/\s+·\s+|\s+-\s+|,\s+/)
+  const kept = parts.filter((p, i) => i === 0 || !drop.includes(p.trim().toLowerCase()))
+  return kept.join(' · ').replace(/\s+(en|·)\s*$/i, '') || h.title
+}
+
+/** Colegio más cercano (primaria) para la tarjeta, cuando hay ubicación */
+function useNearestSchool(h: Home) {
+  const [s, setS] = useState<NearSchool | null>(null)
+  useEffect(() => {
+    if (h.lat == null || h.lng == null || h.status === 'descartado') return
+    let alive = true
+    nearbySchools(h.lat, h.lng).then(l => { if (alive) { const x = schoolSummary(l); setS(x.pubPri ?? x.closest ?? null) } }).catch(() => {})
+    return () => { alive = false }
+  }, [h.lat, h.lng, h.status])
+  return s
+}
+
 function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
   h: Home; m: Mudanza; cover: { url?: string; ad: boolean } | null; onOpen: () => void; picked: boolean; onPick: () => void
 }) {
   const checks = mustHaveCheck(h, m.criteria)
   const pm2 = perM2(h)
   const next = m.homeVisits.find(v => v.home_id === h.id && v.status === 'scheduled' && v.visit_date >= today())
-  const nPhotos = m.photos.filter(p => p.home_id === h.id).length
   const maps = h.maps_url || h.address || h.municipality ? mapsHref({ location: [h.address, h.municipality].filter(Boolean).join(', ') || h.zone, maps_url: h.maps_url }) : null
+  const school = useNearestSchool(h)
+  const ready = readyPrice(h)
+  const t = reformTotal(h.reform, h)
+  const costs = buyingCosts(h)
+  const budget = m.criteria?.max_price_cents ?? null
+  const over = budget != null && ready != null && ready > budget
+  const title = shortTitle(h)
+
+  // Descartado: en pequeño, sin foto, con el motivo
+  if (h.status === 'descartado') {
+    return (
+      <button onClick={onOpen} className="bg-card rounded-2xl px-4 py-3 text-left flex flex-col gap-0.5 opacity-70">
+        <span className="flex justify-between items-start gap-2">
+          <span className="text-[14px] font-semibold leading-snug min-w-0 truncate">{title}</span>
+          <StatusBadge s={h.status} />
+        </span>
+        <span className="text-[12px] text-muted truncate">
+          {[h.municipality, h.price_cents != null && `piden ${priceShort(h.price_cents)}`, ready != null && `${priceShort(ready)} para entrar`].filter(Boolean).join(' · ')}
+        </span>
+        {h.discard_reason && <span className="text-[12px] text-muted italic truncate">«{h.discard_reason}»</span>}
+      </button>
+    )
+  }
+
+  const fails = checks.filter(c => c.ok === false)
+  const unknown = checks.filter(c => c.ok == null).length
+  const nice = niceCount(h, m.criteria)
+  const rec = recommend(h, m.homes)
+  const facts = [h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`, pm2 && `${price(pm2)}/m²`].filter(Boolean)
+  const extra = [
+    school && `🏫 ${school.type_abbr === 'CP INF-PRI' ? 'CEIP' : school.ownership === 'publico' ? 'Público' : OWN_LABEL[school.ownership]} a ${distLabel(school.dist)}`,
+    next && `📅 Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`,
+    rec && `💡 Oferta ~${priceShort(rec.open)}`
+  ].filter(Boolean)
+
   return (
-    <div className={`bg-card rounded-2xl flex flex-col overflow-hidden ${h.status === 'descartado' ? 'opacity-60' : ''}`}>
+    <div className="bg-card rounded-2xl flex flex-col overflow-hidden">
     {cover && (
-      <button onClick={onOpen} aria-label={`Abrir ${h.title}`} className="block w-full aspect-[16/9] bg-bg">
+      <button onClick={onOpen} aria-label={`Abrir ${h.title}`} className="block w-full aspect-[2/1] bg-bg">
         {cover.url && <img src={cover.url} alt="" loading="lazy" className={`w-full h-full object-cover ${cover.ad ? 'object-top' : ''}`} />}
       </button>
     )}
     <button onClick={onOpen} className="p-4 text-left flex flex-col gap-2">
       <span className="flex justify-between items-start gap-2">
         <span className="flex flex-col gap-0.5 min-w-0">
-          <span className="text-[16px] font-bold leading-snug">{h.title}</span>
+          <span className="text-[16px] font-bold leading-snug">{title}</span>
           <span className={`text-[13px] font-semibold ${h.municipality ? 'text-accent' : 'text-muted'}`}>
             📍 {h.zone ? <span className="font-normal text-muted">{h.zone} · </span> : null}{h.municipality ?? 'Sin localidad'}
           </span>
         </span>
         <StatusBadge s={h.status} />
       </span>
-      <span className="text-[14px]">
-        <b>{price(h.price_cents)}</b>
-        <span className="text-muted">
-          {[h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`].filter(Boolean).map(x => ` · ${x}`).join('')}
+      <span className="flex flex-col gap-0.5">
+        <span className="flex justify-between items-baseline gap-2">
+          <span className="text-[13px] text-muted">Piden</span>
+          <span className="text-[17px] font-bold">{price(h.price_cents)}</span>
         </span>
+        {ready != null && (
+          <span className="flex justify-between items-baseline gap-2">
+            <span className="text-[13px] text-muted min-w-0 truncate">
+              Para entrar a vivir <span className="text-[11px]">· {[t ? `+${rangeK(t.lo, t.hi)} reforma` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma ¿?', costs ? `+${kShort(costs)} gastos` : null].filter(Boolean).join(' · ')}</span>
+            </span>
+            <span className={`text-[17px] font-bold shrink-0 ${over ? 'text-danger' : budget != null ? 'text-accent' : ''}`}>{price(ready)}</span>
+          </span>
+        )}
       </span>
-      <ReadyLine h={h} />
-      {checks.length > 0 && (
+      {facts.length > 0 && <span className="text-[13px] text-muted">{facts.join(' · ')}</span>}
+      {(checks.length > 0 || nice.want.length > 0) && (
+        <span className="text-[13px]">
+          {checks.length > 0 && <span className={fails.length ? '' : 'text-accent font-semibold'}>🎯 Cumple {checks.length - fails.length - unknown} de {checks.length}{unknown ? ` (${unknown} sin dato)` : ''}</span>}
+          {checks.length > 0 && nice.want.length > 0 && <span className="text-muted"> · </span>}
+          {nice.want.length > 0 && <span>⭐ {nice.got.length} de {nice.want.length} que valoramos</span>}
+        </span>
+      )}
+      {fails.length > 0 && (
         <span className="flex gap-1 flex-wrap">
-          {checks.map(c => <Chip key={c.label} tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>)}
+          {fails.map(c => <Chip key={c.label} tone="bad">✗ {c.label}</Chip>)}
         </span>
       )}
-      {(next || nPhotos > 0 || h.minutes_to_school != null) && (
-        <span className="text-[13px] text-muted">
-          {[next && `Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`, h.minutes_to_school != null && `${h.minutes_to_school} min al cole`, nPhotos > 0 && `${nPhotos} foto${nPhotos > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}
-        </span>
-      )}
+      {extra.length > 0 && <span className="text-[13px] text-muted">{extra.join(' · ')}</span>}
     </button>
     {h.links?.length > 0 && <div className="px-4 pb-3 -mt-1"><LinkChips links={h.links} ourPrice={h.price_cents} /></div>}
     <div className="flex border-t border-line">
@@ -558,18 +625,6 @@ function TwoPrices({ h, budget }: { h: Home; budget: number | null }) {
 /** «41,5 k€» */
 const kShort = (c: number) => `${(c / 100000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} k€`
 
-/** «🔨 +35 k€ de reforma → 640.000 € para entrar a vivir» (o «✅ para entrar a vivir») */
-function ReadyLine({ h }: { h: Home }) {
-  const t = reformTotal(h.reform, h)
-  const costs = buyingCosts(h)
-  if (h.price_cents == null) return null
-  const parts = [t && `${rangeK(t.lo, t.hi)} de reforma`, costs && `${kShort(costs)} de gastos`].filter(Boolean).join(' + ')
-  return (
-    <span className="text-[13px]">
-      {h.reform?.state === 'listo' ? '✅ ' : t ? '🔨 ' : '🧾 '}<span className="text-muted">+{parts} →</span> <b>{price(readyPrice(h))}</b> <span className="text-muted">para entrar a vivir</span>
-    </span>
-  )
-}
 
 /** «Qué buscamos» en la portada: lo básico siempre a la vista y el detalle al desplegar */
 function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => void }) {
