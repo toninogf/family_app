@@ -524,21 +524,35 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
       {/* 6. Contacto */}
       <ContactCard h={h} onEdit={() => onEdit('contacto')} />
 
-      {/* 7. Más */}
-      <section className="flex flex-col gap-2">
-        <button onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen} className="flex justify-between items-center min-h-11 text-left">
-          <span className="font-bold text-[15px]">Más: fotos, capturas y enlaces</span>
+      {/* 7. Enlaces (siempre a la vista) */}
+      <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <span className="font-bold text-[15px]">🔗 Enlaces{(h.links?.length ?? 0) + (h.url ? 1 : 0) > 0 ? ` (${(h.links?.length ?? 0) + (h.url ? 1 : 0)})` : ''}</span>
+          <button onClick={() => onEdit()} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>
+        </div>
+        {h.url && (
+          <a href={h.url} target="_blank" rel="noopener noreferrer" className="min-h-11 px-3 rounded-xl bg-bg flex items-center gap-2 text-[14px] font-semibold text-accent">
+            <span className="flex-1 min-w-0 truncate">⭐ {portalName(h.url) ?? 'Anuncio'} <span className="text-muted font-normal">· principal</span></span>
+            <span className="shrink-0">{price(h.price_cents)} ↗</span>
+          </a>
+        )}
+        {h.links?.length > 0 ? <LinkChips links={h.links} ourPrice={h.price_cents} big /> : !h.url && <p className="text-[13px] text-muted">Sin enlaces. Añádelos con ✏️ (otros portales, web de la inmobiliaria…).</p>}
+      </section>
+
+      {/* 8. Fotos y capturas */}
+      <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
+        <button onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen} className="flex justify-between items-center min-h-9 text-left">
+          <span className="font-bold text-[15px]">📷 Fotos y capturas ({m.photos.filter(p => p.home_id === h.id).length})</span>
           <span className="text-muted text-lg" aria-hidden="true">{moreOpen ? '▾' : '▸'}</span>
         </button>
         {moreOpen && (
           <div className="flex flex-col gap-4">
             <Photos h={h} m={m} householdId={householdId} kind="foto" />
             <Photos h={h} m={m} householdId={householdId} kind="anuncio" />
-            {h.links?.length > 0 && <LinkChips links={h.links} ourPrice={h.price_cents} big />}
-            <button onClick={() => onEdit()} className="self-start min-h-11 px-4 rounded-xl border border-line text-sm font-semibold">✏️ Editar todos los datos</button>
           </div>
         )}
       </section>
+      <button onClick={() => onEdit()} className="self-start min-h-11 px-4 rounded-xl border border-line text-sm font-semibold">✏️ Editar todos los datos</button>
       {/* Borrar, siempre a mano al final de la ficha */}
       <div className="flex flex-col gap-1 border-t border-line pt-3">
         <ConfirmDelete label="🗑️ Borrar esta ficha (con sus visitas, fotos y notas)" confirming={confirming} setConfirming={setConfirming}
