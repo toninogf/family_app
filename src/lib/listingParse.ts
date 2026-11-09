@@ -48,6 +48,8 @@ export type ListingData = {
   asking_m2_note?: string
   /** Detalle de las placas solares (potencia, batería…) */
   solar_note?: string
+  /** Honorarios de la inmobiliaria a cargo del comprador */
+  buyer_fee?: { kind: 'no' | 'pct' | 'fijo'; pct?: number; eur?: number; vat_included?: boolean; note?: string }
   /** Estado y reforma que propone la IA */
   reform?: { state?: import('./reforma').ReformState; keys: string[]; note?: string }
   advertiser?: 'agencia' | 'particular'
@@ -271,6 +273,7 @@ AÑO: (de construcción)
 RESUMEN: (dos frases con lo más destacable)
 ANUNCIANTE: (agencia o particular)
 AGENCIA: (nombre de la inmobiliaria, si es agencia)
+HONORARIOS: (¿cobra la inmobiliaria honorarios al COMPRADOR? Mira el anuncio y la web de la agencia, que a veces lo dice en la letra pequeña: «no» si lo pagan los vendedores o dice «sin comisión para el comprador»; si cobra, el % o el importe y si es «+ IVA» o «IVA incluido». Pon «no consta» si no lo encuentras.)
 CONTACTO: (nombre de la persona de contacto)
 TELEFONO:
 EMAIL:
@@ -335,13 +338,13 @@ export function photoUrls(raw: string): string[] {
 }
 
 const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'SISTEMA', 'CLIMA', 'AÑO', 'ANO', 'RESUMEN',
-  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO', 'PORTALES', 'SOLAR', 'REFORMA']
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO', 'PORTALES', 'SOLAR', 'REFORMA', 'HONORARIOS']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO|PORTALES|SOLAR|REFORMA'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO|PORTALES|SOLAR|REFORMA|HONORARIOS'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -381,6 +384,7 @@ export function parseAiBlock(raw: string): ListingData | null {
       out.solar_note = values.SOLAR.slice(0, 200)
     }
   }
+  if (values.HONORARIOS) { const f = parseFeeLine(values.HONORARIOS); if (f) out.buyer_fee = f }
   if (values.REFORMA) { const r = parseReformLine(values.REFORMA); if (r) out.reform = r }
   const cert = values.CERTIFICADO?.match(/\b([A-G])\b/i); if (cert) out.energy = cert[1].toUpperCase()
   const hType = values.SISTEMA && heatingFrom(values.SISTEMA); if (hType) out.heating_type = hType
@@ -474,4 +478,24 @@ export function coolingFrom(v: string): import('./mudanza').Cooling | undefined 
   if (/^(no|sin|ninguno|no tiene)\b/.test(t)) return 'no'
   if (/^s[ií]\b|aire acondicionado|climatizaci/.test(t)) return 'si'
   return undefined
+}
+
+/** Lee la línea HONORARIOS de la IA: «no» / «3 % + IVA» / «5.000 € IVA incluido» */
+export function parseFeeLine(v: string): ListingData['buyer_fee'] | null {
+  const t = v.trim()
+  if (!t || /no consta|desconoc|sin datos|no se indica|no lo dice/i.test(t)) return null
+  const vat_included = /iva incluido|con iva/i.test(t) || undefined
+  const note = t.length > 25 ? t.slice(0, 200) : undefined
+  const pct = t.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*%/)
+  if (pct) {
+    const n = Number(pct[1].replace(',', '.'))
+    if (n > 0 && n <= 10) return { kind: 'pct', pct: n, vat_included, note }
+  }
+  const eur = t.match(/(\d{1,3}(?:\.\d{3})+|\d{3,6})(?:,\d{2})?\s*(?:€|euros)/i)
+  if (eur) {
+    const n = Number(eur[1].replace(/\./g, ''))
+    if (n > 0 && n < 200000) return { kind: 'fijo', eur: n, vat_included, note }
+  }
+  if (/^no\b|vendedor|propiedad|sin (comisi[oó]n|honorarios)|0\s*%/i.test(t)) return { kind: 'no', note }
+  return null
 }

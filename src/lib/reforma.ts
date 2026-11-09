@@ -143,9 +143,28 @@ export function activeItems(r: Reform | null | undefined) {
 
 /** Coste estimado de la reforma (céntimos, punto medio) o 0 si no hay que reformar o no se sabe */
 export const reformMid = (h: HomeLike & { reform?: Reform | null }) => reformTotal(h.reform, h)?.mid ?? 0
-/** Precio para entrar a vivir = precio + reforma (céntimos) */
-export function readyPrice(h: HomeLike & { price_cents: number | null; reform?: Reform | null }) {
-  return h.price_cents == null ? null : h.price_cents + reformMid(h)
+type FeeLike = { buyer_fee_kind?: 'no' | 'pct' | 'fijo' | null; buyer_fee_pct?: number | string | null; buyer_fee_cents?: number | null; buyer_fee_vat?: boolean }
+export const FEE_VAT = 0.21
+/** Honorarios de la inmobiliaria que paga el comprador, con IVA si va aparte (céntimos). null si no se sabe */
+export function buyerFee(h: FeeLike & { price_cents?: number | null }, onPrice?: number | null): number | null {
+  if (!h.buyer_fee_kind) return null
+  if (h.buyer_fee_kind === 'no') return 0
+  const vat = h.buyer_fee_vat === false ? 1 : 1 + FEE_VAT
+  if (h.buyer_fee_kind === 'fijo') return h.buyer_fee_cents != null ? Math.round(h.buyer_fee_cents * vat) : null
+  const base = onPrice ?? h.price_cents
+  return h.buyer_fee_pct != null && base != null ? Math.round(base * Number(h.buyer_fee_pct) / 100 * vat) : null
+}
+/** «3 % + IVA» / «6.000 € + IVA» / «sin honorarios» */
+export function feeLabel(h: FeeLike) {
+  if (!h.buyer_fee_kind) return null
+  if (h.buyer_fee_kind === 'no') return 'sin honorarios para el comprador'
+  const vat = h.buyer_fee_vat === false ? ' (IVA incluido)' : ' + IVA'
+  if (h.buyer_fee_kind === 'pct') return h.buyer_fee_pct != null ? `${Number(h.buyer_fee_pct).toLocaleString('es-ES')} %${vat}` : '¿%?'
+  return h.buyer_fee_cents != null ? `${Math.round(h.buyer_fee_cents / 100).toLocaleString('es-ES')} €${vat}` : '¿importe?'
+}
+/** Precio para entrar a vivir = precio + reforma + honorarios del comprador (céntimos) */
+export function readyPrice(h: HomeLike & FeeLike & { price_cents: number | null; reform?: Reform | null }) {
+  return h.price_cents == null ? null : h.price_cents + reformMid(h) + (buyerFee(h) ?? 0)
 }
 /** ¿Se ha valorado la reforma? (estado puesto o alguna partida) */
 export const reformKnown = (r: Reform | null | undefined) => !!r && (!!r.state || !!r.items?.length)

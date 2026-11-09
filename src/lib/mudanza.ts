@@ -107,6 +107,12 @@ export type Home = {
   year_built: number | null
   contact: string | null
   advertiser: 'agencia' | 'particular' | null
+  /** Honorarios de la inmobiliaria a cargo del comprador */
+  buyer_fee_kind: 'no' | 'pct' | 'fijo' | null
+  buyer_fee_pct: number | string | null
+  buyer_fee_cents: number | null
+  buyer_fee_vat: boolean
+  buyer_fee_note: string | null
   agency: string | null
   contact_phone: string | null
   contact_email: string | null
@@ -311,7 +317,7 @@ export function useMudanza() {
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves, nice_to_haves').maybeSingle(),
-      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, reform, plot_m2, useful_m2, year_built, contact, advertiser, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
+      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, reform, plot_m2, useful_m2, year_built, contact, advertiser, buyer_fee_kind, buyer_fee_pct, buyer_fee_cents, buyer_fee_vat, buyer_fee_note, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),

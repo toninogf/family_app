@@ -39,10 +39,10 @@ export function HomePrice({ h, m, compact }: { h: Home; m: Mudanza; compact?: bo
           <span className="text-[16px] font-bold">{price(r.asking)}</span>
         </div>
       </div>
-      {r.reform > 0 && (
+      {r.reform + r.fee > 0 && (
         <p className="text-[13px] rounded-xl bg-bg px-3 py-2 flex justify-between gap-2">
-          <span className="text-muted">Para entrar a vivir: {price(r.asking)} + reforma ~{price(r.reform)}</span>
-          <b className="shrink-0">{price(r.asking + r.reform)}</b>
+          <span className="text-muted">Para entrar a vivir: {price(r.asking)}{r.reform ? ` + reforma ~${price(r.reform)}` : ''}{r.fee ? ` + honorarios ${price(r.fee)}` : ''}</span>
+          <b className="shrink-0">{price(r.asking + r.reform + r.fee)}</b>
         </p>
       )}
       {r.fair != null && <p className="text-[13px]">Valor de referencia estimado: <b>{price(r.fair)}</b>{r.reform > 0 && r.fairReady != null ? <span className="text-muted"> (reformado ~{price(r.fairReady)})</span> : null}</p>}

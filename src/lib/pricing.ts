@@ -2,7 +2,7 @@
 // Es orientativo: combina referencias de la zona, los pisos parecidos que habéis guardado y los riesgos detectados.
 import type { Home } from './mudanza'
 import type { Health } from './health'
-import { readyPrice, reformKnown, reformMid } from './reforma'
+import { buyerFee, readyPrice, reformKnown, reformMid } from './reforma'
 
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 const eur = (n: number) => `${Math.round(n).toLocaleString('es-ES')} €`
@@ -35,7 +35,7 @@ export function zoneLine(h: Home) {
 export type Recommendation = {
   asking: number; open: number; max: number; fair: number | null
   /** Reforma estimada (céntimos) y lo que valdría ya reformado */
-  reform: number; fairReady: number | null; reformKnown: boolean
+  reform: number; fee: number; fairReady: number | null; reformKnown: boolean
   confidence: 'alta' | 'media' | 'baja'; reasons: string[]; warnings: string[]
 }
 
@@ -104,8 +104,9 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
     if (adj.length) reasons.push(`Ajustes: ${adj.map(([a, l]) => `${l} ${a > 0 ? '+' : ''}${Math.round(a * 100)} %`).join(', ')}`)
     perM2 *= 1 + total
     fairReady = Math.round(perM2 * m2 * 100)
-    fair = fairReady - reform
-    if (reform) reasons.push(`Para entrar a vivir valdría ~${eur(fairReady / 100)}; menos la reforma estimada (~${eur(reform / 100)}) queda en ~${eur(fair / 100)} tal cual está`)
+    const fee = buyerFee(h) ?? 0
+    fair = fairReady - reform - fee
+    if (reform || fee) reasons.push(`Para entrar a vivir valdría ~${eur(fairReady / 100)}; menos ${[reform && `la reforma estimada (~${eur(reform / 100)})`, fee && `los honorarios de la inmobiliaria (~${eur(fee / 100)})`].filter(Boolean).join(' y ')} queda en ~${eur(fair / 100)} tal cual está`)
   } else {
     warnings.push('Faltan referencias de la zona o pisos parecidos: pídeselo a la IA (precio de la zona) y guarda más pisos de esa localidad.')
   }
@@ -133,9 +134,10 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
   if (health.vpo?.s === 'bad') warnings.push('Puede ser vivienda protegida: tiene precio máximo y requisitos para comprarla.')
   if (health.nota_simple?.s === 'bad') warnings.push('La nota simple tiene cargas: la oferta debe incluir que se cancelen antes o en la firma.')
   if (!h.cadastre) warnings.push('Consulta el Catastro para comprobar los metros antes de ofertar.')
+  if (h.advertiser !== 'particular' && !h.buyer_fee_kind) warnings.push('Pregunta a la inmobiliaria si cobra honorarios al comprador: se suman al coste.')
   if (!known) warnings.push('Valora la reforma (aunque sea «para entrar a vivir»): así todos los pisos se comparan con el mismo baremo.')
 
   const sources = refs.length + (h.cadastre ? 1 : 0)
   const confidence = refs.length >= 2 && comps.length >= 2 ? 'alta' : sources >= 2 ? 'media' : 'baja'
-  return { asking, open, max, fair, fairReady, reform, reformKnown: known, confidence, reasons, warnings }
+  return { asking, open, max, fair, fairReady, reform, fee: buyerFee(h) ?? 0, reformKnown: known, confidence, reasons, warnings }
 }

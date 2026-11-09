@@ -11,7 +11,7 @@ import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../compone
 import DocFiles, { openDocFile } from '../../components/DocFiles'
 import { Fold, saleNet } from './VentaGestion'
 import { HomePrice } from './HomePrice'
-import { reformTotal } from '../../lib/reforma'
+import { buyerFee, feeLabel, reformTotal } from '../../lib/reforma'
 
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const pct = (n: number) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 2 })} %`
@@ -684,6 +684,15 @@ function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra;
   }
   // La reforma estimada en Buscamos (punto medio) pasa a la línea «Reforma»
   const reformT = reformTotal(home.reform, home)
+  // Honorarios de la inmobiliaria al comprador, sobre el precio de compra
+  const fee = buyPrice != null ? buyerFee(home, buyPrice) : null
+  function bringFee() {
+    if (!fee) return
+    const v = priceInput(fee)
+    const i = costs.findIndex(x => /honorario|comisi[oó]n|inmobiliaria/i.test(x.label))
+    const next = i >= 0 ? costs.map((x, j) => (j === i ? { ...x, amount: v } : x)) : [...costs, { label: 'Honorarios inmobiliaria', amount: v }]
+    setCosts(next); void save(next)
+  }
   function bringReform() {
     if (!reformT) return
     const v = priceInput(reformT.mid)
@@ -720,6 +729,8 @@ function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra;
           {costs.length < 20 && <button type="button" onClick={() => setCosts([...costs, { label: '', amount: '' }])} className="flex-1 min-h-10 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir gasto</button>}
           {buyPrice != null && <button type="button" onClick={itp} className="min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">ITP al 6 %</button>}
         </div>
+        {fee ? <button type="button" onClick={bringFee} className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">💼 Honorarios inmobiliaria ({feeLabel(home)} → {price(fee)})</button> : null}
+        {home.advertiser !== 'particular' && !home.buyer_fee_kind && <p className="text-[12px] text-[#C77A12]">💼 ¿Cobra la inmobiliaria honorarios al comprador? Apúntalo en el contacto del piso (Buscamos) para sumarlo aquí.</p>}
         {reformT && <button type="button" onClick={bringReform} className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">🔨 Reforma estimada (~{price(reformT.mid)})</button>}
         <p className="text-[11px] text-muted">En la Comunidad de Madrid el ITP general de vivienda usada es el 6 %; hay reducciones en algunos casos (por ejemplo familia numerosa o jóvenes). Confirmadlo con la gestoría.</p>
       </fieldset>

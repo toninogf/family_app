@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { parsePrice, price, priceInput, uploadDocFiles, type Home, type Mudanza } from '../../lib/mudanza'
 import {
   DEFAULT_CONTINGENCY, GROUP_LABEL, IN_INTEGRAL, PARTIDA, PARTIDAS, REFORM_STATE, STATE_ITEMS, TIER, UNIT_LABEL,
-  itemCost, rangeK, readyPrice, reformKnown, reformTotal, suggestions,
+  buyerFee, itemCost, rangeK, readyPrice, reformKnown, reformTotal, suggestions,
   type Reform, type ReformItem, type ReformState, type Tier
 } from '../../lib/reforma'
 import { Sheet, TextArea } from '../../components/Sheet'
@@ -51,7 +51,7 @@ export function HomeReforma({ h, m, householdId }: { h: Home; m: Mudanza; househ
           {total && <span className="text-[13px]">Coste estimado: <b>{rangeK(total.lo, total.hi)}</b></span>}
           {ready != null && (
             <span className="text-[13px] rounded-xl bg-bg px-3 py-2 mt-1 flex justify-between gap-2">
-              <span className="text-muted">Para entrar a vivir</span>
+              <span className="text-muted">Para entrar a vivir{(buyerFee(h) ?? 0) > 0 ? ' (con honorarios)' : ''}</span>
               <b>{price(ready)}</b>
             </span>
           )}
@@ -77,7 +77,8 @@ function ReformaSheet({ h, m, householdId, onClose }: { h: Home; m: Mudanza; hou
   const total = reformTotal(r, h)
   const sugg = suggestions({ ...h, reform: r })
   const integral = items.some(i => i.k === 'integral')
-  const ready = h.price_cents != null ? h.price_cents + (total?.mid ?? 0) : null
+  const fee = buyerFee(h) ?? 0
+  const ready = h.price_cents != null ? h.price_cents + (total?.mid ?? 0) + fee : null
 
   const setItems = (next: ReformItem[]) => setR(x => ({ ...x, items: next }))
   const patch = (k: string, p: Partial<ReformItem>) => setItems(items.map(i => (i.k === k ? clean({ ...i, ...p }) : i)))
@@ -200,7 +201,7 @@ function ReformaSheet({ h, m, householdId, onClose }: { h: Home; m: Mudanza; hou
             <div className="flex justify-between text-[13px]"><span className="text-muted">Obra</span><span>{rangeK(total.works.lo, total.works.hi)}</span></div>
             {total.extras.map(e => <div key={e.label} className="flex justify-between text-[13px]"><span className="text-muted">{e.label}</span><span>{rangeK(e.lo, e.hi)}</span></div>)}
             <div className="flex justify-between text-[15px] font-bold border-t border-line pt-1.5"><span>Total reforma</span><span>{rangeK(total.lo, total.hi)}</span></div>
-            {ready != null && <div className="flex justify-between text-[14px] font-semibold text-accent"><span>Para entrar a vivir (precio + reforma)</span><span>{price(ready)}</span></div>}
+            {ready != null && <div className="flex justify-between text-[14px] font-semibold text-accent"><span>Para entrar a vivir (precio + reforma{fee ? ' + honorarios' : ''})</span><span>{price(ready)}</span></div>}
             <div className="flex gap-2 items-center flex-wrap mt-1">
               <label className="flex items-center gap-1.5 text-[13px]">
                 <span className="text-muted">Imprevistos</span>

@@ -22,7 +22,7 @@ import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
 import { aiStatus, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
-import { mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
+import { buyerFee, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
 import { HomeReforma } from './HomeReforma'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
@@ -525,9 +525,11 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }
 /** «🔨 +35 k€ de reforma → 640.000 € para entrar a vivir» (o «✅ para entrar a vivir») */
 function ReadyLine({ h }: { h: Home }) {
   const t = reformTotal(h.reform, h)
-  if (h.reform?.state === 'listo') return <span className="text-[13px] text-accent">✅ Para entrar a vivir</span>
-  if (!t || h.price_cents == null) return null
-  return <span className="text-[13px]">🔨 <span className="text-muted">+{rangeK(t.lo, t.hi)} de reforma →</span> <b>{price(readyPrice(h))}</b> <span className="text-muted">para entrar a vivir</span></span>
+  const fee = buyerFee(h) ?? 0
+  if (h.price_cents == null) return null
+  if (!t && !fee) return h.reform?.state === 'listo' ? <span className="text-[13px] text-accent">✅ Para entrar a vivir</span> : null
+  const parts = [t && `${rangeK(t.lo, t.hi)} de reforma`, fee && `${price(fee)} de honorarios`].filter(Boolean).join(' y ')
+  return <span className="text-[13px]">{t ? '🔨' : '💼'} <span className="text-muted">+{parts} →</span> <b>{price(readyPrice(h))}</b> <span className="text-muted">para entrar a vivir</span></span>
 }
 
 /** «Qué buscamos» en la portada: lo básico siempre a la vista y el detalle al desplegar */
@@ -689,7 +691,7 @@ function VisitSummary({ v, members }: { v: HomeVisit; members: Member[] }) {
 }
 
 function ContactCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
-  const has = h.contact || h.agency || h.contact_phone || h.contact_email || h.advertiser || h.listing_ref
+  const has = h.contact || h.agency || h.contact_phone || h.contact_email || h.advertiser || h.listing_ref || h.buyer_fee_kind
   return (
     <section className="flex flex-col gap-2 bg-card rounded-2xl p-3">
       <div className="flex justify-between items-center">
@@ -704,6 +706,13 @@ function ContactCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
             {h.contact ? `${h.advertiser || h.agency ? ' · ' : ''}${h.contact}` : ''}
           </p>
           {h.listing_ref && <p className="text-xs text-muted">Referencia del anuncio: {h.listing_ref}</p>}
+          {h.advertiser !== 'particular' && (
+            <p className={`text-[13px] ${h.buyer_fee_kind ? '' : 'text-[#C77A12]'}`}>
+              💼 Honorarios para el comprador: {h.buyer_fee_kind ? <b>{feeLabel(h)}</b> : 'sin preguntar'}
+              {(buyerFee(h) ?? 0) > 0 ? <span className="text-muted"> · ~{price(buyerFee(h))} con IVA</span> : null}
+              {h.buyer_fee_note ? <span className="block text-xs text-muted">{h.buyer_fee_note}</span> : null}
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {h.contact_phone && <a href={`tel:${h.contact_phone.replace(/[^\d+]/g, '')}`} className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">📞 {h.contact_phone}</a>}
             {h.contact_phone && <a href={`https://wa.me/${waNumber(h.contact_phone)}`} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-sm font-semibold flex items-center">WhatsApp</a>}
@@ -998,6 +1007,11 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   const [phone, setPhone] = useState(home?.contact_phone ?? '')
   const [email, setEmail] = useState(home?.contact_email ?? '')
   const [listingRef, setListingRef] = useState(home?.listing_ref ?? '')
+  const [feeKind, setFeeKind] = useState<'no' | 'pct' | 'fijo' | null>(home?.buyer_fee_kind ?? null)
+  const [feePct, setFeePct] = useState(home?.buyer_fee_pct != null ? String(Number(home.buyer_fee_pct)).replace('.', ',') : '')
+  const [feeAmount, setFeeAmount] = useState(priceInput(home?.buyer_fee_cents))
+  const [feeVat, setFeeVat] = useState(home?.buyer_fee_vat ?? true)
+  const [feeNote, setFeeNote] = useState(home?.buyer_fee_note ?? '')
   const [notes, setNotes] = useState(home?.notes ?? '')
   // La reforma que proponga la IA (solo se guarda si la IA ha dicho algo; el resto se edita en la ficha)
   const [reform, setReform] = useState<Reform | null>(null)
@@ -1055,6 +1069,14 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
     f.put('calefacción', heating, eur(d.heating_eur), setHeating)
     f.put('notas', notes, d.notes, setNotes, { diff: false })
     f.put('anunciante', advertiser, d.advertiser, v => setAdvertiser(v as 'agencia' | 'particular'))
+    if (d.buyer_fee && !feeKind) {
+      setFeeKind(d.buyer_fee.kind)
+      if (d.buyer_fee.pct != null) setFeePct(String(d.buyer_fee.pct).replace('.', ','))
+      if (d.buyer_fee.eur != null) setFeeAmount(priceInput(Math.round(d.buyer_fee.eur * 100)))
+      if (d.buyer_fee.vat_included) setFeeVat(false)
+      if (d.buyer_fee.note) setFeeNote(`IA: ${d.buyer_fee.note}`.slice(0, 300))
+      f.filled.push('honorarios')
+    }
     f.put('agencia', agency, d.agency?.slice(0, 120), setAgency)
     f.put('contacto', contact, d.contact?.slice(0, 120), setContact)
     f.put('teléfono', phone, d.phone?.slice(0, 30), setPhone)
@@ -1087,7 +1109,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   const missingForAi = SECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([k, v]) => !v.trim() && !['mapa', 'minutos al cole', 'anunciante'].includes(k)).map(([k]) => k)
 
   const dirty = useDirty({ title, url, amount, m2, useful, plot, year, rooms, baths, floor, zone, province, municipality, address, maps, features, fee, ibi, power, water, heating,
-    energy, heatType, cooling, minutes, contact, advertiser, agency, phone, email, listingRef, notes, links, shots: shots.length, ad: adPhotos.length, picked, health, cadRef, market })
+    energy, heatType, cooling, minutes, contact, advertiser, agency, phone, email, listingRef, feeKind, feePct, feeAmount, feeVat, feeNote, notes, links, shots: shots.length, ad: adPhotos.length, picked, health, cadRef, market })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
   function fromText(text: string, intro = 'Rellenado') {
@@ -1201,6 +1223,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
       advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
       contact_email: email.trim() || null, listing_ref: listingRef.trim() || null,
+      buyer_fee_kind: advertiser === 'particular' ? null : feeKind, buyer_fee_vat: feeVat, buyer_fee_note: feeNote.trim() || null,
+      buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Math.min(10, Math.max(0, Number(feePct.replace(',', '.')) || 0)) : null,
+      buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null,
       health, cadastral_ref: cadRef, market, ...(reform ? { reform } : {}),
       links: mergeLinks(links.filter(l => l.url.trim()).map(l => ({ ...l, label: l.label.trim(),
         url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim().replace(/^http:/i, 'https:') : `https://${l.url.trim()}` })), sourcesToLinks(sources, picked), [cleanUrl])
@@ -1379,6 +1404,22 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <Field label="Referencia" value={listingRef} onChange={e => setListingRef(e.target.value)} maxLength={60} placeholder="Ref. del anuncio" flash={fl('referencia')} />
           </div>
           <Field label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} flash={fl('email')} />
+          {advertiser !== 'particular' && (
+            <div className="flex flex-col gap-3 rounded-2xl bg-card p-3">
+              <SelectField<'no' | 'pct' | 'fijo'> label="💼 Honorarios para el comprador" value={feeKind} onChange={setFeeKind} empty="Sin preguntar" flash={fl('honorarios')}
+                options={[{ value: 'no', label: 'No cobra al comprador' }, { value: 'pct', label: 'Un % del precio' }, { value: 'fijo', label: 'Un importe fijo' }]} />
+              {feeKind === 'pct' && <Field label="Porcentaje" inputMode="decimal" value={feePct} onChange={e => setFeePct(e.target.value)} suffix="%" placeholder="3" />}
+              {feeKind === 'fijo' && <Field label="Importe" inputMode="decimal" value={feeAmount} onChange={e => setFeeAmount(e.target.value)} onBlur={e => setFeeAmount(thousands(e.target.value))} suffix="€" />}
+              {(feeKind === 'pct' || feeKind === 'fijo') && (
+                <label className="flex items-center gap-2 text-[14px] min-h-10">
+                  <input type="checkbox" checked={feeVat} onChange={e => setFeeVat(e.target.checked)} className="w-5 h-5" />
+                  <span>Más IVA (21 %)</span>
+                </label>
+              )}
+              <Field label="Nota" value={feeNote} onChange={e => setFeeNote(e.target.value)} maxLength={300} placeholder="Ej. se pagan en arras / negociable" />
+              <p className="text-[12px] text-muted -mt-1">En Madrid lo normal es que pague el vendedor, pero algunas agencias cobran también al comprador. Se suma al precio para entrar a vivir.</p>
+            </div>
+          )}
         </EditSection>
 
         <EditSection id="enlaces" icon="🔗" title={home ? 'Enlaces y fotos' : 'Otros enlaces'} open={sections.isOpen('enlaces')} onToggle={() => sections.toggle('enlaces')}>
@@ -1496,6 +1537,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
   const rows: Row[] = [
     { label: 'Precio', show: h => price(h.price_cents), value: h => h.price_cents, better: 'low' },
     { label: 'Reforma', show: h => { const t = reformTotal(h.reform, h); return t ? rangeK(t.lo, t.hi) : h.reform?.state === 'listo' ? 'No necesita' : '¿?' }, value: h => (h.reform?.state || h.reform?.items?.length ? reformTotal(h.reform, h)?.mid ?? 0 : null), better: 'low' },
+    { label: 'Honorarios comprador', show: h => (h.advertiser === 'particular' ? 'No (particular)' : h.buyer_fee_kind === 'no' ? 'No' : buyerFee(h) != null ? price(buyerFee(h)) : '¿?'), value: h => (h.advertiser === 'particular' ? 0 : buyerFee(h)), better: 'low' },
     { label: 'Para entrar a vivir', show: h => price(readyPrice(h)), value: readyPrice, better: 'low' },
     { label: 'm²', show: h => (h.size_m2 != null ? Number(h.size_m2) : '—'), value: h => (h.size_m2 != null ? Number(h.size_m2) : null), better: 'high' },
     { label: 'Parcela', show: h => (h.plot_m2 != null ? `${Number(h.plot_m2)} m²` : '—'), value: h => (h.plot_m2 != null ? Number(h.plot_m2) : null), better: 'high' },
