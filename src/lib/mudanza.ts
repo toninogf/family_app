@@ -18,16 +18,25 @@ export type Listing = {
   heating_type: HeatingType | null; cooling: Cooling | null
   description: string | null; listing_ref: string | null
   reform_year: number | null; orientation: string | null
+  building_state: BuildingState | null; derrama_cents: number | null; noise: Noise | null; light: Light | null
   /** Referencias de la zona: €/m² pagado (notarías) y pedido (portales), días medios a la venta */
   market: { paid_m2?: number; asking_m2?: number; avg_days?: number; source?: string; at?: string }
   // Cuentas
   mortgage_cents: number | null; costs: SaleCost[]
 }
+export type BuildingState = 'bien' | 'ite_pendiente' | 'obras_previstas'
+export type Noise = 'tranquila' | 'normal' | 'ruidosa'
+export type Light = 'mucha' | 'normal' | 'poca'
+export const BUILDING_LABEL: Record<BuildingState, string> = { bien: 'Edificio bien (ITE al día)', ite_pendiente: 'ITE pendiente o desfavorable', obras_previstas: 'Obras o derramas previstas' }
+export const NOISE_LABEL: Record<Noise, string> = { tranquila: 'Calle tranquila', normal: 'Ruido normal', ruidosa: 'Calle ruidosa' }
+export const LIGHT_LABEL: Record<Light, string> = { mucha: 'Mucha luz', normal: 'Luz normal', poca: 'Poca luz' }
 export type Competitor = {
   id: string; title: string; url: string | null; zone: string | null; price_cents: number | null; first_price_cents: number | null
   size_m2: number | null; rooms: number | null; baths: number | null; floor: string | null; features: string[]; reform_year: number | null
   condition: 'nuevo' | 'reformado' | 'buen_estado' | 'a_reformar' | null; status: 'activo' | 'vendido' | 'retirado'
   first_seen: string; last_seen: string; price_history: { date: string; cents: number }[]; notes: string | null; source: 'manual' | 'ia'
+  community_fee_cents: number | null; heating_type: string | null; energy: string | null
+  building_state: BuildingState | null; derrama_cents: number | null; noise: Noise | null; light: Light | null
 }
 export type SalePhoto = { id: string; path: string; kind: 'foto' | 'anuncio'; created_at: string }
 /** Archivo de un documento (PDF o foto) en el bucket privado sale-docs */
@@ -381,7 +390,7 @@ export function useMudanza() {
       supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, files, notes, position, updated_at').order('position').order('title'),
       supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position'),
       supabase.from('home_rejections').select('id, title, url, municipality, zone, price_cents, size_m2, plot_m2, reason, created_at, reproposed_at').order('created_at', { ascending: false }).limit(200),
-      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source').order('created_at', { ascending: false })
+      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light').order('created_at', { ascending: false })
     ])
     const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp].find(x => x.error)?.error
     if (firstError) setError(firstError.message)

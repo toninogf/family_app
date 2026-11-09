@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { COOLING, FEATURE_GROUPS, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto } from '../../lib/mudanza'
+import { COOLING, FEATURE_GROUPS, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
+} from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
 import { Sheet, TextArea } from '../../components/Sheet'
@@ -57,6 +58,10 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [year, setYear] = useState(l?.year_built?.toString() ?? '')
   const [reformYear, setReformYear] = useState(l?.reform_year?.toString() ?? '')
   const [orientation, setOrientation] = useState<string | null>(l?.orientation ?? null)
+  const [building, setBuilding] = useState<BuildingState | null>(l?.building_state ?? null)
+  const [derrama, setDerrama] = useState(priceInput(l?.derrama_cents))
+  const [noise, setNoise] = useState<Noise | null>(l?.noise ?? null)
+  const [light, setLight] = useState<Light | null>(l?.light ?? null)
   const [ref, setRef] = useState(l?.listing_ref ?? '')
   const [description, setDescription] = useState(l?.description ?? '')
   const [notes, setNotes] = useState(l?.notes ?? '')
@@ -119,7 +124,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const flashedIn = (id: string) => fieldsOf(id).some(([k]) => flash[k])
   const missingForAi = VSECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([, v]) => !v.trim()).map(([k]) => k)
   const fl = (k: string) => flash[k]
-  const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, reformYear, orientation, features, energy, heatType, cooling,
+  const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, reformYear, orientation, building, derrama, noise, light, features, energy, heatType, cooling,
     fee, ibi, power, water, heating, year, ref, description, notes, shots: shots.length, ad: adPhotos.length, extraLinks })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
@@ -145,7 +150,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
       rooms: ints[0], baths: ints[1], floor: floor.trim() || null, features, energy, heating_type: heatType, cooling,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null,
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
-      year_built: ints[2], reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear.trim()) : null, orientation, listing_ref: ref.trim() || null, description: description.trim() || null,
+      year_built: ints[2], reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear.trim()) : null, orientation, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light, listing_ref: ref.trim() || null, description: description.trim() || null,
       notes: notes.trim() || null
     }, undefined, 'household_id')
     if (!err && shots.length) {
@@ -207,6 +212,14 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
             <Field label="Año de la última reforma" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} placeholder="Ej. 2018" />
             <SelectField label="Orientación" value={orientation} onChange={v => setOrientation(v)} empty="Sin saber"
               options={['sur', 'sureste', 'suroeste', 'este', 'oeste', 'norte', 'noreste', 'noroeste'].map(x => ({ value: x, label: x[0].toUpperCase() + x.slice(1) }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <SelectField<Noise> label="Ruido de la calle" value={noise} onChange={setNoise} options={(Object.keys(NOISE_LABEL) as Noise[]).map(k => ({ value: k, label: NOISE_LABEL[k] }))} />
+            <SelectField<Light> label="Luz" value={light} onChange={setLight} options={(Object.keys(LIGHT_LABEL) as Light[]).map(k => ({ value: k, label: LIGHT_LABEL[k] }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <SelectField<BuildingState> label="Estado del edificio" value={building} onChange={setBuilding} options={(Object.keys(BUILDING_LABEL) as BuildingState[]).map(k => ({ value: k, label: BUILDING_LABEL[k] }))} />
+            <Field label="Derrama pendiente" suffix="€" inputMode="decimal" value={derrama} onChange={e => setDerrama(e.target.value)} placeholder="Si la hay" />
           </div>
         </EditSection>
 

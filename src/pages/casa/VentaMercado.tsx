@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { FEATURES, parsePrice, portalName, price, priceInput, priceShort, type Competitor, type Mudanza } from '../../lib/mudanza'
+import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
 import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, threshold, thermometer, valuation, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
@@ -193,6 +193,13 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
   const [features, setFeatures] = useState<string[]>(c?.features ?? [])
   const [status, setStatus] = useState<Competitor['status']>(c?.status ?? 'activo')
   const [notes, setNotes] = useState(c?.notes ?? '')
+  const [fee, setFee] = useState(priceInput(c?.community_fee_cents))
+  const [central, setCentral] = useState(c?.heating_type === 'central')
+  const [energy, setEnergy] = useState<string | null>(c?.energy ?? null)
+  const [building, setBuilding] = useState<BuildingState | null>(c?.building_state ?? null)
+  const [derrama, setDerrama] = useState(priceInput(c?.derrama_cents))
+  const [noise, setNoise] = useState<Noise | null>(c?.noise ?? null)
+  const [light, setLight] = useState<Light | null>(c?.light ?? null)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const int = (x: string) => (x.trim() && Number.isFinite(Number(x)) ? Math.round(Number(x)) : null)
@@ -206,6 +213,8 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
       household_id: householdId, title: title.trim().slice(0, 160), url: u, zone: zone.trim() || null, price_cents: cents,
       first_price_cents: c?.first_price_cents ?? cents, size_m2: m2.trim() ? Number(m2.replace(',', '.')) : null, rooms: int(rooms), baths: int(baths),
       floor: floor.trim() || null, condition: cond, reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear) : null, features, status, notes: notes.trim() || null,
+      community_fee_cents: fee.trim() ? parsePrice(fee) : null, heating_type: central ? 'central' : c?.heating_type === 'central' ? null : c?.heating_type ?? null,
+      energy, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light,
       price_history: cents != null && cents !== c?.price_cents ? [...hist, { date: today(), cents }].slice(-60) : hist
     }
     const err = await m.write('sale_competitors', data, c?.id)
@@ -238,6 +247,22 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
             return <button key={k} type="button" onClick={() => setFeatures(f => (on ? f.filter(x => x !== k) : [...f, k]))} aria-pressed={on}
               className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>{FEATURES[k] ?? k}</button>
           })}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} />
+          <SelectField<string> label="Certificado" value={energy} onChange={setEnergy} options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
+        </div>
+        <label className="flex items-center gap-2 text-[14px] min-h-10">
+          <input type="checkbox" checked={central} onChange={e => setCentral(e.target.checked)} className="w-5 h-5" />
+          <span>Calefacción central (va en la comunidad)</span>
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <SelectField<BuildingState> label="Edificio" value={building} onChange={setBuilding} options={(Object.keys(BUILDING_LABEL) as BuildingState[]).map(k => ({ value: k, label: BUILDING_LABEL[k] }))} />
+          <Field label="Derrama" suffix="€" inputMode="decimal" value={derrama} onChange={e => setDerrama(e.target.value)} placeholder="Si la hay" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <SelectField<Noise> label="Ruido" value={noise} onChange={setNoise} options={(Object.keys(NOISE_LABEL) as Noise[]).map(k => ({ value: k, label: NOISE_LABEL[k] }))} />
+          <SelectField<Light> label="Luz" value={light} onChange={setLight} options={(Object.keys(LIGHT_LABEL) as Light[]).map(k => ({ value: k, label: LIGHT_LABEL[k] }))} />
         </div>
         <SelectField<Competitor['status']> label="Situación" value={status} onChange={v => setStatus(v ?? 'activo')} empty="En venta"
           options={[{ value: 'vendido', label: 'Vendido' }, { value: 'retirado', label: 'Retirado' }]} />

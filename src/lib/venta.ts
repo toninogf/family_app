@@ -1,6 +1,6 @@
 // ¿Estamos en precio? Valoración de nuestro piso con algo más que el €/m²: exterior, estado y año de reforma, aire,
 // baños, planta y ascensor, terraza, garaje… Se ajusta cada piso de la competencia a cómo es el nuestro antes de comparar.
-import type { BuyerOffer, BuyerVisit, Competitor, Listing, PricePoint } from './mudanza'
+import { BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuyerOffer, type BuyerVisit, type Competitor, type Listing, type PricePoint } from './mudanza'
 
 export type Condition = 'nuevo' | 'reformado' | 'buen_estado' | 'a_reformar'
 export const CONDITION_LABEL: Record<Condition, string> = { nuevo: 'Obra nueva', reformado: 'Reformado (≤ 10 años)', buen_estado: 'Buen estado', a_reformar: 'A reformar' }
@@ -65,6 +65,29 @@ export function adjustments(ours: Listing, c: Competitor): Adj[] {
   const extra = (k: keyof Traits, label: string, pct: number) => { if (o[k] !== t[k]) add(t[k] ? `tiene ${label}` : `sin ${label}`, o[k] ? pct : -pct) }
   extra('terraza', 'terraza', 4); extra('balcon', 'balcón', 1.5); extra('garaje', 'garaje', 5); extra('trastero', 'trastero', 1.5)
   extra('portero', 'portero', 2); extra('piscina', 'piscina', 3)
+  out.push(...extraAdjustments(ours, c))
+  return out
+}
+
+const NOISE_SCORE = { tranquila: 3, normal: 0, ruidosa: -4 } as const
+const LIGHT_SCORE = { mucha: 3, normal: 0, poca: -4 } as const
+const BUILDING_SCORE = { bien: 0, ite_pendiente: -3, obras_previstas: -2 } as const
+const ENERGY = 'ABCDEFG'
+/** Comunidad (y calefacción central), edificio y derramas, ruido, luz y certificado energético */
+function extraAdjustments(ours: Listing, c: Competitor): Adj[] {
+  const out: Adj[] = []
+  const add = (label: string, pct: number) => { if (Math.abs(pct) >= 0.5) out.push({ label, pct: Math.round(pct * 10) / 10 }) }
+  // Comunidad: cada 100 €/mes de diferencia ≈ 1,5 % (la calefacción central suele ir incluida: se descuenta ~60 €/mes)
+  const fee = (cents: number | null, heat: string | null | undefined) => (cents == null ? null : cents / 100 - (heat === 'central' ? 60 : 0))
+  const fo = fee(ours.community_fee_cents, ours.heating_type), fc = fee(c.community_fee_cents, c.heating_type)
+  if (fo != null && fc != null && Math.abs(fc - fo) >= 25) add(fc > fo ? `comunidad más cara (${Math.round(c.community_fee_cents! / 100)} €/mes)` : `comunidad más barata (${Math.round(c.community_fee_cents! / 100)} €/mes)`, Math.max(-5, Math.min(5, ((fc - fo) / 100) * 1.5)))
+  if (ours.building_state && c.building_state && ours.building_state !== c.building_state) add(BUILDING_LABEL[c.building_state].toLowerCase(), BUILDING_SCORE[ours.building_state] - BUILDING_SCORE[c.building_state])
+  // Derrama pendiente: lo que tendrá que pagar el comprador, en % del precio
+  if (c.derrama_cents && c.price_cents) add(`derrama de ${Math.round(c.derrama_cents / 100).toLocaleString('es-ES')} €`, Math.min(10, (c.derrama_cents / c.price_cents) * 100))
+  if (ours.derrama_cents && c.price_cents && !c.derrama_cents) add('el vuestro tiene derrama', -Math.min(10, (ours.derrama_cents / c.price_cents) * 100))
+  if (ours.noise && c.noise && ours.noise !== c.noise) add(NOISE_LABEL[c.noise].toLowerCase(), NOISE_SCORE[ours.noise] - NOISE_SCORE[c.noise])
+  if (ours.light && c.light && ours.light !== c.light) add(LIGHT_LABEL[c.light].toLowerCase(), LIGHT_SCORE[ours.light] - LIGHT_SCORE[c.light])
+  if (ours.energy && c.energy && ours.energy !== c.energy) add(`certificado ${c.energy}`, Math.max(-4, Math.min(4, ENERGY.indexOf(c.energy) - ENERGY.indexOf(ours.energy))))
   return out
 }
 export const adjTotal = (a: Adj[]) => Math.max(-35, Math.min(35, a.reduce((s, x) => s + x.pct, 0)))
@@ -84,6 +107,12 @@ export function premium(ours: Listing): Adj[] {
   if (o.garaje) out.push({ label: 'garaje', pct: 4 })
   if (o.portero) out.push({ label: 'portero', pct: 1 })
   if (ours.orientation && /sur/.test(ours.orientation)) out.push({ label: `orientación ${ours.orientation}`, pct: 1.5 })
+  if (ours.noise && ours.noise !== 'normal') out.push({ label: NOISE_LABEL[ours.noise].toLowerCase(), pct: NOISE_SCORE[ours.noise] })
+  if (ours.light && ours.light !== 'normal') out.push({ label: LIGHT_LABEL[ours.light].toLowerCase(), pct: LIGHT_SCORE[ours.light] })
+  if (ours.building_state && ours.building_state !== 'bien') out.push({ label: BUILDING_LABEL[ours.building_state].toLowerCase(), pct: BUILDING_SCORE[ours.building_state] })
+  if (ours.derrama_cents && ours.price_cents) out.push({ label: `derrama de ${Math.round(ours.derrama_cents / 100).toLocaleString('es-ES')} €`, pct: -Math.round(Math.min(10, (ours.derrama_cents / ours.price_cents) * 100) * 10) / 10 })
+  if (ours.energy && 'ABC'.includes(ours.energy)) out.push({ label: `certificado ${ours.energy}`, pct: 1.5 })
+  if (ours.energy && 'FG'.includes(ours.energy)) out.push({ label: `certificado ${ours.energy}`, pct: -1.5 })
   return out.filter(x => x.pct !== 0)
 }
 
