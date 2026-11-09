@@ -11,6 +11,7 @@ import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../compone
 import DocFiles, { openDocFile } from '../../components/DocFiles'
 import { Fold, saleNet } from './VentaGestion'
 import { HomePrice } from './HomePrice'
+import { reformTotal } from '../../lib/reforma'
 
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const pct = (n: number) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 2 })} %`
@@ -73,7 +74,7 @@ export default function Compramos({ m, c, householdId }: { m: Mudanza; c: Compra
           <Pasos c={c} />
         </Fold>
         <Fold title="💶 ¿Cuánto nos cuesta?" summary={costSummary(c, buyPrice)} open={fold === 'cuentas'} onToggle={() => toggle('cuentas')}>
-          <Cuentas m={m} c={c} householdId={householdId} buyPrice={buyPrice} />
+          <Cuentas m={m} c={c} householdId={householdId} buyPrice={buyPrice} home={home} />
         </Fold>
         <Fold title="🔄 Venta y compra a la vez" summary={m.saleSteps.length || c.steps.length ? 'Las fechas de las dos operaciones juntas' : 'Cuando tengáis fechas de arras y firma'} open={fold === 'ambas'} onToggle={() => toggle('ambas')}>
           <Coordinacion m={m} c={c} />
@@ -656,7 +657,7 @@ function costSummary(c: Compra, buyPrice: number | null) {
   return t.costs ? `${price(t.total)} con gastos (${price(t.costs)})` : 'Precio + impuestos + notaría…'
 }
 
-function Cuentas({ m, c, householdId, buyPrice }: { m: Mudanza; c: Compra; householdId: string; buyPrice: number | null }) {
+function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra; householdId: string; buyPrice: number | null; home: Home }) {
   const p = c.purchase
   const chosen = c.banks.find(b => b.chosen)
   const [costs, setCosts] = useState<{ label: string; amount: string }[]>(
@@ -679,6 +680,15 @@ function Cuentas({ m, c, householdId, buyPrice }: { m: Mudanza; c: Compra; house
     const v = priceInput(Math.round(buyPrice * 0.06))
     const i = costs.findIndex(x => /ITP|transmisiones/i.test(x.label))
     const next = i >= 0 ? costs.map((x, j) => (j === i ? { ...x, amount: v } : x)) : [{ label: 'ITP (impuesto de transmisiones)', amount: v }, ...costs]
+    setCosts(next); void save(next)
+  }
+  // La reforma estimada en Buscamos (punto medio) pasa a la línea «Reforma»
+  const reformT = reformTotal(home.reform, home)
+  function bringReform() {
+    if (!reformT) return
+    const v = priceInput(reformT.mid)
+    const i = costs.findIndex(x => /reforma/i.test(x.label))
+    const next = i >= 0 ? costs.map((x, j) => (j === i ? { ...x, amount: v } : x)) : [...costs, { label: 'Reforma', amount: v }]
     setCosts(next); void save(next)
   }
 
@@ -710,6 +720,7 @@ function Cuentas({ m, c, householdId, buyPrice }: { m: Mudanza; c: Compra; house
           {costs.length < 20 && <button type="button" onClick={() => setCosts([...costs, { label: '', amount: '' }])} className="flex-1 min-h-10 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir gasto</button>}
           {buyPrice != null && <button type="button" onClick={itp} className="min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">ITP al 6 %</button>}
         </div>
+        {reformT && <button type="button" onClick={bringReform} className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold">🔨 Reforma estimada (~{price(reformT.mid)})</button>}
         <p className="text-[11px] text-muted">En la Comunidad de Madrid el ITP general de vivienda usada es el 6 %; hay reducciones en algunos casos (por ejemplo familia numerosa o jóvenes). Confirmadlo con la gestoría.</p>
       </fieldset>
       <div className="flex justify-between text-[16px] font-bold border-t border-line pt-3"><span>Total</span><span>{price(total)}</span></div>

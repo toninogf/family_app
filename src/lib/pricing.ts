@@ -2,19 +2,21 @@
 // Es orientativo: combina referencias de la zona, los pisos parecidos que habéis guardado y los riesgos detectados.
 import type { Home } from './mudanza'
 import type { Health } from './health'
+import { readyPrice, reformKnown, reformMid } from './reforma'
 
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 const eur = (n: number) => `${Math.round(n).toLocaleString('es-ES')} €`
 const round1k = (cents: number) => Math.round(cents / 100000) * 100000
 
-/** Pisos parecidos guardados en la misma localidad: mismos metros ±40 % (sin descartados) */
+/** Pisos parecidos guardados en la misma localidad: mismos metros ±40 % (sin descartados).
+ *  Se comparan «para entrar a vivir»: precio + reforma estimada */
 export function comparables(h: Home, homes: Home[]) {
   if (!h.municipality || !h.size_m2) return []
   const size = Number(h.size_m2)
   return homes
     .filter(x => x.id !== h.id && x.municipality === h.municipality && x.status !== 'descartado' && x.price_cents && x.size_m2)
     .filter(x => { const r = Number(x.size_m2) / size; return r >= 0.6 && r <= 1.4 })
-    .map(x => ({ home: x, m2Price: x.price_cents! / 100 / Number(x.size_m2) }))
+    .map(x => ({ home: x, m2Price: readyPrice(x)! / 100 / Number(x.size_m2), reform: reformMid(x) }))
     .sort((a, b) => a.m2Price - b.m2Price)
 }
 
@@ -32,6 +34,8 @@ export function zoneLine(h: Home) {
 
 export type Recommendation = {
   asking: number; open: number; max: number; fair: number | null
+  /** Reforma estimada (céntimos) y lo que valdría ya reformado */
+  reform: number; fairReady: number | null; reformKnown: boolean
   confidence: 'alta' | 'media' | 'baja'; reasons: string[]; warnings: string[]
 }
 
@@ -62,11 +66,14 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
   const comps = comparables(h, homes)
   if (comps.length) {
     const med = median(comps.map(c => c.m2Price))
-    refs.push({ v: med * 0.92, w: comps.length >= 2 ? 0.4 : 0.2, label: `${comps.length} parecido${comps.length > 1 ? 's' : ''} que habéis guardado, mediana ${eur(med)}/m² (−8 % de negociación habitual)` })
+    refs.push({ v: med * 0.92, w: comps.length >= 2 ? 0.4 : 0.2, label: `${comps.length} parecido${comps.length > 1 ? 's' : ''} que habéis guardado, mediana ${eur(med)}/m² para entrar a vivir (−8 % de negociación habitual)` })
   }
   if (h.market?.asking_m2) refs.push({ v: h.market.asking_m2 * 0.9 * (big ? 0.9 : 1), w: 0.15, label: `portales de la zona ${eur(h.market.asking_m2)}/m² (−10 % de lo pedido a lo pagado)` })
 
+  const reform = reformMid(h)
+  const known = reformKnown(h.reform)
   let fair: number | null = null
+  let fairReady: number | null = null
   if (refs.length && m2) {
     const wsum = refs.reduce((s, r) => s + r.w, 0)
     let perM2 = refs.reduce((s, r) => s + r.v * r.w, 0) / wsum
@@ -82,8 +89,11 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
     if (health.urbanizacion?.s === 'bad' || health.urbanizacion?.s === 'warn') adj.push([-0.02, 'urbanización no recepcionada o con cuota'])
     if (health.saneamiento?.s === 'warn') adj.push([-0.01, 'fosa séptica o pozo'])
     if (h.features?.includes('placas_solares')) adj.push([0.01, 'placas solares'])
-    if (h.features?.includes('reformado')) adj.push([0.02, 'reformado'])
-    else if (h.year_built && h.year_built < 1985) adj.push([-0.02, `construido en ${h.year_built} sin reformar`])
+    // El estado se cuenta con la reforma (si está valorada); si no, con un ajuste aproximado
+    if (!known) {
+      if (h.features?.includes('reformado')) adj.push([0.02, 'reformado'])
+      else if (h.year_built && h.year_built < 1985) adj.push([-0.02, `construido en ${h.year_built} sin reformar`])
+    }
     const plots = comps.map(c => Number(c.home.plot_m2)).filter(Boolean)
     if (h.plot_m2 && plots.length) {
       const mp = median(plots)
@@ -93,7 +103,9 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
     const total = adj.reduce((s, [a]) => s + a, 0)
     if (adj.length) reasons.push(`Ajustes: ${adj.map(([a, l]) => `${l} ${a > 0 ? '+' : ''}${Math.round(a * 100)} %`).join(', ')}`)
     perM2 *= 1 + total
-    fair = Math.round(perM2 * m2 * 100)
+    fairReady = Math.round(perM2 * m2 * 100)
+    fair = fairReady - reform
+    if (reform) reasons.push(`Para entrar a vivir valdría ~${eur(fairReady / 100)}; menos la reforma estimada (~${eur(reform / 100)}) queda en ~${eur(fair / 100)} tal cual está`)
   } else {
     warnings.push('Faltan referencias de la zona o pisos parecidos: pídeselo a la IA (precio de la zona) y guarda más pisos de esa localidad.')
   }
@@ -121,8 +133,9 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
   if (health.vpo?.s === 'bad') warnings.push('Puede ser vivienda protegida: tiene precio máximo y requisitos para comprarla.')
   if (health.nota_simple?.s === 'bad') warnings.push('La nota simple tiene cargas: la oferta debe incluir que se cancelen antes o en la firma.')
   if (!h.cadastre) warnings.push('Consulta el Catastro para comprobar los metros antes de ofertar.')
+  if (!known) warnings.push('Valora la reforma (aunque sea «para entrar a vivir»): así todos los pisos se comparan con el mismo baremo.')
 
   const sources = refs.length + (h.cadastre ? 1 : 0)
   const confidence = refs.length >= 2 && comps.length >= 2 ? 'alta' : sources >= 2 ? 'media' : 'baja'
-  return { asking, open, max, fair, confidence, reasons, warnings }
+  return { asking, open, max, fair, fairReady, reform, reformKnown: known, confidence, reasons, warnings }
 }

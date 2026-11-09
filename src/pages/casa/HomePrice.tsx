@@ -39,7 +39,13 @@ export function HomePrice({ h, m, compact }: { h: Home; m: Mudanza; compact?: bo
           <span className="text-[16px] font-bold">{price(r.asking)}</span>
         </div>
       </div>
-      {r.fair != null && <p className="text-[13px]">Valor de referencia estimado: <b>{price(r.fair)}</b></p>}
+      {r.reform > 0 && (
+        <p className="text-[13px] rounded-xl bg-bg px-3 py-2 flex justify-between gap-2">
+          <span className="text-muted">Para entrar a vivir: {price(r.asking)} + reforma ~{price(r.reform)}</span>
+          <b className="shrink-0">{price(r.asking + r.reform)}</b>
+        </p>
+      )}
+      {r.fair != null && <p className="text-[13px]">Valor de referencia estimado: <b>{price(r.fair)}</b>{r.reform > 0 && r.fairReady != null ? <span className="text-muted"> (reformado ~{price(r.fairReady)})</span> : null}</p>}
       {zone && <p className="text-[13px] text-muted">📍 {zone}</p>}
       {r.warnings.map((w, i) => <p key={i} className="text-[13px] text-danger">⚠️ {w}</p>)}
       <button onClick={() => setOpen(!open)} aria-expanded={open} className="self-start min-h-10 text-sm font-semibold text-accent">{open ? 'Ocultar el porqué' : '¿Por qué este precio?'}</button>
@@ -50,7 +56,7 @@ export function HomePrice({ h, m, compact }: { h: Home; m: Mudanza; compact?: bo
           </ul>
           {comps.length > 0 && (
             <div className="flex flex-col gap-1">
-              <span className="text-[12px] font-semibold text-muted">Parecidos que habéis guardado en {h.municipality}</span>
+              <span className="text-[12px] font-semibold text-muted">Parecidos que habéis guardado en {h.municipality} (€/m² para entrar a vivir)</span>
               {comps.slice(0, 5).map(c => (
                 <span key={c.home.id} className="text-[13px] flex justify-between gap-2">
                   <span className="truncate">{c.home.title}</span>

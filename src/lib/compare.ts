@@ -1,4 +1,5 @@
 // Resumen en texto de las diferencias importantes entre los pisos que se comparan (sin IA: reglas a partir de los datos)
+import { readyPrice, reformKnown } from './reforma'
 import { FEATURES, VISIT_CHECKLIST, mustHaveCheck, niceCount, perM2, price, type Criteria, type Home, type HomeVisit } from './mudanza'
 
 /** Nombre corto para el texto: barrio o calle y localidad */
@@ -36,6 +37,15 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
     const lo = priced[0], hi = priced[priced.length - 1]
     if (hi.price_cents! > lo.price_cents!) out.push(`💶 El más barato es **${n(lo)}** (${price(lo.price_cents)}): ${price(hi.price_cents! - lo.price_cents!)} menos que **${n(hi)}**.`)
   }
+  // Para entrar a vivir (precio + reforma): el baremo común
+  const ready = homes.filter(h => reformKnown(h.reform) && readyPrice(h) != null).sort((a, b) => readyPrice(a)! - readyPrice(b)!)
+  if (ready.length >= 2) {
+    const lo = ready[0], hi = ready[ready.length - 1]
+    if (readyPrice(hi)! > readyPrice(lo)!) out.push(`🔨 Para entrar a vivir (precio + reforma), el más barato es **${n(lo)}** (${price(readyPrice(lo))}): ${price(readyPrice(hi)! - readyPrice(lo)!)} menos que **${n(hi)}**.`)
+    if (priced.length >= 2 && lo.id !== priced[0].id) out.push(`⚠️ **${n(priced[0])}** es el más barato de precio, pero con la reforma deja de serlo.`)
+  }
+  const unknown = homes.filter(h => !reformKnown(h.reform))
+  if (unknown.length && unknown.length < homes.length) out.push(`❔ Falta valorar la reforma de ${list(unknown.map(h => `**${n(h)}**`))} para compararlos con el mismo baremo.`)
   // Precio por metro
   const perm = homes.filter(h => perM2(h) != null).sort((a, b) => perM2(a)! - perM2(b)!)
   if (perm.length >= 2) {

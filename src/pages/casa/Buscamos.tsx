@@ -22,12 +22,14 @@ import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
 import { aiStatus, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
+import { mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
+import { HomeReforma } from './HomeReforma'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
-type Sort = 'estado' | 'recientes' | 'precio' | 'm2' | 'valoramos'
+type Sort = 'estado' | 'recientes' | 'precio' | 'listo' | 'm2' | 'valoramos'
 const PROVINCE_NAMES = PROVINCES.map(p => p.name)
 const municipalitiesOf = (province: string | null) => {
   const code = PROVINCES.find(p => p.name === province)?.code
@@ -91,6 +93,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
     return g.slice().sort((a, b) =>
       sort === 'recientes' ? b.created_at.localeCompare(a.created_at)
         : sort === 'precio' ? nullsLast(a.price_cents) - nullsLast(b.price_cents)
+          : sort === 'listo' ? nullsLast(readyPrice(a)) - nullsLast(readyPrice(b))
           : sort === 'm2' ? nullsLast(perM2(a)) - nullsLast(perM2(b))
             : sort === 'valoramos' ? niceCount(b, m.criteria).got.length - niceCount(a, m.criteria).got.length || HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status)
               : HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status))
@@ -175,6 +178,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
               <option value="estado">Estado (favoritos primero)</option>
               <option value="recientes">Guardados más recientes</option>
               <option value="precio">Precio, de menor a mayor</option>
+              <option value="listo">Para entrar a vivir (precio + reforma)</option>
               <option value="m2">€/m², de menor a mayor</option>
               {(m.criteria?.nice_to_haves?.length ?? 0) > 0 && <option value="valoramos">Lo que valoramos (más primero)</option>}
             </select>
@@ -273,6 +277,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
           {[h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, pm2 && `${price(pm2)}/m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`].filter(Boolean).map(x => ` · ${x}`).join('')}
         </span>
       </span>
+      <ReadyLine h={h} />
       {checks.length > 0 && (
         <span className="flex gap-1 flex-wrap">
           {checks.map(c => <Chip key={c.label} tone={c.ok == null ? 'unknown' : c.ok ? 'ok' : 'bad'}>{c.ok == null ? '?' : c.ok ? '✓' : '✗'} {c.label}</Chip>)}
@@ -342,6 +347,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
           <span className="flex flex-col min-w-0">
             <span className="text-[26px] font-bold leading-tight">{price(h.price_cents)}</span>
             <span className="text-[13px] text-muted truncate">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
+            <ReadyLine h={h} />
           </span>
           <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
             onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null }) } }}
@@ -371,6 +377,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
 
       {/* 3. De un vistazo */}
       <QuickFacts h={h} m={m} onEdit={onEdit} />
+      <HomeReforma h={h} m={m} householdId={householdId} />
 
       {/* 4. ¿Nos conviene? */}
       <HomePrice h={h} m={m} />
@@ -513,6 +520,14 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }
       </div>
     </div>
   )
+}
+
+/** «🔨 +35 k€ de reforma → 640.000 € para entrar a vivir» (o «✅ para entrar a vivir») */
+function ReadyLine({ h }: { h: Home }) {
+  const t = reformTotal(h.reform, h)
+  if (h.reform?.state === 'listo') return <span className="text-[13px] text-accent">✅ Para entrar a vivir</span>
+  if (!t || h.price_cents == null) return null
+  return <span className="text-[13px]">🔨 <span className="text-muted">+{rangeK(t.lo, t.hi)} de reforma →</span> <b>{price(readyPrice(h))}</b> <span className="text-muted">para entrar a vivir</span></span>
 }
 
 /** «Qué buscamos» en la portada: lo básico siempre a la vista y el detalle al desplegar */
@@ -984,6 +999,8 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   const [email, setEmail] = useState(home?.contact_email ?? '')
   const [listingRef, setListingRef] = useState(home?.listing_ref ?? '')
   const [notes, setNotes] = useState(home?.notes ?? '')
+  // La reforma que proponga la IA (solo se guarda si la IA ha dicho algo; el resto se edita en la ficha)
+  const [reform, setReform] = useState<Reform | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -996,6 +1013,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
       setPicked(d.sources.map(x => x.url).filter(u => u.replace(/\?.*$/, '') !== url.trim().replace(/\?.*$/, '')))
     }
     if (d.changes) setChanges(d.changes)
+    if (d.reform) setReform(r => mergeAiReform(r ?? home?.reform ?? {}, d.reform!))
     if (d.cadastral_ref && !cadRef) setCadRef(d.cadastral_ref)
     if (d.zone_m2_eur || d.asking_m2_eur) {
       setMarket(mk => ({
@@ -1183,7 +1201,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
       advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
       contact_email: email.trim() || null, listing_ref: listingRef.trim() || null,
-      health, cadastral_ref: cadRef, market,
+      health, cadastral_ref: cadRef, market, ...(reform ? { reform } : {}),
       links: mergeLinks(links.filter(l => l.url.trim()).map(l => ({ ...l, label: l.label.trim(),
         url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim().replace(/^http:/i, 'https:') : `https://${l.url.trim()}` })), sourcesToLinks(sources, picked), [cleanUrl])
     }
@@ -1477,6 +1495,8 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
   type Row = { label: string; show: (h: Home) => ReactNode; value?: (h: Home) => number | null; better?: 'low' | 'high' }
   const rows: Row[] = [
     { label: 'Precio', show: h => price(h.price_cents), value: h => h.price_cents, better: 'low' },
+    { label: 'Reforma', show: h => { const t = reformTotal(h.reform, h); return t ? rangeK(t.lo, t.hi) : h.reform?.state === 'listo' ? 'No necesita' : '¿?' }, value: h => (h.reform?.state || h.reform?.items?.length ? reformTotal(h.reform, h)?.mid ?? 0 : null), better: 'low' },
+    { label: 'Para entrar a vivir', show: h => price(readyPrice(h)), value: readyPrice, better: 'low' },
     { label: 'm²', show: h => (h.size_m2 != null ? Number(h.size_m2) : '—'), value: h => (h.size_m2 != null ? Number(h.size_m2) : null), better: 'high' },
     { label: 'Parcela', show: h => (h.plot_m2 != null ? `${Number(h.plot_m2)} m²` : '—'), value: h => (h.plot_m2 != null ? Number(h.plot_m2) : null), better: 'high' },
     { label: 'Año', show: h => h.year_built ?? '—', value: h => h.year_built, better: 'high' },

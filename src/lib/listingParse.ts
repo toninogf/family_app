@@ -1,6 +1,7 @@
 // Saca los datos de un piso del texto de un anuncio (Idealista, Fotocasa, pisos.com…): lo que se copia y pega
 // de la ficha, el texto que comparte la app del portal o la vista previa del enlace.
 import { fold, MUNICIPALITIES } from '../data/places'
+import { parseReformLine } from './reforma'
 
 export type ListingData = {
   title?: string
@@ -47,6 +48,8 @@ export type ListingData = {
   asking_m2_note?: string
   /** Detalle de las placas solares (potencia, batería…) */
   solar_note?: string
+  /** Estado y reforma que propone la IA */
+  reform?: { state?: import('./reforma').ReformState; keys: string[]; note?: string }
   advertiser?: 'agencia' | 'particular'
   agency?: string
   contact?: string
@@ -263,6 +266,7 @@ AGUA: (gasto medio de agua en €/mes, solo el número, si aparece)
 CALEFACCION: (gasto medio de calefacción en €/mes, solo el número, si aparece)
 SISTEMA: (tipo de calefacción: gas natural, gasóleo, propano, eléctrica, aerotermia, geotermia, biomasa/pellets, central de la comunidad o ninguna)
 CLIMA: (aire acondicionado: no, splits, por conductos o aerotermia)
+REFORMA: (estado para entrar a vivir, mirando el texto y TODAS las fotos: «para entrar a vivir», «lavado de cara», «reforma parcial» o «reforma integral» | qué habría que reformar, separado por comas: cocina, baños, pintura, suelos, puertas, ventanas, electricidad, fontanería, caldera, aire, tejado, aislamiento, fachada, humedades, jardín, piscina, valla | una frase con lo que se ve, p. ej. «cocina y baños de origen, ventanas de aluminio antiguo»)
 AÑO: (de construcción)
 RESUMEN: (dos frases con lo más destacable)
 ANUNCIANTE: (agencia o particular)
@@ -331,13 +335,13 @@ export function photoUrls(raw: string): string[] {
 }
 
 const AI_KEYS = ['PRECIO', 'TIPO', 'DIRECCION', 'ZONA', 'LOCALIDAD', 'M2', 'UTILES', 'PARCELA', 'HABITACIONES', 'BANOS', 'PLANTA', 'EXTRAS', 'CERTIFICADO', 'COMUNIDAD', 'IBI', 'LUZ', 'AGUA', 'CALEFACCION', 'SISTEMA', 'CLIMA', 'AÑO', 'ANO', 'RESUMEN',
-  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO', 'PORTALES', 'SOLAR']
+  'ANUNCIANTE', 'AGENCIA', 'CONTACTO', 'TELEFONO', 'EMAIL', 'REFERENCIA', 'FOTOS', 'FUENTES', 'CAMBIOS', 'CATASTRO', 'ITE', 'URBANIZACION', 'VPO', 'OCUPACION', 'SANEAMIENTO', 'RUIDO', 'MERCADO', 'PORTALES', 'SOLAR', 'REFORMA']
 
 /** Si el texto es la respuesta de la IA con el bloque pedido, lo lee campo a campo; si no, devuelve null */
 export function parseAiBlock(raw: string): ListingData | null {
   const values: Record<string, string> = {}
   // Algunas apps copian la respuesta en una sola línea: se separa antes de cada «CLAVE:»
-  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO|PORTALES|SOLAR'
+  const keys = 'PRECIO|TIPO|DIRECCI[OÓ]N|ZONA|LOCALIDAD|M2|[UÚ]TILES|PARCELA|HABITACIONES|BA[NÑ]OS|PLANTA|EXTRAS|CERTIFICADO|COMUNIDAD|IBI|LUZ|AGUA|CALEFACCI[OÓ]N|SISTEMA|CLIMA|A[NÑ]O|RESUMEN|ANUNCIANTE|AGENCIA|CONTACTO|TEL[EÉ]FONO|EMAIL|REFERENCIA|FOTOS|FUENTES|CAMBIOS|CATASTRO|ITE|URBANIZACI[OÓ]N|VPO|OCUPACI[OÓ]N|SANEAMIENTO|RUIDO|MERCADO|PORTALES|SOLAR|REFORMA'
   const text = raw.replace(/[*`_]/g, '').replace(new RegExp(`\\s+(?=(?:${keys})\\s*:)`, 'g'), '\n')
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^\s*[-•]?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ0-9 ]{2,15}?)\s*:\s*(.*)$/)
@@ -377,6 +381,7 @@ export function parseAiBlock(raw: string): ListingData | null {
       out.solar_note = values.SOLAR.slice(0, 200)
     }
   }
+  if (values.REFORMA) { const r = parseReformLine(values.REFORMA); if (r) out.reform = r }
   const cert = values.CERTIFICADO?.match(/\b([A-G])\b/i); if (cert) out.energy = cert[1].toUpperCase()
   const hType = values.SISTEMA && heatingFrom(values.SISTEMA); if (hType) out.heating_type = hType
   const rc = values.CATASTRO?.toUpperCase().replace(/[^0-9A-Z]/g, '').match(/[0-9]{7}[A-Z]{2}[0-9]{4}[A-Z]([0-9]{4}[A-Z]{2})?/)?.[0]
