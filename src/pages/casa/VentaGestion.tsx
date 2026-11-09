@@ -211,7 +211,7 @@ export function VentaCuentas({ m, householdId }: { m: Mudanza; householdId: stri
         <div className="flex justify-between text-sm"><span className="text-muted">− Gastos</span><span>{price(n.costs)}</span></div>
         <div className="flex justify-between text-[16px] font-bold"><span>Os queda para la compra</span><span className="text-accent">{price(n.net)}</span></div>
         {budget != null && n.net != null && (
-          <p className="text-xs text-muted">Presupuesto máximo de compra en Buscamos: {price(budget)} · {budget > n.net ? `harían falta ${price(budget - n.net)} más (ahorros o hipoteca)` : `os sobran ${price(n.net - budget)}`}.</p>
+          <p className="text-xs text-muted">Presupuesto máximo para entrar a vivir (Buscamos): {price(budget)} · {budget > n.net ? `harían falta ${price(budget - n.net)} más (ahorros o hipoteca)` : `os sobran ${price(n.net - budget)}`}.</p>
         )}
       </div>
       <p className="text-[11px] text-muted">La plusvalía municipal y el IRPF dependen de cada caso (por ejemplo, si reinvertís en vivienda habitual puede haber exención): confirmad las cifras con un gestor o asesor.</p>

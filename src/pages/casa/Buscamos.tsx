@@ -346,12 +346,9 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose }: {
       {/* 1. Cabecera visual */}
       <div className="-mt-3 flex flex-col gap-2">
         <Gallery h={h} m={m} onAdd={() => onEdit('fotos')} />
-        <div className="flex justify-between items-end gap-2">
-          <span className="flex flex-col min-w-0">
-            <span className="text-[26px] font-bold leading-tight">{price(h.price_cents)}</span>
-            <span className="text-[13px] text-muted truncate">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
-            <ReadyLine h={h} />
-          </span>
+        <TwoPrices h={h} budget={m.criteria?.max_price_cents ?? null} />
+        <div className="flex justify-between items-center gap-2">
+          <span className="text-[13px] text-muted truncate min-w-0">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
           <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
             onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null }) } }}
             className="max-w-[52%] min-h-10 px-2 rounded-xl border border-line bg-card text-[13px] font-semibold">
@@ -527,6 +524,31 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover }
   )
 }
 
+/** Los dos precios que deciden: lo que piden (para ofertar) y lo que nos cuesta entrar a vivir (para comparar) */
+function TwoPrices({ h, budget }: { h: Home; budget: number | null }) {
+  const ready = readyPrice(h)
+  const t = reformTotal(h.reform, h)
+  const costs = buyingCosts(h)
+  const over = budget != null && ready != null ? ready - budget : null
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div className="rounded-2xl bg-card p-3 flex flex-col min-w-0">
+        <span className="text-[12px] text-muted">Piden</span>
+        <span className="text-[22px] font-bold leading-tight">{price(h.price_cents)}</span>
+        <span className="text-[11px] text-muted">sobre esto se oferta</span>
+      </div>
+      <div className={`rounded-2xl p-3 flex flex-col min-w-0 ${over != null && over > 0 ? 'bg-danger/10' : 'bg-accent-soft'}`}>
+        <span className="text-[12px] text-muted">Para entrar a vivir</span>
+        <span className={`text-[22px] font-bold leading-tight ${over != null && over > 0 ? 'text-danger' : 'text-accent'}`}>{price(ready)}</span>
+        <span className="text-[11px] text-muted truncate">
+          {[t ? `+${rangeK(t.lo, t.hi)} reforma` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs ? `+${kShort(costs)} gastos` : null].filter(Boolean).join(' · ')}
+        </span>
+        {over != null && <span className={`text-[11px] font-semibold ${over > 0 ? 'text-danger' : 'text-accent'}`}>{over > 0 ? `${kShort(over)} por encima del presupuesto` : `${kShort(-over)} por debajo del presupuesto`}</span>}
+      </div>
+    </div>
+  )
+}
+
 /** «41,5 k€» */
 const kShort = (c: number) => `${(c / 100000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} k€`
 
@@ -561,7 +583,7 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
     )
   }
   const basics = [
-    c.max_price_cents ? `Hasta ${priceShort(c.max_price_cents)}` : null,
+    c.max_price_cents ? `Hasta ${priceShort(c.max_price_cents)} para entrar a vivir` : null,
     c.min_rooms ? `${c.min_rooms}+ hab.` : null,
     c.min_m2 ? `${c.min_m2}+ m²` : null
   ].filter(Boolean).join(' · ')
@@ -1497,7 +1519,8 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   return (
     <Sheet title="Qué buscamos" onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
-        <TextField label="Presupuesto máximo (€)" inputMode="decimal" value={max} onChange={e => setMax(e.target.value)} placeholder="Ej. 350.000" />
+        <TextField label="Presupuesto máximo para entrar a vivir (€)" inputMode="decimal" value={max} onChange={e => setMax(e.target.value)} placeholder="Ej. 650.000" />
+        <p className="text-[12px] text-muted -mt-3">Lo que os cuesta en total: precio + reforma + impuestos y gastos. Así todos los pisos se comparan igual.</p>
         <div className="grid grid-cols-2 gap-3">
           <TextField label="Habitaciones mínimas" inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} />
           <TextField label="Metros mínimos" inputMode="numeric" value={m2} onChange={e => setM2(e.target.value)} />

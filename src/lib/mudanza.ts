@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { compressImage } from './money'
 import { addDays } from './dates'
+import { readyPrice } from './reforma'
 
 // ---------- Tipos ----------
 /** Enlace a un anuncio (opcionalmente con el precio que pone esa web) */
@@ -285,7 +286,7 @@ export const perM2 = (h: Pick<Home, 'price_cents' | 'size_m2'>) =>
 export function mustHaveCheck(h: Home, c: Criteria | null) {
   if (!c) return [] as { label: string; ok: boolean | null }[]
   const out: { label: string; ok: boolean | null }[] = []
-  if (c.max_price_cents) out.push({ label: `≤ ${priceShort(c.max_price_cents)}`, ok: h.price_cents == null ? null : h.price_cents <= c.max_price_cents })
+  if (c.max_price_cents) { const r = readyPrice(h); out.push({ label: `≤ ${priceShort(c.max_price_cents)} para entrar`, ok: r == null ? null : r <= c.max_price_cents }) }
   if (c.min_rooms) out.push({ label: `${c.min_rooms}+ hab.`, ok: h.rooms == null ? null : h.rooms >= c.min_rooms })
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
   if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2 })
