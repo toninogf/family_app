@@ -365,7 +365,7 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
           {COMP_FEATURES.map(k => {
             const on = features.includes(k)
             return <button key={k} type="button" onClick={() => setFeatures(f => (on ? f.filter(x => x !== k) : [...f, k]))} aria-pressed={on}
-              className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>{FEATURES[k] ?? k}</button>
+              className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>{k === 'garaje' ? 'Garaje incluido' : FEATURES[k] ?? k}</button>
           })}
         </div>
         <div className="grid grid-cols-2 gap-2">

@@ -63,7 +63,12 @@ export function adjustments(ours: Listing, c: Competitor): Adj[] {
   if (!t.ascensor && (t.floorN ?? 0) >= 2 && o.ascensor) add(`${t.floorN}º sin ascensor`, Math.min(15, 4 * ((t.floorN ?? 1) - 1)))
   if (!o.ascensor && (o.floorN ?? 0) >= 2 && t.ascensor) add('tiene ascensor y el nuestro no', -Math.min(15, 4 * ((o.floorN ?? 1) - 1)))
   const extra = (k: keyof Traits, label: string, pct: number) => { if (o[k] !== t[k]) add(t[k] ? `tiene ${label}` : `sin ${label}`, o[k] ? pct : -pct) }
-  extra('terraza', 'terraza', 4); extra('balcon', 'balcón', 1.5); extra('garaje', 'garaje', 5); extra('trastero', 'trastero', 1.5)
+  extra('terraza', 'terraza', 4); extra('balcon', 'balcón', 1.5); extra('trastero', 'trastero', 1.5)
+  // Garaje incluido en el precio: se descuenta lo que vale una plaza en la zona (no un %), así pesa igual en un piso caro que en uno barato
+  if (o.garaje !== t.garaje) {
+    const pct = c.price_cents ? (GARAGE_EUR * 100 * 100) / c.price_cents : 5
+    add(t.garaje ? `garaje incluido (~${GARAGE_EUR.toLocaleString('es-ES')} €)` : 'sin garaje (el vuestro sí)', t.garaje ? -Math.min(10, pct) : Math.min(10, pct))
+  }
   extra('portero', 'portero', 2); extra('piscina', 'piscina', 3)
   out.push(...extraAdjustments(ours, c))
   const f = fincaAdjustment(ours, c)
@@ -87,6 +92,9 @@ export function fincaAdjustment(ours: Listing, c: Competitor): Adj | null {
   const pct = Math.max(-6, Math.min(6, (diff / 10) * 1.5))
   return Math.abs(pct) >= 0.5 ? { label, pct: Math.round(pct * 10) / 10 } : null
 }
+
+/** Lo que vale una plaza de garaje en la zona (Chamberí, 2026): se descuenta del precio de los que la incluyen */
+export const GARAGE_EUR = 40000
 
 const NOISE_SCORE = { tranquila: 3, normal: 0, ruidosa: -4 } as const
 const LIGHT_SCORE = { mucha: 3, normal: 0, poca: -4 } as const
@@ -315,8 +323,8 @@ export function competitorsPrompt(l: Listing, existing: Competitor[]) {
     known ? `Ya los tenemos (no los repitas salvo que hayan cambiado de precio o se hayan vendido):\n${known}` : '',
     'Busca también, si hay datos fiables y recientes del barrio: €/m² PAGADO en compraventas (portal del Notariado, penotariado.com), €/m² PEDIDO en portales y días medios de venta.',
     'RESPONDE SOLO con este JSON (sin texto antes ni después):',
-    '{"pisos": [{"titulo": "", "url": "https://…", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "ano_construccion": null, "ano_rehabilitacion_finca": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": "1 frase: en qué se diferencia del nuestro"}], "zona": {"pagado_m2": null, "pedido_m2": null, "dias_venta": null}}',
-    'Precios y comunidad en euros (la comunidad, al mes). ruido y luz solo si el anuncio lo dice expresamente; si no, null. ano_construccion = año de la finca (el anuncio o el Catastro); ano_rehabilitacion_finca = última rehabilitación del edificio (fachada, cubierta, ascensor…), solo si se sabe.'
+    '{"pisos": [{"titulo": "", "url": "https://…", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje_incluido": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "ano_construccion": null, "ano_rehabilitacion_finca": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": "1 frase: en qué se diferencia del nuestro"}], "zona": {"pagado_m2": null, "pedido_m2": null, "dias_venta": null}}',
+    'garaje_incluido: true solo si la plaza de garaje va incluida en el precio (si se vende aparte u opcional, false y dilo en la nota). Precios y comunidad en euros (la comunidad, al mes). ruido y luz solo si el anuncio lo dice expresamente; si no, null. ano_construccion = año de la finca (el anuncio o el Catastro); ano_rehabilitacion_finca = última rehabilitación del edificio (fachada, cubierta, ascensor…), solo si se sabe.'
   ].filter(Boolean).join('\n\n')
 }
 
@@ -328,8 +336,8 @@ export function competitorFromLinkPrompt(url: string, l: Listing | null) {
     'Si no puedes abrirlo, dímelo y te pego el texto o capturas del anuncio. No inventes datos: lo que no diga el anuncio, ponlo a null.',
     ours ? `Lo comparo con el nuestro (${ours}): en «nota», una frase sobre en qué se diferencia.` : '',
     'RESPONDE SOLO con este JSON (sin texto antes ni después):',
-    `{"pisos": [{"titulo": "", "url": "${url}", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "ano_construccion": null, "ano_rehabilitacion_finca": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": ""}]}`,
-    'ano_construccion = año de la finca (anuncio o Catastro); ano_rehabilitacion_finca = última rehabilitación del edificio (fachada, cubierta, ascensor…), solo si se sabe. Precio y comunidad en euros (la comunidad, al mes). exterior, aire, ascensor…: true solo si el anuncio lo dice; false si dice que no; null si no lo dice. ruido y luz solo si el anuncio lo dice expresamente.'
+    `{"pisos": [{"titulo": "", "url": "${url}", "zona": "", "precio": 0, "m2": 0, "habitaciones": 0, "banos": 0, "planta": "3º / bajo / ático", "exterior": true, "aire": true, "ascensor": true, "terraza": false, "balcon": false, "garaje_incluido": false, "trastero": false, "portero": false, "piscina": false, "estado": "nuevo|reformado|buen_estado|a_reformar", "ano_reforma": null, "ano_construccion": null, "ano_rehabilitacion_finca": null, "comunidad": null, "calefaccion_central": false, "certificado": null, "edificio": "bien|ite_pendiente|obras_previstas", "derrama": null, "ruido": "tranquila|normal|ruidosa", "luz": "mucha|normal|poca", "situacion": "en_venta|vendido|retirado", "nota": ""}]}`,
+    'ano_construccion = año de la finca (anuncio o Catastro); ano_rehabilitacion_finca = última rehabilitación del edificio (fachada, cubierta, ascensor…), solo si se sabe. garaje_incluido: true solo si la plaza va incluida en el precio (si se vende aparte, false y dilo en la nota). Precio y comunidad en euros (la comunidad, al mes). exterior, aire, ascensor…: true solo si el anuncio lo dice; false si dice que no; null si no lo dice. ruido y luz solo si el anuncio lo dice expresamente.'
   ].filter(Boolean).join('\n\n')
 }
 
@@ -347,6 +355,8 @@ export function parseCompetitors(text: string): CompParse {
     const url = str(p.url, 500)
     const title = str(p.titulo) ?? 'Piso parecido'
     const features = (['exterior', 'aire', 'ascensor', 'terraza', 'balcon', 'garaje', 'trastero', 'portero'] as const).filter(k => p[k] === true) as string[]
+    // garaje_incluido: solo cuenta si la plaza va en el precio (no si se vende aparte)
+    if (p.garaje_incluido === true && !features.includes('garaje')) features.push('garaje')
     if (p.piscina === true) features.push('piscina_comunitaria')
     const estado = one(p.estado, ['nuevo', 'reformado', 'buen_estado', 'a_reformar'] as const)
     if (estado === 'reformado') features.push('reformado')
