@@ -164,7 +164,9 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
         const hist = c.price_history
         const dropped = c.first_price_cents && c.price_cents && c.price_cents < c.first_price_cents
         return (
-          <button key={c.id} onClick={() => setEdit(c)} className={`rounded-2xl bg-card p-3 text-left flex flex-col gap-1 ${c.status !== 'activo' ? 'opacity-60' : ''}`}>
+          // Tarjeta pulsable (abre la ficha) con el enlace al anuncio dentro: div con rol de botón para no anidar <a> en <button>
+          <div key={c.id} role="button" tabIndex={0} onClick={() => setEdit(c)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEdit(c) } }}
+            className={`rounded-2xl bg-card p-3 text-left flex flex-col gap-1 cursor-pointer ${c.status !== 'activo' ? 'opacity-60' : ''}`}>
             <span className="flex justify-between gap-2 items-baseline">
               <span className="text-[14px] font-semibold min-w-0 truncate">{c.title}</span>
               <span className="text-[15px] font-bold shrink-0">{price(c.price_cents)}</span>
@@ -181,7 +183,11 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
             {adj.length > 0 && (
               <span className="flex gap-1 flex-wrap">{adj.map(a => <span key={a.label} className={`px-1.5 py-0.5 rounded-md text-[11px] ${a.pct > 0 ? 'bg-accent-soft text-accent' : 'bg-danger/10 text-danger'}`}>{a.label} {a.pct > 0 ? '+' : ''}{a.pct} %</span>)}</span>
             )}
-          </button>
+            {c.url && (
+              <a href={c.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                className="self-start min-h-9 px-3 mt-0.5 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">🔗 Ver en {portalName(c.url) ?? 'el portal'} ↗</a>
+            )}
+          </div>
         )
       })}
       <div className="flex gap-2 items-center">
