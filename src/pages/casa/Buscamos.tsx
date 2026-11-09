@@ -26,7 +26,7 @@ import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, ref
 import { HomeGastos } from './HomeGastos'
 import { HomeSchools, useSchoolSummaries } from './HomeSchools'
 import { FilterBar, FilterSheet, useHomeFilters } from './HomeFilters'
-import { applyFilters, sortHomes, type Ctx } from '../../lib/homeFilters'
+import { applyFilters, EMPTY, sortHomes, type Ctx } from '../../lib/homeFilters'
 import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } from '../../lib/colegios'
 import { recommend } from '../../lib/pricing'
 import { HomeReforma } from './HomeReforma'
@@ -146,7 +146,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
           <span className="text-sm font-semibold text-accent">Ver ›</span>
         </button>
       )}
-      <FilterBar s={fs} count={list.length} proposals={proposals} onOpen={() => setFiltersOpen(true)} />
+      <FilterBar s={fs} count={list.length} statusCount={st => applyFilters(visibleHomes, { ...EMPTY, statuses: st }, ctx).length} onOpen={() => setFiltersOpen(true)} />
       {filtersOpen && (
         <FilterSheet s={fs} towns={towns} ours={m.criteria?.municipalities ?? []} countFor={f => applyFilters(visibleHomes, f, ctx).length}
           rejected={m.rejections.filter(r => !r.reproposed_at).length} onRejected={() => { setFiltersOpen(false); setRejectedOpen(true) }} onClose={() => setFiltersOpen(false)} />

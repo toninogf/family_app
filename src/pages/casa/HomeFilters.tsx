@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { CRITERIA_EXTRA, FEATURE_GROUPS, FEATURES, HEATING, HOME_STATUS, type HomeStatus } from '../../lib/mudanza'
-import { activeChips, EMPTY, QUICK, SORTS, type Filters, type QuickKey, type ReformFilter, type SortKey } from '../../lib/homeFilters'
+import { activeChips, EMPTY, QUICK, SORTS, type Filters, type ReformFilter, type SortKey } from '../../lib/homeFilters'
 import { Sheet } from '../../components/Sheet'
 import { FEATURE_ICON } from '../../components/FormKit'
 
@@ -27,25 +27,36 @@ const featureLabel = (k: string) => `${FEATURE_ICON[k] ?? ''} ${CRITERIA_EXTRA[k
 const heatingLabel = (k: string) => HEATING[k as keyof typeof HEATING] ?? k
 const same = (a: Filters, b: Filters) => JSON.stringify(a) === JSON.stringify(b)
 
-/** Barra: atajos, botón del panel y chips de lo que está activo */
-export function FilterBar({ s, count, proposals, onOpen }: { s: FilterState; count: number; proposals: number; onOpen: () => void }) {
+/** Barra: estado (como antes), botón del panel y chips de lo que está activo */
+export function FilterBar({ s, count, statusCount, onOpen }: { s: FilterState; count: number; statusCount: (st: HomeStatus[]) => number; onOpen: () => void }) {
   const { f, setF, sort, setSort, views } = s
-  const chips = activeChips(f, { status: st => HOME_STATUS[st], feature: featureLabel, heating: heatingLabel })
-  const toggleQuick = (q: QuickKey) => setF(x => ({ ...x, quick: x.quick.includes(q) ? x.quick.filter(y => y !== q) : [...x.quick, q] }))
-  const props = f.statuses.length === 1 && f.statuses[0] === 'propuesta'
-  const chip = (on: boolean) => `shrink-0 min-h-9 px-3 rounded-full text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`
+  // Los estados van en el desplegable: no se repiten como chips
+  const chips = activeChips({ ...f, statuses: [] }, { status: st => HOME_STATUS[st], feature: featureLabel, heating: heatingLabel })
+  const ALL = Object.keys(HOME_STATUS) as HomeStatus[]
+  const viewOn = views.find(v => same(v.f, f) && v.sort === sort)
+  const value = viewOn ? `v:${viewOn.name}` : f.statuses.length === 0 ? 'activos' : f.statuses.length === ALL.length ? 'todos' : f.statuses.length === 1 ? f.statuses[0] : 'varios'
+  const pick = (v: string) => {
+    if (v.startsWith('v:')) { const vw = views.find(x => `v:${x.name}` === v); if (vw) { setF(vw.f); setSort(vw.sort) } return }
+    if (v === 'varios') return
+    setF(x => ({ ...x, statuses: v === 'activos' ? [] : v === 'todos' ? ALL : [v as HomeStatus] }))
+  }
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex gap-1.5 overflow-x-auto -mx-5 px-5" style={{ scrollbarWidth: 'none' }}>
-        {views.map(v => {
-          const on = same(v.f, f) && v.sort === sort
-          return <button key={v.name} onClick={() => { if (on) { setF(EMPTY) } else { setF(v.f); setSort(v.sort) } }} aria-pressed={on} className={chip(on)}>⭐ {v.name}</button>
-        })}
-        {proposals > 0 && (
-          <button onClick={() => setF(x => ({ ...x, statuses: props ? [] : ['propuesta'] }))} aria-pressed={props} className={chip(props)}>🤖 Propuestas ({proposals})</button>
-        )}
-        {QUICK.map(q => <button key={q.k} onClick={() => toggleQuick(q.k)} aria-pressed={f.quick.includes(q.k)} className={chip(f.quick.includes(q.k))}>{q.label}</button>)}
-      </div>
+      <label className="flex items-center gap-2 min-w-0">
+        <span className="text-[13px] font-semibold text-muted shrink-0">Estado</span>
+        <select value={value} onChange={e => pick(e.target.value)} aria-label="Filtrar por estado"
+          className="flex-1 min-w-0 w-full min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold truncate">
+          <option value="activos">En marcha (sin descartados ni propuestas) ({statusCount([])})</option>
+          <option value="todos">Todos ({statusCount(ALL)})</option>
+          {ALL.map(st => <option key={st} value={st}>{HOME_STATUS[st]} ({statusCount([st])})</option>)}
+          {value === 'varios' && <option value="varios">Varios estados: {f.statuses.map(st => HOME_STATUS[st]).join(', ')}</option>}
+          {views.length > 0 && (
+            <optgroup label="Vistas guardadas">
+              {views.map(v => <option key={v.name} value={`v:${v.name}`}>⭐ {v.name}</option>)}
+            </optgroup>
+          )}
+        </select>
+      </label>
       <div className="flex gap-2 items-center">
         <button onClick={onOpen} className="min-h-10 px-3 rounded-xl border border-line bg-card text-sm font-semibold flex items-center gap-1.5">
           ⚙️ Filtrar y ordenar{chips.length ? <span className="px-1.5 rounded-full bg-accent text-white dark:text-bg text-[11px]">{chips.length}</span> : null}
@@ -57,7 +68,7 @@ export function FilterBar({ s, count, proposals, onOpen }: { s: FilterState; cou
           {chips.map(c => (
             <button key={c.label} onClick={() => setF(x => c.clear(x))} className="min-h-8 px-2.5 rounded-full bg-accent-soft text-accent text-[12px] font-semibold">{c.label} ✕</button>
           ))}
-          <button onClick={() => setF(EMPTY)} className="min-h-8 px-2 text-[12px] text-muted">Limpiar</button>
+          <button onClick={() => setF(x => ({ ...EMPTY, statuses: x.statuses }))} className="min-h-8 px-2 text-[12px] text-muted">Limpiar</button>
         </div>
       )}
     </div>
