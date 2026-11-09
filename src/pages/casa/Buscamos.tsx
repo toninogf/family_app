@@ -587,13 +587,6 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
         onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
-      {/* Índice: abre y lleva a cada grupo */}
-      <nav className="flex gap-1.5 overflow-x-auto -mx-5 px-5" style={{ scrollbarWidth: 'none' }} aria-label="Partes de la ficha">
-        {GROUPS.map(g => (
-          <button key={g.k} onClick={() => groups.go(g.k)} className="shrink-0 min-h-9 px-3 rounded-full border border-line bg-card text-[13px] font-semibold">{g.icon} {g.title}</button>
-        ))}
-      </nav>
-
       <Group k="resumen" g={groups} line={sum.resumen}>
         <Verdict h={h} m={m} onGo={groups.go} />
         <HomePrice h={h} m={m} />
