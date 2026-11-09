@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { COOLING, FEATURES, HEATING, photoUrls, price, type Mudanza } from '../../lib/mudanza'
+import { BUILDING_LABEL, COOLING, FEATURES, HEATING, LIGHT_LABEL, NOISE_LABEL, photoUrls, price, type Mudanza } from '../../lib/mudanza'
 import { FEATURE_ICON } from '../../components/FormKit'
 
 /** Fotos de nuestra casa, deslizables (bucket house-photos, carpeta <hogar>/venta/) */
@@ -45,7 +45,7 @@ export function SaleGallery({ m, onAdd }: { m: Mudanza; onAdd: () => void }) {
 }
 
 /** Nuestra casa de un vistazo: datos con iconos, extras y dónde está (los gastos al mes van en «¿Cuánto nos queda?») */
-export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
+export function SaleFacts({ m, onEdit, onEditValue }: { m: Mudanza; onEdit: () => void; onEditValue: () => void }) {
   const l = m.listing
   if (!l) return null
   const facts = ([
@@ -61,6 +61,12 @@ export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
   ].filter(Boolean) as [string, string][])
   const extras = (l.features ?? []).filter(f => !(f === 'calefaccion' && l.heating_type) && !(f === 'aire' && l.cooling))
   const place = [l.address, l.zone, l.municipality].filter(Boolean).join(' · ')
+  // «Lo que pesa en el precio» (lo usa «¿Estamos en precio?» para comparar más allá del €/m²)
+  const value = [
+    l.reform_year && `reformada en ${l.reform_year}`, l.orientation && `orientación ${l.orientation}`,
+    l.noise && NOISE_LABEL[l.noise].toLowerCase(), l.light && LIGHT_LABEL[l.light].toLowerCase(),
+    l.building_state && BUILDING_LABEL[l.building_state].toLowerCase(), l.derrama_cents ? `derrama ${price(l.derrama_cents)}` : null
+  ].filter(Boolean) as string[]
   return (
     <section className="bg-card rounded-2xl p-3 flex flex-col gap-2.5">
       <div className="flex justify-between items-center">
@@ -77,6 +83,10 @@ export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
           {extras.map(f => <span key={f} className="px-2 py-0.5 rounded-lg bg-bg text-[12px]">{FEATURE_ICON[f] ?? '•'} {FEATURES[f] ?? f}</span>)}
         </span>
       )}
+      <button onClick={onEditValue} className="flex flex-col gap-0.5 text-left border-t border-line pt-2">
+        <span className="text-[13px] text-muted">⚖️ Lo que pesa en el precio</span>
+        <span className={`text-[13px] ${value.length ? '' : 'text-[#C77A12]'}`}>{value.length ? value.join(' · ') : '+ Año de reforma, orientación, ruido, luz y edificio (afinan la valoración)'}</span>
+      </button>
       {place && <span className="text-[13px] border-t border-line pt-2">📍 {place}</span>}
     </section>
   )

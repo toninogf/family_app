@@ -694,24 +694,25 @@ export const DOC_PHASES: { key: string; title: string; keys: string[] }[] = [
 ]
 
 /** Pasos de la venta con lo que conviene tener hecho en cada uno */
-export const STEP_TEMPLATE: { kind: StepKind; title: string; checklist: { key: string; label: string }[] }[] = [
+/** «doc»: el punto es un documento de «Documentos» (su estado sale de ahí, no se marca aparte) */
+export const STEP_TEMPLATE: { kind: StepKind; title: string; checklist: { key: string; label: string; doc?: string }[] }[] = [
   { kind: 'reserva', title: 'Reserva', checklist: [
     { key: 'oferta_escrito', label: 'Oferta aceptada por escrito' },
     { key: 'importe', label: 'Importe y plazo de la reserva acordados' },
     { key: 'cobro', label: 'Reserva cobrada (transferencia)' }
   ] },
   { kind: 'arras', title: 'Firma de arras', checklist: [
-    { key: 'nota_simple', label: 'Nota simple reciente' },
+    { key: 'nota_simple', label: 'Nota simple reciente', doc: 'nota_simple' },
     { key: 'contrato', label: 'Contrato de arras revisado' },
     { key: 'financiacion', label: 'Financiación del comprador confirmada' },
     { key: 'fecha_notaria', label: 'Fecha límite de firma en notaría' },
     { key: 'cobro', label: 'Arras cobradas' }
   ] },
   { kind: 'firma', title: 'Firma ante notario', checklist: [
-    { key: 'deuda', label: 'Certificado de deuda de la hipoteca (15 días antes)' },
-    { key: 'comunidad', label: 'Certificado de la comunidad' },
-    { key: 'ibi', label: 'Último recibo del IBI' },
-    { key: 'cee', label: 'Certificado energético' },
+    { key: 'deuda', label: 'Certificado de deuda de la hipoteca (15 días antes)', doc: 'hipoteca' },
+    { key: 'comunidad', label: 'Certificado de la comunidad', doc: 'comunidad' },
+    { key: 'ibi', label: 'Último recibo del IBI', doc: 'ibi' },
+    { key: 'cee', label: 'Certificado energético', doc: 'cee' },
     { key: 'llaves', label: 'Llaves y mandos preparados' },
     { key: 'suministros', label: 'Lecturas de luz, agua y gas; cambio de titular' }
   ] }

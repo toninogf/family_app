@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { COOLING, COST_TEMPLATE, FEATURE_GROUPS, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
+import { COOLING, COST_TEMPLATE, FEATURE_GROUPS, FEATURES, HEATING, mergeLinks, parsePrice, portalName, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
 } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
@@ -25,7 +25,7 @@ export function fichaLine(l: Listing | null) {
 }
 
 /** Ficha completa de nuestro anuncio: datos, enlaces, y relleno desde el anuncio (IA, texto o capturas) */
-export type VentaFocus = 'casa' | 'valor' | 'precio' | 'cuentas' | 'mes' | 'texto' | 'anuncio'
+export type VentaFocus = 'casa' | 'valor' | 'precio' | 'cuentas' | 'mes' | 'texto' | 'anuncio' | 'enlaces'
 
 export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza; householdId: string; onClose: () => void; focus?: VentaFocus }) {
   const l = m.listing
@@ -34,6 +34,8 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
   const [shots, setShots] = useState<File[]>([])
   const [adPhotos, setAdPhotos] = useState<File[]>([])
   const [extraLinks, setExtraLinks] = useState<Link[]>([])
+  // Dónde está anunciada: se pueden corregir o quitar (el primero es el anuncio principal)
+  const [links, setLinks] = useState<Link[]>(l?.links ?? [])
   const [amount, setAmount] = useState(priceInput(l?.price_cents))
   const [published, setPublished] = useState(l?.published_on ?? '')
   const [title, setTitle] = useState(l?.title ?? '')
@@ -73,7 +75,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
   const [busy, setBusy] = useState<string | null>(null)
   // Mismos bloques que la ficha; el ✏️ de cada tarjeta abre el suyo y baja a su apartado
   const target = focus ? ({ casa: ['casa', 'casa'], valor: ['casa', 'casa-valor'], precio: ['cuentas', 'cuentas-precio'], cuentas: ['cuentas', 'cuentas-venta'],
-    mes: ['cuentas', 'cuentas-mes'], texto: ['texto', 'texto'], anuncio: ['anuncio', 'anuncio'] } as const)[focus] : null
+    mes: ['cuentas', 'cuentas-mes'], texto: ['texto', 'texto'], anuncio: ['anuncio', 'anuncio'], enlaces: ['enlaces', 'enlaces'] } as const)[focus] : null
   const anchor = target?.[1] ?? null
   const sections = useSections(target ? [target[0]] : l ? [] : ['anuncio', 'casa'])
   useEffect(() => {
@@ -138,7 +140,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
   const missingForAi = VSECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([k, v]) => !v.trim() && k !== 'hipoteca').map(([k]) => k)
   const fl = (k: string) => flash[k]
   const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, reformYear, orientation, building, derrama, noise, light, features, energy, heatType, cooling,
-    fee, ibi, power, water, heating, year, ref, description, notes, mortgage, costs, shots: shots.length, ad: adPhotos.length, extraLinks })
+    fee, ibi, power, water, heating, year, ref, description, notes, mortgage, costs, shots: shots.length, ad: adPhotos.length, extraLinks, links })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
 
@@ -151,10 +153,12 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
     const sizes = [m2, useful, plot].map(num)
     if (sizes.some(x => x != null && (isNaN(x) || x <= 0))) { setError('Revisa los metros'); return }
     // El enlace del anuncio queda como el primero de «Dónde está anunciado»
-    const links = [...(l?.links ?? [])]
-    const clean = url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim().replace(/^http:/i, 'https:') : `https://${url.trim()}`) : ''
-    if (clean && !links.some(x => x.url === clean)) links.unshift({ label: '', url: clean })
-    const allLinks = mergeLinks(links, extraLinks)
+    const norm = (u: string) => (/^https?:\/\//i.test(u) ? u.replace(/^http:/i, 'https:') : `https://${u}`)
+    const edited = links.filter(x => x.url.trim()).map(x => ({ ...x, label: x.label.trim(), url: norm(x.url.trim()) }))
+    const clean = url.trim() ? norm(url.trim()) : ''
+    // El del recuadro del anuncio se añade si es nuevo (si lo habéis quitado de la lista y no lo tocáis, no vuelve)
+    if (clean && clean !== firstLink && !edited.some(x => x.url === clean)) edited.unshift({ label: '', url: clean })
+    const allLinks = mergeLinks(edited, extraLinks)
     const mortgageCents = mortgage.trim() ? parsePrice(mortgage) : null
     if (mortgage.trim() && mortgageCents == null) { setError('La hipoteca pendiente no es válida'); return }
     const costList = costs.filter(c => c.label.trim()).map(c => ({ label: c.label.trim().slice(0, 60), cents: c.amount.trim() ? parsePrice(c.amount) ?? 0 : 0 }))
@@ -299,6 +303,23 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
           <Field label="Referencia del anuncio" value={ref} onChange={e => setRef(e.target.value)} maxLength={60} flash={fl('referencia')} />
           <TextArea label="Descripción del anuncio" value={description} onChange={e => setDescription(e.target.value)} maxLength={5000}
             placeholder="El texto que tenéis publicado (sirve también para el dossier)" />
+        </EditSection>
+
+        <EditSection id="enlaces" icon="🔗" title="Enlaces" open={sections.isOpen('enlaces')} onToggle={() => sections.toggle('enlaces')}>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium text-muted mb-1">Dónde está anunciada (el primero es el principal)</legend>
+            {links.map((lk, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input value={lk.label} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, label: e.target.value.slice(0, 40) } : x)))} placeholder={portalName(lk.url) ?? 'Nombre'}
+                  aria-label="Nombre del enlace" className="w-28 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold" />
+                <input value={lk.url} onChange={e => setLinks(links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} placeholder="https://…" inputMode="url"
+                  aria-label="Enlace" className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[14px]" />
+                <button type="button" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Quitar enlace" className="w-9 text-muted text-xl">×</button>
+              </div>
+            ))}
+            {links.length === 0 && <p className="text-[13px] text-muted">Sin enlaces todavía.</p>}
+            {links.length < 10 && <button type="button" onClick={() => setLinks([...links, { label: '', url: '' }])} className="self-start min-h-10 text-sm text-accent font-semibold">+ Añadir enlace (otro portal, la inmobiliaria…)</button>}
+          </fieldset>
         </EditSection>
 
         <TextArea label="Notas privadas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} placeholder="Precio mínimo que aceptaríamos, qué incluye… (no sale en el dossier)" />

@@ -39,6 +39,17 @@ export function docAlert(d: SaleDoc, t = today()) {
   return null
 }
 
+/** Estado de un documento para un paso: listo si está y sigue valiendo el día del paso */
+export function docForStep(docs: SaleDoc[], key: string, stepDate: string | null, t = today()) {
+  const d = docs.find(x => x.doc_key === key)
+  const on = stepDate && stepDate > t ? stepDate : t
+  if (!d) return { ok: false, icon: '➕', text: 'No está en Documentos' }
+  if (d.status === 'no_aplica') return { ok: true, icon: '➖', text: 'No aplica' }
+  if (d.status !== 'ok') return { ok: false, icon: d.status === 'pedido' ? '⏳' : '❌', text: d.status === 'pedido' ? 'Pedido' : 'Falta' }
+  if (d.expires_on && d.expires_on < on) return { ok: false, icon: '⚠️', text: `Caduca el ${shortDate(d.expires_on)}, antes del paso` }
+  return { ok: true, icon: '✅', text: d.expires_on ? `Listo · vale hasta ${shortDate(d.expires_on)}` : 'Listo' }
+}
+
 export function docsSummary(docs: SaleDoc[]) {
   const relevant = docs.filter(d => d.status !== 'no_aplica')
   const have = relevant.filter(d => d.status === 'ok').length
@@ -246,7 +257,7 @@ export function VentaPasos({ m }: { m: Mudanza }) {
           {m.saleSteps.map((s, i) => {
             const tpl = STEP_TEMPLATE.find(x => x.kind === s.kind)
             const items = tpl?.checklist ?? []
-            const ticked = items.filter(c => s.checklist?.[c.key]).length
+            const ticked = items.filter(c => (c.doc ? docForStep(m.saleDocs, c.doc, s.step_date, t).ok : s.checklist?.[c.key])).length
             const late = !s.done && s.step_date && s.step_date < t
             return (
               <li key={s.id}>
@@ -313,12 +324,26 @@ function StepSheet({ step, m, onClose }: { step?: SaleStep; m: Mudanza; onClose:
         {tpl && (
           <fieldset className="flex flex-col gap-1">
             <legend className="text-sm font-medium text-muted mb-1">Qué tener listo</legend>
-            {tpl.checklist.map(c => (
-              <label key={c.key} className="flex items-center gap-3 min-h-11">
-                <input type="checkbox" checked={!!checks[c.key]} onChange={() => setChecks({ ...checks, [c.key]: !checks[c.key] })} className="w-5 h-5 accent-[var(--app-accent)]" />
-                <span className="text-[15px]">{c.label}</span>
-              </label>
-            ))}
+            {tpl.checklist.map(c => {
+              if (c.doc) {
+                const st = docForStep(m.saleDocs, c.doc, date || null)
+                return (
+                  <div key={c.key} className="flex items-center gap-3 min-h-11">
+                    <span className="w-5 text-center shrink-0" aria-hidden="true">{st.icon}</span>
+                    <span className="flex flex-col">
+                      <span className="text-[15px]">{c.label}</span>
+                      <span className={`text-[12px] ${st.ok ? 'text-muted' : 'text-[#C77A12]'}`}>{st.text} · se lleva en «Documentos»</span>
+                    </span>
+                  </div>
+                )
+              }
+              return (
+                <label key={c.key} className="flex items-center gap-3 min-h-11">
+                  <input type="checkbox" checked={!!checks[c.key]} onChange={() => setChecks({ ...checks, [c.key]: !checks[c.key] })} className="w-5 h-5 accent-[var(--app-accent)]" />
+                  <span className="text-[15px]">{c.label}</span>
+                </label>
+              )
+            })}
           </fieldset>
         )}
         <TextArea label="Notas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} />

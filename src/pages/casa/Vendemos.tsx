@@ -283,7 +283,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
       </>)}
 
       {grp('casa', null, <>
-        <SaleFacts m={m} onEdit={() => setListingOpen('casa')} />
+        <SaleFacts m={m} onEdit={() => setListingOpen('casa')} onEditValue={() => setListingOpen('valor')} />
       </>)}
 
       {grp('cuentas', null, <>
@@ -299,7 +299,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         <VentaPasos m={m} />
       </>)}
 
-      {grp('enlaces', <button onClick={() => setListingOpen('anuncio')} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>, <>
+      {grp('enlaces', <button onClick={() => setListingOpen('enlaces')} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>, <>
         <div className="flex gap-1.5 flex-wrap">
           {(m.listing?.links ?? []).map((l, i) => (
             <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">
