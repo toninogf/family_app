@@ -77,10 +77,11 @@ function refLinks(zone: string | null, municipality: string | null) {
   const slug = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   // «Vallehermoso, Chamberí» → barrio y distrito (Madrid capital)
   const [barrio, distrito] = (zone ?? '').split(',').map(x => x.trim()).filter(Boolean)
+  // El informe por barrio de idealista a veces da «sin permisos»: enlace al del distrito y, de respaldo, una búsqueda que lleva al del barrio
   const base = 'https://www.idealista.com/sala-de-prensa/informes-precio-vivienda/venta/madrid-comunidad/madrid-provincia/madrid/'
-  const idealista = municipality === 'Madrid' && distrito && barrio ? `${base}${slug(distrito)}/${slug(barrio)}/`
-    : municipality === 'Madrid' && barrio ? `${base}${slug(barrio)}/` : 'https://www.idealista.com/sala-de-prensa/informes-precio-vivienda/'
-  return { notariado: 'https://penotariado.com/inmobiliario', idealista }
+  const idealista = municipality === 'Madrid' && (distrito || barrio) ? `${base}${slug(distrito || barrio)}/` : 'https://www.idealista.com/sala-de-prensa/informes-precio-vivienda/'
+  const search = `https://www.google.com/search?q=${encodeURIComponent(`idealista precio vivienda venta ${[barrio, distrito, municipality].filter(Boolean).join(' ')} €/m²`)}`
+  return { notariado: 'https://penotariado.com/inmobiliario', idealista, search }
 }
 
 function MarketRefs({ m, householdId }: { m: Mudanza; householdId: string }) {
@@ -113,9 +114,10 @@ function MarketRefs({ m, householdId }: { m: Mudanza; householdId: string }) {
       </div>
       <div className="flex gap-1.5 flex-wrap">
         <a href={links.notariado} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🏛️ Pagado: Notariado ↗</a>
-        <a href={links.idealista} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🏷️ Pedido: idealista ↗</a>
+        <a href={links.idealista} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🏷️ Pedido: idealista (distrito) ↗</a>
+        <a href={links.search} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔎 Pedido del barrio ↗</a>
       </div>
-      <p className="text-[11px] text-muted -mt-1">En el Notariado, busca vuestro código postal en el mapa y mira la media de los últimos 3 meses (un mes suelto salta mucho). En idealista, el precio medio de venta del barrio. Revísalos cada mes.</p>
+      <p className="text-[11px] text-muted -mt-1">En el Notariado, busca vuestro código postal en el mapa y mira la media de los últimos 3 meses (un mes suelto salta mucho). En idealista, el precio medio de venta del barrio (si el enlace del distrito no abre, usa «Pedido del barrio», que lo busca). Revísalos cada mes.</p>
       {(mk.paid_note || mk.asking_note) ? (
         <div className="text-[12px] text-muted flex flex-col gap-0.5">
           {mk.paid_note && <span>Pagado: {mk.paid_note}</span>}
