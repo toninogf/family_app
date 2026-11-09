@@ -44,10 +44,9 @@ export function SaleGallery({ m, onAdd }: { m: Mudanza; onAdd: () => void }) {
   )
 }
 
-/** Nuestra casa de un vistazo: datos con iconos, extras y gastos al mes */
+/** Nuestra casa de un vistazo: datos con iconos, extras y dónde está (los gastos al mes van en «¿Cuánto nos queda?») */
 export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
   const l = m.listing
-  const [costsOpen, setCostsOpen] = useState(false)
   if (!l) return null
   const facts = ([
     l.size_m2 && ['🏠', `${Number(l.size_m2)} m²${l.useful_m2 ? ` (${Number(l.useful_m2)} útiles)` : ''}`],
@@ -61,8 +60,7 @@ export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
     l.cooling && ['❄️', `aire: ${COOLING[l.cooling]}`]
   ].filter(Boolean) as [string, string][])
   const extras = (l.features ?? []).filter(f => !(f === 'calefaccion' && l.heating_type) && !(f === 'aire' && l.cooling))
-  const parts = [l.community_fee_cents, l.ibi_cents == null ? null : Math.round(l.ibi_cents / 12), l.electricity_cents, l.water_cents, l.heating_cents]
-  const monthly = parts.every(x => x == null) ? null : parts.reduce<number>((s, x) => s + (x ?? 0), 0)
+  const place = [l.address, l.zone, l.municipality].filter(Boolean).join(' · ')
   return (
     <section className="bg-card rounded-2xl p-3 flex flex-col gap-2.5">
       <div className="flex justify-between items-center">
@@ -79,20 +77,35 @@ export function SaleFacts({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
           {extras.map(f => <span key={f} className="px-2 py-0.5 rounded-lg bg-bg text-[12px]">{FEATURE_ICON[f] ?? '•'} {FEATURES[f] ?? f}</span>)}
         </span>
       )}
-      <button onClick={() => (monthly != null ? setCostsOpen(!costsOpen) : onEdit())} className="flex justify-between items-center text-left border-t border-line pt-2">
-        <span className="text-[13px] text-muted">💶 Gastos al mes (lo que verá el comprador)</span>
-        <span className="text-[14px] font-semibold">{monthly != null ? `~${price(monthly)}` : 'Añadir'}{monthly != null && <span className="text-muted"> {costsOpen ? '▾' : '▸'}</span>}</span>
-      </button>
-      {costsOpen && monthly != null && (
-        <div className="text-[12px] text-muted grid grid-cols-2 gap-x-3 -mt-1">
-          {l.community_fee_cents != null && <span>Comunidad {price(l.community_fee_cents)}</span>}
-          {l.ibi_cents != null && <span>IBI {price(Math.round(l.ibi_cents / 12))}/mes</span>}
-          {l.electricity_cents != null && <span>Luz {price(l.electricity_cents)}</span>}
-          {l.water_cents != null && <span>Agua {price(l.water_cents)}</span>}
-          {l.heating_cents != null && <span>Calefacción {price(l.heating_cents)}</span>}
-        </div>
-      )}
+      {place && <span className="text-[13px] border-t border-line pt-2">📍 {place}</span>}
     </section>
+  )
+}
+
+/** «📆 Gastos al mes» de nuestra casa (lo que verá el comprador; sale en el dossier) */
+export function SaleMonthly({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
+  const l = m.listing
+  const rows: [string, number][] = ([
+    l?.community_fee_cents != null && ['Comunidad', l.community_fee_cents],
+    l?.ibi_cents != null && ['IBI (anual / 12)', Math.round(l.ibi_cents / 12)],
+    l?.electricity_cents != null && ['Luz', l.electricity_cents],
+    l?.water_cents != null && ['Agua', l.water_cents],
+    l?.heating_cents != null && ['Calefacción', l.heating_cents]
+  ].filter(Boolean) as [string, number][])
+  const monthly = rows.length ? rows.reduce((s, [, v]) => s + v, 0) : null
+  return (
+    <button onClick={onEdit} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1">
+      <span className="flex justify-between items-center gap-2">
+        <span className="font-bold text-[15px]">📆 Gastos al mes</span>
+        <span className="text-[14px] font-semibold">{monthly != null ? `~${price(monthly)}` : <span className="text-sm" aria-hidden="true">✏️</span>}</span>
+      </span>
+      <span className="text-[12px] text-muted">Lo que verá el comprador (sale en el dossier)</span>
+      {rows.length ? (
+        <span className="grid grid-cols-2 gap-x-3 text-[12px] text-muted">
+          {rows.map(([lb, v]) => <span key={lb}>{lb} {price(v)}</span>)}
+        </span>
+      ) : <span className="text-[13px] text-muted">+ Añadir comunidad, IBI y suministros</span>}
+    </button>
   )
 }
 

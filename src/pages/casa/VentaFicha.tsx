@@ -1,17 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { COOLING, FEATURE_GROUPS, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
+import { COOLING, COST_TEMPLATE, FEATURE_GROUPS, FEATURES, HEATING, mergeLinks, parsePrice, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
 } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
 import { Sheet, TextArea } from '../../components/Sheet'
 import Combobox from '../../components/Combobox'
 import ListingImport, { knownForAi, merger } from '../../components/ListingImport'
-import { EditSection, Field, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
+import { EditSection, Field, GroupedChips, ImportSummary, SaveBar, SelectField, SubHead, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 
 const VSECTIONS = [
-  { id: 'basico', title: 'Lo básico' }, { id: 'ubicacion', title: 'Ubicación' }, { id: 'equip', title: 'Equipamiento' },
-  { id: 'gastos', title: 'Gastos' }, { id: 'texto', title: 'Descripción' }
+  { id: 'casa', title: 'Nuestra casa' }, { id: 'cuentas', title: '¿Cuánto nos queda?' }, { id: 'texto', title: 'Descripción' }
 ]
 
 const TOWNS = (MUNICIPALITIES['28'] ?? []).map(p => p.name)
@@ -26,7 +25,9 @@ export function fichaLine(l: Listing | null) {
 }
 
 /** Ficha completa de nuestro anuncio: datos, enlaces, y relleno desde el anuncio (IA, texto o capturas) */
-export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: string; onClose: () => void }) {
+export type VentaFocus = 'casa' | 'valor' | 'precio' | 'cuentas' | 'mes' | 'texto' | 'anuncio'
+
+export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza; householdId: string; onClose: () => void; focus?: VentaFocus }) {
   const l = m.listing
   const firstLink = l?.links[0]?.url ?? ''
   const [url, setUrl] = useState(firstLink)
@@ -65,9 +66,21 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [ref, setRef] = useState(l?.listing_ref ?? '')
   const [description, setDescription] = useState(l?.description ?? '')
   const [notes, setNotes] = useState(l?.notes ?? '')
+  const [mortgage, setMortgage] = useState(priceInput(l?.mortgage_cents))
+  const [costs, setCosts] = useState<{ label: string; amount: string }[]>(
+    l?.costs?.length ? l.costs.map(c => ({ label: c.label, amount: priceInput(c.cents) })) : COST_TEMPLATE.map(label => ({ label, amount: '' })))
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
-  const sections = useSections(l ? [] : ['anuncio', 'basico'])
+  // Mismos bloques que la ficha; el ✏️ de cada tarjeta abre el suyo y baja a su apartado
+  const target = focus ? ({ casa: ['casa', 'casa'], valor: ['casa', 'casa-valor'], precio: ['cuentas', 'cuentas-precio'], cuentas: ['cuentas', 'cuentas-venta'],
+    mes: ['cuentas', 'cuentas-mes'], texto: ['texto', 'texto'], anuncio: ['anuncio', 'anuncio'] } as const)[focus] : null
+  const anchor = target?.[1] ?? null
+  const sections = useSections(target ? [target[0]] : l ? [] : ['anuncio', 'casa'])
+  useEffect(() => {
+    if (!anchor) return
+    const t = setTimeout(() => document.getElementById(`edit-${anchor}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150)
+    return () => clearTimeout(t)
+  }, [anchor])
   const { flash, show: showFlash } = useFlash()
   const [summary, setSummary] = useState<{ filled: number; diffs: number } | null>(null)
   const [leaving, setLeaving] = useState(false)
@@ -112,20 +125,20 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   // Qué datos tiene cada bloque (contador, resumen y «pedir solo lo que falta»)
   function fieldsOf(id: string): [string, string][] {
     switch (id) {
-      case 'basico': return [['precio', amount], ['tipo', type], ['m²', m2], ['m² útiles', useful], ['parcela', plot], ['habitaciones', rooms], ['baños', baths], ['planta', floor], ['año', year]]
-      case 'ubicacion': return [['localidad', municipality ?? ''], ['zona', zone], ['dirección', address]]
-      case 'equip': return [['características', features.length ? 'x' : ''], ['certificado', energy ?? ''], ['tipo de calefacción', heatType ?? ''], ['aire', cooling ?? '']]
-      case 'gastos': return [['comunidad', fee], ['IBI', ibi], ['luz', power], ['agua', water], ['calefacción', heating]]
+      case 'casa': return [['tipo', type], ['m²', m2], ['m² útiles', useful], ['parcela', plot], ['habitaciones', rooms], ['baños', baths], ['planta', floor], ['año', year],
+        ['características', features.length ? 'x' : ''], ['certificado', energy ?? ''], ['tipo de calefacción', heatType ?? ''], ['aire', cooling ?? ''],
+        ['localidad', municipality ?? ''], ['zona', zone], ['dirección', address]]
+      case 'cuentas': return [['precio', amount], ['hipoteca', mortgage], ['comunidad', fee], ['IBI', ibi], ['luz', power], ['agua', water], ['calefacción', heating]]
       case 'texto': return [['descripción', description], ['referencia', ref]]
       default: return []
     }
   }
   const cnt = (id: string) => { const f = fieldsOf(id); return { filled: f.filter(([, v]) => v.trim()).length, total: f.length } }
   const flashedIn = (id: string) => fieldsOf(id).some(([k]) => flash[k])
-  const missingForAi = VSECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([, v]) => !v.trim()).map(([k]) => k)
+  const missingForAi = VSECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([k, v]) => !v.trim() && k !== 'hipoteca').map(([k]) => k)
   const fl = (k: string) => flash[k]
   const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, reformYear, orientation, building, derrama, noise, light, features, energy, heatType, cooling,
-    fee, ibi, power, water, heating, year, ref, description, notes, shots: shots.length, ad: adPhotos.length, extraLinks })
+    fee, ibi, power, water, heating, year, ref, description, notes, mortgage, costs, shots: shots.length, ad: adPhotos.length, extraLinks })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
 
@@ -142,6 +155,9 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
     const clean = url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim().replace(/^http:/i, 'https:') : `https://${url.trim()}`) : ''
     if (clean && !links.some(x => x.url === clean)) links.unshift({ label: '', url: clean })
     const allLinks = mergeLinks(links, extraLinks)
+    const mortgageCents = mortgage.trim() ? parsePrice(mortgage) : null
+    if (mortgage.trim() && mortgageCents == null) { setError('La hipoteca pendiente no es válida'); return }
+    const costList = costs.filter(c => c.label.trim()).map(c => ({ label: c.label.trim().slice(0, 60), cents: c.amount.trim() ? parsePrice(c.amount) ?? 0 : 0 }))
     setBusy('Guardando…'); setError('')
     const err = await m.write('sale_listing', {
       household_id: householdId, price_cents: cents, published_on: published || null, links: allLinks.slice(0, 10),
@@ -151,7 +167,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null,
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
       year_built: ints[2], reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear.trim()) : null, orientation, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light, listing_ref: ref.trim() || null, description: description.trim() || null,
-      notes: notes.trim() || null
+      notes: notes.trim() || null, mortgage_cents: mortgageCents, costs: costList
     }, undefined, 'household_id')
     if (!err && shots.length) {
       for (let i = 0; i < shots.length; i++) {
@@ -190,12 +206,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
             })} />
         </EditSection>
 
-        <EditSection id="basico" icon="🏠" title="Lo básico" {...cnt('basico')} flashed={flashedIn('basico')} open={sections.isOpen('basico')} onToggle={() => sections.toggle('basico')}>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Precio publicado" suffix="€" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} onBlur={() => setAmount(thousands)} placeholder="285.000" flash={fl('precio')} />
-            <Field label="Publicado desde" type="date" value={published} onChange={e => setPublished(e.target.value)} />
-          </div>
-          <p className="text-xs text-muted -mt-2">Cada cambio de precio queda guardado en el historial.</p>
+        <EditSection id="casa" icon="🏠" title="Nuestra casa" {...cnt('casa')} flashed={flashedIn('casa')} open={sections.isOpen('casa')} onToggle={() => sections.toggle('casa')}>
           <Field label="Tipo" value={type} onChange={e => setType(e.target.value)} maxLength={60} placeholder="Piso, chalet independiente, ático…" flash={fl('tipo')} />
           <div className="grid grid-cols-3 gap-3">
             <Field label="Construidos" suffix="m²" inputMode="decimal" value={m2} onChange={e => setM2(e.target.value)} flash={fl('m²')} />
@@ -208,6 +219,19 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
             <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} flash={fl('planta')} />
             <Field label="Año" inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} flash={fl('año')} />
           </div>
+          <SubHead id="casa-equip">Equipamiento</SubHead>
+          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
+            groups={FEATURE_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => k !== 'cerca_cole') }))} labels={k => FEATURES[k] ?? k} />
+          <div className="grid grid-cols-2 gap-3">
+            <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
+              options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
+            <SelectField<HeatingType> label="Calefacción" value={heatType} onChange={setHeatType} flash={fl('tipo de calefacción')}
+              options={(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k, label: HEATING[k] }))} />
+            <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
+              options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
+          </div>
+          <SubHead id="casa-valor">⚖️ Lo que pesa en el precio</SubHead>
+          <p className="text-xs text-muted -mt-2">Se usa en «¿Estamos en precio?» para comparar con pisos parecidos más allá del €/m².</p>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Año de la última reforma" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} placeholder="Ej. 2018" />
             <SelectField label="Orientación" value={orientation} onChange={v => setOrientation(v)} empty="Sin saber"
@@ -221,9 +245,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
             <SelectField<BuildingState> label="Estado del edificio" value={building} onChange={setBuilding} options={(Object.keys(BUILDING_LABEL) as BuildingState[]).map(k => ({ value: k, label: BUILDING_LABEL[k] }))} />
             <Field label="Derrama pendiente" suffix="€" inputMode="decimal" value={derrama} onChange={e => setDerrama(e.target.value)} placeholder="Si la hay" />
           </div>
-        </EditSection>
-
-        <EditSection id="ubicacion" icon="📍" title="Ubicación" {...cnt('ubicacion')} flashed={flashedIn('ubicacion')} open={sections.isOpen('ubicacion')} onToggle={() => sections.toggle('ubicacion')}>
+          <SubHead id="casa-ubicacion">📍 Ubicación</SubHead>
           <div className={`rounded-xl ${fl('localidad') ? 'ring-2 ring-accent' : ''}`}>
             <Combobox label="Localidad" value={municipality} onChange={setMunicipality} options={TOWNS} placeholder="Escribe: Galap…" />
           </div>
@@ -236,20 +258,31 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
           <Field label="Dirección" value={address} onChange={e => setAddress(e.target.value)} maxLength={120} flash={fl('dirección')} />
         </EditSection>
 
-        <EditSection id="equip" icon="🔧" title="Equipamiento" {...cnt('equip')} flashed={flashedIn('equip')} open={sections.isOpen('equip')} onToggle={() => sections.toggle('equip')}>
-          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
-            groups={FEATURE_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => k !== 'cerca_cole') }))} labels={k => FEATURES[k] ?? k} />
+        <EditSection id="cuentas" icon="💶" title="¿Cuánto nos queda?" {...cnt('cuentas')} flashed={flashedIn('cuentas')} open={sections.isOpen('cuentas')} onToggle={() => sections.toggle('cuentas')}>
+          <SubHead id="cuentas-precio" first>🏷️ Precio</SubHead>
           <div className="grid grid-cols-2 gap-3">
-            <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
-              options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
-            <SelectField<HeatingType> label="Calefacción" value={heatType} onChange={setHeatType} flash={fl('tipo de calefacción')}
-              options={(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k, label: HEATING[k] }))} />
-            <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
-              options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
+            <Field label="Precio publicado" suffix="€" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} onBlur={() => setAmount(thousands)} placeholder="285.000" flash={fl('precio')} />
+            <Field label="Publicado desde" type="date" value={published} onChange={e => setPublished(e.target.value)} />
           </div>
-        </EditSection>
-
-        <EditSection id="gastos" icon="💶" title="Gastos" {...cnt('gastos')} flashed={flashedIn('gastos')} open={sections.isOpen('gastos')} onToggle={() => sections.toggle('gastos')}>
+          <p className="text-xs text-muted -mt-2">Cada cambio de precio queda guardado en el historial.</p>
+          <SubHead id="cuentas-venta">🏦 Hipoteca y gastos de la venta</SubHead>
+          <Field label="Hipoteca pendiente" suffix="€" inputMode="decimal" value={mortgage} onChange={e => setMortgage(e.target.value)} onBlur={() => setMortgage(thousands)} placeholder="Lo que dice el certificado de deuda" />
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium text-muted mb-1">Gastos de la venta</legend>
+            {costs.map((c, i) => (
+              <div key={i} className="flex gap-2">
+                <input value={c.label} onChange={e => setCosts(costs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} maxLength={60}
+                  className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-card text-[15px]" aria-label="Concepto" />
+                <input value={c.amount} onChange={e => setCosts(costs.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} inputMode="decimal" placeholder="€"
+                  className="w-28 min-h-11 px-3 rounded-xl border border-line bg-card text-[15px] text-right" aria-label={`Importe de ${c.label}`} />
+                <button type="button" onClick={() => setCosts(costs.filter((_, j) => j !== i))} aria-label="Quitar" className="w-9 text-muted text-xl">×</button>
+              </div>
+            ))}
+            {costs.length < 20 && (
+              <button type="button" onClick={() => setCosts([...costs, { label: '', amount: '' }])} className="min-h-10 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir gasto</button>
+            )}
+          </fieldset>
+          <SubHead id="cuentas-mes">📆 Gastos al mes (lo que verá el comprador)</SubHead>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
             <Field label="IBI" suffix="€/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} onBlur={() => setIbi(thousands)} flash={fl('IBI')} />

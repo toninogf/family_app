@@ -1,8 +1,8 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { addDays, hhmm, relativeDay, shortDate, today } from '../../lib/dates'
 import {
-  COST_TEMPLATE, DOC_PHASES, DOC_TEMPLATE, STEP_TEMPLATE, parsePrice, price, priceInput,
-  type DocStatus, type Mudanza, type SaleCost, type SaleDoc, type SaleStep, type StepKind
+  DOC_PHASES, DOC_TEMPLATE, STEP_TEMPLATE, parsePrice, price, priceInput,
+  type DocStatus, type Mudanza, type SaleDoc, type SaleStep, type StepKind
 } from '../../lib/mudanza'
 import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../components/Sheet'
 import DocFiles, { openDocFile } from '../../components/DocFiles'
@@ -180,57 +180,36 @@ export function saleNet(m: Mudanza) {
   return { sale, fromOffer: !!accepted, costs, mortgage, net: sale != null ? sale - mortgage - costs : null }
 }
 
-export function VentaCuentas({ m, householdId }: { m: Mudanza; householdId: string }) {
+/** «¿Cuánto nos queda?»: precio − hipoteca − gastos de la venta. Solo consulta; se cambia en Editar → ¿Cuánto nos queda? */
+export function VentaCuentas({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
   const l = m.listing
-  const [mortgage, setMortgage] = useState(priceInput(l?.mortgage_cents))
-  const [costs, setCosts] = useState<{ label: string; amount: string }[]>(
-    l?.costs?.length ? l.costs.map(c => ({ label: c.label, amount: priceInput(c.cents) })) : COST_TEMPLATE.map(label => ({ label, amount: '' })))
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState('')
   const n = saleNet(m)
   const budget = m.criteria?.max_price_cents ?? null
-
-  async function save() {
-    const list: SaleCost[] = costs.filter(c => c.label.trim()).map(c => ({ label: c.label.trim().slice(0, 60), cents: c.amount.trim() ? parsePrice(c.amount) ?? 0 : 0 }))
-    const mc = mortgage.trim() ? parsePrice(mortgage) : null
-    const err = await m.write('sale_listing', { household_id: householdId, mortgage_cents: mc, costs: list }, undefined, 'household_id')
-    if (err) setError(err); else { setError(''); setSaved(true); setTimeout(() => setSaved(false), 1500) }
-  }
+  const costs = (l?.costs ?? []).filter(c => c.cents)
 
   return (
     <div className="bg-card rounded-2xl p-4 flex flex-col gap-3">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[13px] text-muted">{n.fromOffer ? 'Precio de la oferta aceptada' : 'Precio de venta (el publicado)'}</span>
-        <span className="text-[17px] font-bold">{price(n.sale)}</span>
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[13px] text-muted">{n.fromOffer ? 'Precio de la oferta aceptada' : 'Precio de venta (el publicado)'}</span>
+          <span className="text-[17px] font-bold">{price(n.sale)}</span>
+        </div>
+        <button onClick={onEdit} aria-label="Editar las cuentas" className="min-h-9 px-2 text-sm">✏️</button>
       </div>
-      <TextField label="Hipoteca pendiente (€)" inputMode="decimal" value={mortgage} onChange={e => setMortgage(e.target.value)} onBlur={save} placeholder="Lo que dice el certificado de deuda" />
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium text-muted mb-1">Gastos de la venta</legend>
-        {costs.map((c, i) => (
-          <div key={i} className="flex gap-2">
-            <input value={c.label} onChange={e => setCosts(costs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} onBlur={save} maxLength={60}
-              className="flex-1 min-w-0 min-h-11 px-3 rounded-xl border border-line bg-bg text-[15px]" aria-label="Concepto" />
-            <input value={c.amount} onChange={e => setCosts(costs.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} onBlur={save} inputMode="decimal" placeholder="€"
-              className="w-28 min-h-11 px-3 rounded-xl border border-line bg-bg text-[15px] text-right" aria-label={`Importe de ${c.label}`} />
-            <button type="button" onClick={() => { const next = costs.filter((_, j) => j !== i); setCosts(next) }} aria-label="Quitar" className="w-9 text-muted text-xl">×</button>
-          </div>
-        ))}
-        {costs.length < 20 && (
-          <button type="button" onClick={() => setCosts([...costs, { label: '', amount: '' }])} className="min-h-10 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir gasto</button>
-        )}
-      </fieldset>
-      <div className="border-t border-line pt-3 flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
         <div className="flex justify-between text-sm"><span className="text-muted">Venta</span><span>{price(n.sale)}</span></div>
-        <div className="flex justify-between text-sm"><span className="text-muted">− Hipoteca</span><span>{price(n.mortgage)}</span></div>
-        <div className="flex justify-between text-sm"><span className="text-muted">− Gastos</span><span>{price(n.costs)}</span></div>
-        <div className="flex justify-between text-[16px] font-bold"><span>Os queda para la compra</span><span className="text-accent">{price(n.net)}</span></div>
+        <button onClick={onEdit} className="flex justify-between text-sm text-left">
+          <span className="text-muted">− Hipoteca pendiente</span>
+          <span className={l?.mortgage_cents == null ? 'text-[#C77A12]' : ''}>{l?.mortgage_cents == null ? 'sin poner' : price(n.mortgage)}</span>
+        </button>
+        {costs.map(c => <div key={c.label} className="flex justify-between text-[13px]"><span className="text-muted">− {c.label}</span><span>{price(c.cents)}</span></div>)}
+        {!costs.length && <button onClick={onEdit} className="text-left text-[13px] text-[#C77A12]">− Gastos de la venta: sin poner (plusvalía, cancelación…)</button>}
+        <div className="flex justify-between text-[16px] font-bold border-t border-line pt-2 mt-1"><span>Os queda para la compra</span><span className="text-accent">{price(n.net)}</span></div>
         {budget != null && n.net != null && (
           <p className="text-xs text-muted">Presupuesto máximo para entrar a vivir (Buscamos): {price(budget)} · {budget > n.net ? `harían falta ${price(budget - n.net)} más (ahorros o hipoteca)` : `os sobran ${price(n.net - budget)}`}.</p>
         )}
       </div>
       <p className="text-[11px] text-muted">La plusvalía municipal y el IRPF dependen de cada caso (por ejemplo, si reinvertís en vivienda habitual puede haber exención): confirmad las cifras con un gestor o asesor.</p>
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {saved && <p role="status" className="text-xs text-accent">Guardado</p>}
     </div>
   )
 }

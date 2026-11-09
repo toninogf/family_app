@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import type { Member } from '../../lib/supabase'
 import { addDays, hhmm, longDate, parseISO, relativeDay, shortDate, startOfWeek, today } from '../../lib/dates'
 import {
@@ -8,11 +8,11 @@ import {
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
-import { VentaFichaSheet, VentaPhotos } from './VentaFicha'
+import { VentaFichaSheet, VentaPhotos, type VentaFocus } from './VentaFicha'
 import { Competitors, MarketCard, ObjectionHelp } from './VentaMercado'
 import { VentaCuentas, VentaDocs, VentaPasos, docAlert, docsSummary, saleNet, stepsSummary } from './VentaGestion'
 import { DossierSheet } from './VentaDossier'
-import { SaleFacts, SaleGallery } from './VentaHeader'
+import { SaleFacts, SaleGallery, SaleMonthly } from './VentaHeader'
 import { GroupBox, Tile, useOpenGroups } from '../../components/Groups'
 
 type SaleGroup = 'resumen' | 'competencia' | 'visitas' | 'casa' | 'cuentas' | 'docs' | 'pasos' | 'enlaces' | 'fotos'
@@ -27,7 +27,8 @@ const nameOf = (id: string | null, members: Member[]) => (id ? members.find(m =>
 export default function Vendemos({ m, members, householdId }: { m: Mudanza; members: Member[]; householdId: string }) {
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: BuyerVisit }>({ open: false })
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: BuyerOffer }>({ open: false })
-  const [listingOpen, setListingOpen] = useState(false)
+  // Edición de la ficha: null cerrada, 'todo' entera o el bloque/apartado del ✏️ que se ha tocado
+  const [listingOpen, setListingOpen] = useState<VentaFocus | 'todo' | null>(null)
   const [dossierOpen, setDossierOpen] = useState(false)
   const [showPast, setShowPast] = useState(false)
   const t = today()
@@ -94,7 +95,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
       <div className="flex flex-col gap-1 -mt-2">
         <span className="text-[13px] text-muted">{m.listing?.title || 'Nuestra casa en venta'}</span>
         <div className="rounded-2xl bg-card p-3 flex flex-col gap-2">
-          <button onClick={() => setListingOpen(true)} className="flex justify-between items-baseline gap-2 text-left">
+          <button onClick={() => setListingOpen('precio')} className="flex justify-between items-baseline gap-2 text-left">
             <span className="flex flex-col min-w-0">
               <span className="text-[13px] text-muted">Pedimos</span>
               <span className="text-[11px] text-muted">
@@ -141,7 +142,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
           )}
           <button onClick={() => setDossierOpen(true)} className="min-h-12 px-4 rounded-xl bg-card border border-line font-bold text-[15px]">📤 Dossier</button>
         </div>
-        <button onClick={() => setListingOpen(true)} className="self-start min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">✏️ Editar la ficha</button>
+        <button onClick={() => setListingOpen('todo')} className="self-start min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">✏️ Editar la ficha</button>
       </div>
 
       {docAlerts.length > 0 && (
@@ -282,11 +283,12 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
       </>)}
 
       {grp('casa', null, <>
-        <SaleFacts m={m} onEdit={() => setListingOpen(true)} />
+        <SaleFacts m={m} onEdit={() => setListingOpen('casa')} />
       </>)}
 
       {grp('cuentas', null, <>
-        <VentaCuentas m={m} householdId={householdId} />
+        <VentaCuentas m={m} onEdit={() => setListingOpen('cuentas')} />
+        <SaleMonthly m={m} onEdit={() => setListingOpen('mes')} />
       </>)}
 
       {grp('docs', null, <>
@@ -297,7 +299,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         <VentaPasos m={m} />
       </>)}
 
-      {grp('enlaces', <button onClick={() => setListingOpen(true)} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>, <>
+      {grp('enlaces', <button onClick={() => setListingOpen('anuncio')} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>, <>
         <div className="flex gap-1.5 flex-wrap">
           {(m.listing?.links ?? []).map((l, i) => (
             <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">
@@ -315,6 +317,8 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         </div>
       </>)}
 
+      <SaleNotes m={m} householdId={householdId} />
+
       <button onClick={() => setDossierOpen(true)} className="bg-card rounded-2xl p-4 flex justify-between items-center gap-2 text-left">
         <span className="flex flex-col gap-0.5">
           <span className="text-[15px] font-bold">📤 Dossier para compradores</span>
@@ -331,7 +335,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
       {offerSheet.open && (
         <OfferSheet offer={offerSheet.offer} visits={m.visits} asking={asking} m={m} onClose={() => setOfferSheet({ open: false })} />
       )}
-      {listingOpen && <VentaFichaSheet m={m} householdId={householdId} onClose={() => setListingOpen(false)} />}
+      {listingOpen && <VentaFichaSheet m={m} householdId={householdId} focus={listingOpen === 'todo' ? undefined : listingOpen} onClose={() => setListingOpen(null)} />}
       {dossierOpen && <DossierSheet m={m} onClose={() => setDossierOpen(false)} />}
     </div>
   )
@@ -558,5 +562,25 @@ function OfferSheet({ offer, visits, asking, m, onClose }: { offer?: BuyerOffer;
       </form>
       {offer?.response_deadline && <p className="text-xs text-muted">El aviso de la mañana os lo recordará el día antes y el mismo día ({longDate(offer.response_deadline)}).</p>}
     </Sheet>
+  )
+}
+
+/** Notas privadas de la venta, abajo y a mano (no salen en el dossier; se guardan solas) */
+function SaleNotes({ m, householdId }: { m: Mudanza; householdId: string }) {
+  const saved0 = m.listing?.notes ?? ''
+  const [text, setText] = useState(saved0)
+  const [saved, setSaved] = useState(false)
+  useEffect(() => { setText(saved0) }, [saved0])
+  async function save() {
+    if ((text.trim() || null) === (m.listing?.notes ?? null)) return
+    const err = await m.write('sale_listing', { household_id: householdId, notes: text.trim() || null }, undefined, 'household_id')
+    if (!err) { setSaved(true); setTimeout(() => setSaved(false), 1500) }
+  }
+  return (
+    <section className="flex flex-col gap-2 bg-card rounded-2xl p-4">
+      <TextArea label="📝 Notas privadas" value={text} onChange={e => setText(e.target.value)} onBlur={save} maxLength={1000}
+        placeholder="Precio mínimo que aceptaríamos, qué incluye… (no sale en el dossier)" />
+      {saved && <p role="status" className="text-xs text-accent">Guardado</p>}
+    </section>
   )
 }

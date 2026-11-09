@@ -31,7 +31,7 @@ import { applyFilters, EMPTY, sortHomes, type Ctx } from '../../lib/homeFilters'
 import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } from '../../lib/colegios'
 import { recommend } from '../../lib/pricing'
 import { HomeReforma, ReformaEditor } from './HomeReforma'
-import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
+import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
@@ -255,7 +255,8 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
     dinero: join(t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar', costs > 0 && `gastos ${kShort(costs)}`,
-      h.advertiser !== 'particular' && (!h.buyer_fee_kind ? 'honorarios ¿?' : (buyerFee(h) ?? 0) > 0 ? `honorarios ${kShort(buyerFee(h)!)}` : 'sin honorarios')),
+      h.advertiser !== 'particular' && (!h.buyer_fee_kind ? 'honorarios ¿?' : (buyerFee(h) ?? 0) > 0 ? `honorarios ${kShort(buyerFee(h)!)}` : 'sin honorarios'),
+      monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`),
     docs: join(`✅ ${hc.ok}`, `⚠️ ${hc.warn}`, hc.bad > 0 && `⛔ ${hc.bad}`, `❓ ${hc.unknown}`, `Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`,
       `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
@@ -483,7 +484,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   )
 }
 
-type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos' | 'reforma'
+type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos' | 'reforma' | 'honorarios' | 'compra' | 'zona' | 'enlaces'
 
 /**
  * Ficha de un piso: pensada para decidir qué hacer con él (llamar, visitar, ofertar o descartar) y tener a mano lo
@@ -570,15 +571,17 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
 
       <Group k="dinero" g={groups} line={sum.dinero}>
         <HomeReforma h={h} onEdit={() => onEdit('reforma')} />
-        <HomeGastos h={h} m={m} />
-        <FeeCard h={h} onEdit={() => onEdit('contacto')} />
+        <FeeCard h={h} onEdit={() => onEdit('honorarios')} />
+        <HomeGastos h={h} onEdit={() => onEdit('compra')} />
+        <MonthlyCard h={h} onEdit={() => onEdit('gastos')} />
       </Group>
 
       <Group k="docs" g={groups} line={sum.docs} lineAlways>
         <HomeHealth h={h} m={m} householdId={householdId} embedded />
       </Group>
 
-      <Group k="zona" g={groups} line={sum.zona}>
+      <Group k="zona" g={groups} line={sum.zona} extra={<button onClick={() => onEdit('zona')} aria-label="Editar la zona" className="min-h-9 px-2 text-sm">✏️</button>}>
+        {h.minutes_to_school != null && <span className="text-[14px]">🏫 {h.minutes_to_school} min al cole (vuestro cálculo)</span>}
         {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="self-start min-h-10 px-3 rounded-xl border border-line text-[13px] font-semibold text-accent flex items-center">📍 Cómo llegar ↗</a>}
         <HomeSchools h={h} m={m} />
       </Group>
@@ -613,7 +616,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
         <ContactCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
 
-      <Group k="enlaces" g={groups} line={sum.enlaces} extra={<button onClick={() => onEdit()} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>}>
+      <Group k="enlaces" g={groups} line={sum.enlaces} extra={<button onClick={() => onEdit('enlaces')} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>}>
         {h.url && (
           <a href={h.url} target="_blank" rel="noopener noreferrer" className="min-h-11 px-3 rounded-xl bg-bg flex items-center gap-2 text-[14px] font-semibold text-accent">
             <span className="flex-1 min-w-0 truncate">⭐ {portalName(h.url) ?? 'Anuncio'} <span className="text-muted font-normal">· principal</span></span>
@@ -874,13 +877,11 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
 
 /** Los datos de un vistazo, con iconos; gastos al mes e imprescindibles */
 function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: EditFocus) => void }) {
-  const [costsOpen, setCostsOpen] = useState(false)
   const [mustOpen, setMustOpen] = useState(false)
   const checks = mustHaveCheck(h, m.criteria)
   const met = checks.filter(c => c.ok).length
   const nice = niceCount(h, m.criteria)
   const [niceOpen, setNiceOpen] = useState(false)
-  const monthly = monthlyCost(h)
   const facts: [string, string][] = ([
     h.size_m2 && ['🏠', `${Number(h.size_m2)} m²${h.useful_m2 ? ` (${Number(h.useful_m2)} útiles)` : ''}`],
     h.plot_m2 && ['🌳', `parcela ${Number(h.plot_m2)} m²`],
@@ -890,8 +891,7 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
     h.year_built && ['🏗', `de ${h.year_built}`],
     h.energy && ['⚡', `certif. ${h.energy}`],
     h.heating_type && ['🔥', HEATING[h.heating_type]],
-    h.cooling && ['❄️', `aire: ${COOLING[h.cooling]}`],
-    h.minutes_to_school != null && ['🏫', `${h.minutes_to_school} min al cole`]
+    h.cooling && ['❄️', `aire: ${COOLING[h.cooling]}`]
   ].filter(Boolean) as [string, string][])
   // Extras que no estén ya dichos arriba (calefacción y aire van con su tipo)
   const extras = h.features.filter(f => !(f === 'calefaccion' && h.heating_type) && !(f === 'aire' && h.cooling))
@@ -912,20 +912,6 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
         </span>
       )}
       {h.features.includes('placas_solares') && h.health?.solar?.n && <span className="text-[12px] text-muted -mt-1">🔆 {h.health.solar.n}</span>}
-      <button onClick={() => (monthly != null ? setCostsOpen(!costsOpen) : onEdit('gastos'))} className="flex justify-between items-center text-left border-t border-line pt-2">
-        <span className="text-[13px] text-muted">💶 Gastos al mes</span>
-        <span className="text-[14px] font-semibold">{monthly != null ? `~${price(monthly)}` : 'Añadir'}{monthly != null && <span className="text-muted"> {costsOpen ? '▾' : '▸'}</span>}</span>
-      </button>
-      {costsOpen && monthly != null && (
-        <div className="text-[12px] text-muted grid grid-cols-2 gap-x-3 -mt-1">
-          {h.community_fee_cents != null && <span>Comunidad {price(h.community_fee_cents)}</span>}
-          {h.ibi_cents != null && <span>IBI {price(Math.round(h.ibi_cents / 12))}/mes</span>}
-          {h.electricity_cents != null && <span>Luz {price(h.electricity_cents)}</span>}
-          {h.water_cents != null && <span>Agua {price(h.water_cents)}</span>}
-          {h.heating_cents != null && <span>Calefacción {price(h.heating_cents)}</span>}
-          <button onClick={() => onEdit('gastos')} className="text-left text-accent font-semibold">✏️ Cambiar</button>
-        </div>
-      )}
       {checks.length > 0 && (
         <>
           <button onClick={() => setMustOpen(!mustOpen)} className="flex justify-between items-center text-left border-t border-line pt-2">
@@ -992,6 +978,31 @@ function ContactCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
         </>
       )}
     </section>
+  )
+}
+
+/** «📆 Gastos al mes» en El dinero: comunidad, IBI y suministros (se editan en Editar → El dinero) */
+function MonthlyCard({ h, onEdit }: { h: Home; onEdit: () => void }) {
+  const monthly = monthlyCost(h)
+  const rows: [string, number][] = ([
+    h.community_fee_cents != null && ['Comunidad', h.community_fee_cents],
+    h.ibi_cents != null && ['IBI (anual / 12)', Math.round(h.ibi_cents / 12)],
+    h.electricity_cents != null && ['Luz', h.electricity_cents],
+    h.water_cents != null && ['Agua', h.water_cents],
+    h.heating_cents != null && ['Calefacción', h.heating_cents]
+  ].filter(Boolean) as [string, number][])
+  return (
+    <button onClick={onEdit} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1">
+      <span className="flex justify-between items-center gap-2">
+        <span className="font-bold text-[15px]">📆 Gastos al mes</span>
+        <span className="text-[14px] font-semibold">{monthly != null ? `~${price(monthly)}` : <span className="text-sm" aria-hidden="true">✏️</span>}</span>
+      </span>
+      {rows.length ? (
+        <span className="grid grid-cols-2 gap-x-3 text-[12px] text-muted">
+          {rows.map(([l, v]) => <span key={l}>{l} {price(v)}</span>)}
+        </span>
+      ) : <span className="text-[13px] text-muted">+ Añadir comunidad, IBI y suministros</span>}
+    </button>
   )
 }
 
@@ -1239,13 +1250,19 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   home?: Home; initial?: Shared; m: Mudanza; householdId: string; onClose: () => void; onCreated: () => void; focus?: EditFocus
 }) {
   // Bloques: en un piso nuevo, abiertos «anuncio» y «lo básico»; al venir del ✏️ de la ficha, solo ese bloque
-  const focusSection = focus ? ({ datos: 'basico', gastos: 'gastos', contacto: 'contacto', fotos: 'enlaces', reforma: 'reforma' } as const)[focus] : null
-  const sections = useSections(home ? (focusSection ? [focusSection] : []) : ['anuncio', 'basico'])
+  // Mismos bloques y en el mismo orden que la ficha; el ✏️ de cada tarjeta lleva a su sitio (bloque y apartado)
+  const target = focus ? ({
+    datos: ['casa', 'casa'], gastos: ['dinero', 'dinero-mes'], reforma: ['dinero', 'dinero-reforma'], honorarios: ['dinero', 'dinero-honorarios'],
+    compra: ['dinero', 'dinero-compra'], zona: ['zona', 'zona'], contacto: ['contacto', 'contacto'], fotos: ['enlaces', 'enlaces'], enlaces: ['enlaces', 'enlaces']
+  } as const)[focus] : null
+  const focusSection = target?.[0] ?? null
+  const anchor = target?.[1] ?? null
+  const sections = useSections(home ? (focusSection ? [focusSection] : []) : ['anuncio', 'casa'])
   useEffect(() => {
-    if (!focusSection) return
-    const t = setTimeout(() => document.getElementById(`edit-${focusSection}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150)
+    if (!anchor) return
+    const t = setTimeout(() => document.getElementById(`edit-${anchor}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150)
     return () => clearTimeout(t)
-  }, [focusSection])
+  }, [anchor])
   const { flash, show: showFlash } = useFlash()
   const [summary, setSummary] = useState<{ filled: number; diffs: number } | null>(null)
   const [leaving, setLeaving] = useState(false)
@@ -1305,6 +1322,8 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   const [feeVat, setFeeVat] = useState(home?.buyer_fee_vat ?? true)
   const [feeNote, setFeeNote] = useState(home?.buyer_fee_note ?? '')
   const [notes, setNotes] = useState(home?.notes ?? '')
+  const [refValue, setRefValue] = useState(priceInput(home?.ref_value_cents))
+  const [newBuild, setNewBuild] = useState(home?.new_build ?? false)
   // La reforma: se edita aquí (bloque «Reforma») y la IA puede proponer partidas
   const [reform, setReform] = useState<Reform>(() => ({ ...(home?.reform ?? {}) }))
   const [error, setError] = useState('')
@@ -1388,10 +1407,11 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   // Qué datos tiene cada bloque (para el contador, el resumen y «pedir solo lo que falta»)
   function fieldsOf(id: string): [string, string][] {
     switch (id) {
-      case 'basico': return [['precio', amount], ['m²', m2], ['parcela', plot], ['m² útiles', useful], ['año', year], ['habitaciones', rooms], ['baños', baths], ['planta', floor]]
-      case 'ubicacion': return [['localidad', municipality ?? ''], ['zona', zone], ['dirección', address], ['mapa', maps]]
-      case 'equip': return [['características', features.length ? 'x' : ''], ['certificado', energy ?? ''], ['tipo de calefacción', heatType ?? ''], ['aire', cooling ?? ''], ['minutos al cole', minutes]]
-      case 'gastos': return [['comunidad', fee], ['IBI', ibi], ['luz', power], ['agua', water], ['calefacción', heating]]
+      case 'casa': return [['precio', amount], ['m²', m2], ['parcela', plot], ['m² útiles', useful], ['año', year], ['habitaciones', rooms], ['baños', baths], ['planta', floor],
+        ['características', features.length ? 'x' : ''], ['certificado', energy ?? ''], ['tipo de calefacción', heatType ?? ''], ['aire', cooling ?? '']]
+      case 'dinero': return [...(advertiser === 'particular' ? [] : [['honorarios', feeKind ?? ''] as [string, string]]),
+        ['comunidad', fee], ['IBI', ibi], ['luz', power], ['agua', water], ['calefacción', heating]]
+      case 'zona': return [['localidad', municipality ?? ''], ['zona', zone], ['dirección', address], ['mapa', maps], ['minutos al cole', minutes]]
       case 'contacto': return [['anunciante', advertiser ?? ''], ['agencia', advertiser === 'particular' ? 'x' : agency || contact], ['teléfono', phone], ['email', email], ['referencia', listingRef]]
       default: return []
     }
@@ -1401,7 +1421,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   const missingForAi = SECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([k, v]) => !v.trim() && !['mapa', 'minutos al cole', 'anunciante'].includes(k)).map(([k]) => k)
 
   const dirty = useDirty({ title, url, amount, m2, useful, plot, year, rooms, baths, floor, zone, province, municipality, address, maps, features, fee, ibi, power, water, heating,
-    energy, heatType, cooling, minutes, contact, advertiser, agency, phone, email, listingRef, feeKind, feePct, feeAmount, feeVat, feeNote, notes, links, shots: shots.length, ad: adPhotos.length, picked, health, cadRef, market, reform })
+    energy, heatType, cooling, minutes, contact, advertiser, agency, phone, email, listingRef, feeKind, feePct, feeAmount, feeVat, feeNote, notes, links, shots: shots.length, ad: adPhotos.length, picked, health, cadRef, market, reform, refValue, newBuild })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
   function fromText(text: string, intro = 'Rellenado') {
@@ -1506,6 +1526,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
     if ([usefulM2, plotM2].some(x => x != null && (isNaN(x) || x <= 0))) { setError('Revisa los metros útiles y de parcela'); return }
     const yearN = year.trim() ? parseInt(year, 10) : null
     if (yearN != null && (isNaN(yearN) || yearN < 1700 || yearN > 2100)) { setError('El año de construcción no es válido'); return }
+    if (refValue.trim() && parsePrice(refValue) == null) { setError('El valor de referencia del Catastro no es válido'); return }
     setBusy(true); setError('')
     const data = {
       title: title.trim(), url: cleanUrl, price_cents: priceCents, size_m2: size, useful_m2: usefulM2, plot_m2: plotM2, year_built: yearN, rooms: ints[0], baths: ints[1], floor: floor.trim() || null,
@@ -1518,6 +1539,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
       buyer_fee_kind: advertiser === 'particular' ? null : feeKind, buyer_fee_vat: feeVat, buyer_fee_note: feeNote.trim() || null,
       buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Math.min(10, Math.max(0, Number(feePct.replace(',', '.')) || 0)) : null,
       buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null,
+      ref_value_cents: refValue.trim() ? parsePrice(refValue) : null, new_build: newBuild,
       health, cadastral_ref: cadRef, market, ...(Object.keys(reform).length || home?.reform ? { reform: reform.items ? { ...reform, items: reform.items.slice(0, 40) } : reform } : {}),
       links: mergeLinks(links.filter(l => l.url.trim()).map(l => ({ ...l, label: l.label.trim(),
         url: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim().replace(/^http:/i, 'https:') : `https://${l.url.trim()}` })), sourcesToLinks(sources, picked), [cleanUrl])
@@ -1617,7 +1639,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
           <AiSources sources={sources} picked={picked} onPicked={setPicked} ourPrice={amount.trim() ? parsePrice(amount) : null} />
         </EditSection>
 
-        <EditSection id="basico" icon="🏠" title="Lo básico" {...cnt('basico')} flashed={flashedIn('basico')} open={sections.isOpen('basico')} onToggle={() => sections.toggle('basico')}>
+        <EditSection id="casa" icon="🏠" title="La casa" {...cnt('casa')} flashed={flashedIn('casa')} open={sections.isOpen('casa')} onToggle={() => sections.toggle('casa')}>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Precio" suffix="€" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} onBlur={() => setAmount(thousands)} placeholder="320.000" flash={fl('precio')} />
             <Field label="Construidos" suffix="m²" inputMode="decimal" value={m2} onChange={e => setM2(e.target.value)} placeholder="95" flash={fl('m²')} />
@@ -1632,9 +1654,65 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <Field label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} flash={fl('baños')} />
             <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} placeholder="3º" flash={fl('planta')} />
           </div>
+          <SubHead id="casa-equip">Equipamiento</SubHead>
+          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} groups={FEATURE_GROUPS} labels={k => FEATURES[k] ?? k} value={features} onChange={setFeatures} />
+          <div className="grid grid-cols-2 gap-3">
+            <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
+              options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
+            <SelectField<HeatingType> label="Calefacción" value={heatType} onChange={setHeatType} flash={fl('tipo de calefacción')}
+              options={(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k, label: HEATING[k] }))} />
+            <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
+              options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
+          </div>
         </EditSection>
 
-        <EditSection id="ubicacion" icon="📍" title="Ubicación" {...cnt('ubicacion')} flashed={flashedIn('ubicacion')} open={sections.isOpen('ubicacion')} onToggle={() => sections.toggle('ubicacion')}>
+        <EditSection id="dinero" icon="💶" title="El dinero" {...cnt('dinero')} flashed={flashedIn('dinero')} open={sections.isOpen('dinero')} onToggle={() => sections.toggle('dinero')}>
+          <SubHead id="dinero-reforma" first>🔨 Reforma</SubHead>
+          <ReformaEditor m={m} householdId={householdId} value={reform} onChange={setReform}
+            h={{ ...(home ?? {}), id: home?.id, price_cents: parsePrice(amount) ?? null, size_m2: num(m2) ?? null, useful_m2: num(useful) ?? null,
+              rooms: rooms.trim() ? parseInt(rooms, 10) : null, baths: baths.trim() ? parseInt(baths, 10) : null, year_built: year.trim() ? parseInt(year, 10) : null,
+              features, energy, heating_type: heatType, cooling, advertiser, buyer_fee_kind: feeKind, buyer_fee_vat: feeVat,
+              buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Number(feePct.replace(',', '.')) || 0 : null,
+              buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null,
+              ref_value_cents: refValue.trim() ? parsePrice(refValue) : null, new_build: newBuild } as Home} />
+          <SubHead id="dinero-honorarios">💼 Honorarios de la agencia</SubHead>
+          {advertiser === 'particular'
+            ? <p className="text-[13px] text-muted">Lo anuncia un particular: no hay honorarios (se cambia en Contacto).</p>
+            : <>
+          {advertiser !== 'particular' && (
+            <div className="flex flex-col gap-3 rounded-2xl bg-card p-3">
+              <SelectField<'no' | 'pct' | 'fijo'> label="¿Cobran algo al comprador?" value={feeKind} onChange={setFeeKind} empty="Sin preguntar" flash={fl('honorarios')}
+                options={[{ value: 'no', label: 'No cobra al comprador' }, { value: 'pct', label: 'Un % del precio' }, { value: 'fijo', label: 'Un importe fijo' }]} />
+              {feeKind === 'pct' && <Field label="Porcentaje" inputMode="decimal" value={feePct} onChange={e => setFeePct(e.target.value)} suffix="%" placeholder="3" />}
+              {feeKind === 'fijo' && <Field label="Importe" inputMode="decimal" value={feeAmount} onChange={e => setFeeAmount(e.target.value)} onBlur={e => setFeeAmount(thousands(e.target.value))} suffix="€" />}
+              {(feeKind === 'pct' || feeKind === 'fijo') && (
+                <label className="flex items-center gap-2 text-[14px] min-h-10">
+                  <input type="checkbox" checked={feeVat} onChange={e => setFeeVat(e.target.checked)} className="w-5 h-5" />
+                  <span>Más IVA (21 %)</span>
+                </label>
+              )}
+            </>}
+          <SubHead id="dinero-compra">🧾 Impuestos de la compra</SubHead>
+          <Field label="Valor de referencia del Catastro" suffix="€" inputMode="decimal" value={refValue} onChange={e => setRefValue(e.target.value)} onBlur={() => setRefValue(thousands)} placeholder="Opcional" />
+          <p className="text-xs text-muted -mt-2">El ITP se paga sobre el mayor entre el precio y este valor. Lo consultas con la referencia catastral en la Sede del Catastro («Valor de referencia»).</p>
+          <label className="flex items-center gap-2 text-[14px] min-h-10">
+            <input type="checkbox" checked={newBuild} onChange={e => setNewBuild(e.target.checked)} className="w-5 h-5" />
+            <span>Obra nueva (IVA 10 % + AJD en lugar de ITP)</span>
+          </label>
+          <SubHead id="dinero-mes">📆 Gastos al mes</SubHead>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
+            <Field label="IBI" suffix="€/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} onBlur={() => setIbi(thousands)} flash={fl('IBI')} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Luz" suffix="€" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} flash={fl('luz')} />
+            <Field label="Agua" suffix="€" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} flash={fl('agua')} />
+            <Field label="Calefacción" suffix="€" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} flash={fl('calefacción')} />
+          </div>
+          <p className="text-xs text-muted -mt-2">Luz, agua y calefacción: gasto medio al mes (si la factura es bimestral, divídela entre dos).</p>
+        </EditSection>
+
+        <EditSection id="zona" icon="📍" title="La zona" {...cnt('zona')} flashed={flashedIn('zona')} open={sections.isOpen('zona')} onToggle={() => sections.toggle('zona')}>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-muted">Provincia</span>
@@ -1658,41 +1736,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
           <Field label="Dirección" value={address} onChange={e => setAddress(e.target.value)} maxLength={120} flash={fl('dirección')} />
           <Field label="Enlace de Google Maps" type="url" inputMode="url" value={maps} onChange={e => setMaps(e.target.value)} placeholder="https://maps.app.goo.gl/…" />
           <p className="text-xs text-muted -mt-2">Con la dirección o el enlace de Maps, el piso sale bien situado en el mapa y se pueden comprobar el Catastro y las zonas inundables.</p>
-        </EditSection>
-
-        <EditSection id="equip" icon="🔧" title="Equipamiento" {...cnt('equip')} flashed={flashedIn('equip')} open={sections.isOpen('equip')} onToggle={() => sections.toggle('equip')}>
-          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} groups={FEATURE_GROUPS} labels={k => FEATURES[k] ?? k} value={features} onChange={setFeatures} />
-          <div className="grid grid-cols-2 gap-3">
-            <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
-              options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
-            <Field label="Minutos al cole" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="10" />
-            <SelectField<HeatingType> label="Calefacción" value={heatType} onChange={setHeatType} flash={fl('tipo de calefacción')}
-              options={(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k, label: HEATING[k] }))} />
-            <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
-              options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
-          </div>
-        </EditSection>
-
-        <EditSection id="reforma" icon="🔨" title="Reforma" open={sections.isOpen('reforma')} onToggle={() => sections.toggle('reforma')}>
-          <ReformaEditor m={m} householdId={householdId} value={reform} onChange={setReform}
-            h={{ ...(home ?? {}), id: home?.id, price_cents: parsePrice(amount) ?? null, size_m2: num(m2) ?? null, useful_m2: num(useful) ?? null,
-              rooms: rooms.trim() ? parseInt(rooms, 10) : null, baths: baths.trim() ? parseInt(baths, 10) : null, year_built: year.trim() ? parseInt(year, 10) : null,
-              features, energy, heating_type: heatType, cooling, advertiser, buyer_fee_kind: feeKind, buyer_fee_vat: feeVat,
-              buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Number(feePct.replace(',', '.')) || 0 : null,
-              buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null } as Home} />
-        </EditSection>
-
-        <EditSection id="gastos" icon="💶" title="Gastos" {...cnt('gastos')} flashed={flashedIn('gastos')} open={sections.isOpen('gastos')} onToggle={() => sections.toggle('gastos')}>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
-            <Field label="IBI" suffix="€/año" inputMode="decimal" value={ibi} onChange={e => setIbi(e.target.value)} onBlur={() => setIbi(thousands)} flash={fl('IBI')} />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Luz" suffix="€" inputMode="decimal" value={power} onChange={e => setPower(e.target.value)} flash={fl('luz')} />
-            <Field label="Agua" suffix="€" inputMode="decimal" value={water} onChange={e => setWater(e.target.value)} flash={fl('agua')} />
-            <Field label="Calefacción" suffix="€" inputMode="decimal" value={heating} onChange={e => setHeating(e.target.value)} flash={fl('calefacción')} />
-          </div>
-          <p className="text-xs text-muted -mt-2">Luz, agua y calefacción: gasto medio al mes (si la factura es bimestral, divídela entre dos).</p>
+          <Field label="Minutos al cole" suffix="min" inputMode="numeric" value={minutes} onChange={e => setMinutes(e.target.value)} placeholder="10" />
         </EditSection>
 
         <EditSection id="contacto" icon="📞" title="Contacto" {...cnt('contacto')} flashed={flashedIn('contacto')} open={sections.isOpen('contacto')} onToggle={() => sections.toggle('contacto')}>
@@ -1705,18 +1749,6 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <Field label="Referencia" value={listingRef} onChange={e => setListingRef(e.target.value)} maxLength={60} placeholder="Ref. del anuncio" flash={fl('referencia')} />
           </div>
           <Field label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} flash={fl('email')} />
-          {advertiser !== 'particular' && (
-            <div className="flex flex-col gap-3 rounded-2xl bg-card p-3">
-              <SelectField<'no' | 'pct' | 'fijo'> label="💼 Honorarios para el comprador" value={feeKind} onChange={setFeeKind} empty="Sin preguntar" flash={fl('honorarios')}
-                options={[{ value: 'no', label: 'No cobra al comprador' }, { value: 'pct', label: 'Un % del precio' }, { value: 'fijo', label: 'Un importe fijo' }]} />
-              {feeKind === 'pct' && <Field label="Porcentaje" inputMode="decimal" value={feePct} onChange={e => setFeePct(e.target.value)} suffix="%" placeholder="3" />}
-              {feeKind === 'fijo' && <Field label="Importe" inputMode="decimal" value={feeAmount} onChange={e => setFeeAmount(e.target.value)} onBlur={e => setFeeAmount(thousands(e.target.value))} suffix="€" />}
-              {(feeKind === 'pct' || feeKind === 'fijo') && (
-                <label className="flex items-center gap-2 text-[14px] min-h-10">
-                  <input type="checkbox" checked={feeVat} onChange={e => setFeeVat(e.target.checked)} className="w-5 h-5" />
-                  <span>Más IVA (21 %)</span>
-                </label>
-              )}
               <Field label="Nota" value={feeNote} onChange={e => setFeeNote(e.target.value)} maxLength={300} placeholder="Ej. se pagan en arras / negociable" />
               <p className="text-[12px] text-muted -mt-1">En Madrid lo normal es que pague el vendedor, pero algunas agencias cobran también al comprador. Se suma al precio para entrar a vivir.</p>
             </div>
@@ -1756,8 +1788,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
 }
 
 const SECTIONS = [
-  { id: 'basico', title: 'Lo básico' }, { id: 'ubicacion', title: 'Ubicación' }, { id: 'equip', title: 'Equipamiento' },
-  { id: 'gastos', title: 'Gastos' }, { id: 'contacto', title: 'Contacto' }
+  { id: 'casa', title: 'La casa' }, { id: 'dinero', title: 'El dinero' }, { id: 'zona', title: 'La zona' }, { id: 'contacto', title: 'Contacto' }
 ]
 
 function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: string; onClose: () => void }) {

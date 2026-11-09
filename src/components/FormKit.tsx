@@ -55,6 +55,11 @@ export function EditSection({ id, icon, title, filled, total, open, onToggle, fl
   )
 }
 
+/** Apartado dentro de un bloque de edición (con ancla para que el ✏️ de la ficha baje hasta él) */
+export function SubHead({ id, first, children }: { id: string; first?: boolean; children: ReactNode }) {
+  return <h4 id={`edit-${id}`} className={`font-bold text-[15px] scroll-mt-3 ${first ? '' : 'border-t border-line pt-3 mt-1'}`}>{children}</h4>
+}
+
 /** Qué bloques están abiertos; abrir uno lleva hasta él */
 export function useSections(initial: string[]) {
   const [open, setOpen] = useState<Set<string>>(new Set(initial))

@@ -1,25 +1,18 @@
 import { useState } from 'react'
-import { parsePrice, price, priceInput, type Home, type Mudanza } from '../../lib/mudanza'
+import { price, type Home } from '../../lib/mudanza'
 import { purchaseCosts } from '../../lib/gastos'
 import { buyerFee, feeLabel } from '../../lib/reforma'
 
-/** «🧾 Impuestos y gastos de la compra»: ITP, notaría, registro, gestoría, tasación y honorarios, calculado solo */
-export function HomeGastos({ h, m }: { h: Home; m: Mudanza }) {
+/**
+ * «🧾 Impuestos y gastos de la compra»: ITP, notaría, registro, gestoría, tasación y honorarios, calculado solo.
+ * Solo consulta: el valor de referencia y «obra nueva» se cambian en Editar → El dinero.
+ */
+export function HomeGastos({ h, onEdit }: { h: Home; onEdit: () => void }) {
   const [open, setOpen] = useState(false)
-  const [ref, setRef] = useState(priceInput(h.ref_value_cents))
-  const [error, setError] = useState('')
   const t = purchaseCosts(h)
   if (!t) return null
   const fee = buyerFee(h)
   const total = t.mid + (fee ?? 0)
-
-  async function saveRef() {
-    const v = ref.trim() ? parsePrice(ref) : null
-    if (ref.trim() && v == null) { setError('Importe no válido'); return }
-    if (v === h.ref_value_cents) return
-    const err = await m.write('homes', { ref_value_cents: v }, h.id)
-    setError(err ?? '')
-  }
 
   return (
     <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
@@ -47,17 +40,13 @@ export function HomeGastos({ h, m }: { h: Home; m: Mudanza }) {
           )}
           <span className="flex justify-between gap-2 text-[15px] font-bold border-t border-line pt-1.5"><span>Total estimado</span><span>{price(total)}</span></span>
 
-          <label className="flex flex-col gap-1 mt-2">
-            <span className="text-[13px] font-medium text-muted">Valor de referencia del Catastro (€)</span>
-            <input inputMode="decimal" value={ref} onChange={e => setRef(e.target.value)} onBlur={saveRef} placeholder="Opcional"
-              className="min-h-11 px-3 rounded-xl border border-line bg-bg text-[16px]" />
-            <span className="text-[11px] text-muted">El ITP se paga sobre el mayor entre el precio y este valor. Lo consultas con la referencia catastral en la Sede del Catastro («Valor de referencia»).</span>
-          </label>
-          <label className="flex items-center gap-2 text-[13px] min-h-10">
-            <input type="checkbox" checked={h.new_build} onChange={e => void m.write('homes', { new_build: e.target.checked }, h.id)} className="w-5 h-5" />
-            <span>Obra nueva (IVA 10 % + AJD en lugar de ITP)</span>
-          </label>
-          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          <button onClick={onEdit} className="flex justify-between items-center gap-2 text-left text-[13px] rounded-xl bg-bg px-3 py-2 mt-1">
+            <span className="flex flex-col">
+              <span>Valor de referencia del Catastro: <b>{h.ref_value_cents != null ? price(h.ref_value_cents) : 'sin poner'}</b></span>
+              <span className="text-muted">{h.new_build ? 'Obra nueva (IVA 10 % + AJD)' : 'Segunda mano (ITP 6 %)'}</span>
+            </span>
+            <span aria-hidden="true">✏️</span>
+          </button>
           <p className="text-[11px] text-muted">Orientativo para la Comunidad de Madrid (2026), sin familia numerosa. La notaría y el registro de la hipoteca los paga el banco. La plusvalía y el certificado energético son del vendedor.</p>
         </div>
       )}
