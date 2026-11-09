@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { saleDocUrl, uploadDocFiles, type DocFile, type Home, type Mudanza } from '../../lib/mudanza'
 import { NOTA_PROMPT, notaStatus, parseNota, pdfText } from '../../lib/notaSimple'
 import {
-  AI_CHECKS, MANUAL_CHECKS, STATUS_ICON, STATUS_LABEL, cadastreCheck, floodCheck, healthCounts, marketCheck, radonCheck,
+  AI_CHECKS, MANUAL_CHECKS, VISIT_CHECKS, STATUS_ICON, STATUS_LABEL, cadastreCheck, floodCheck, healthCounts, marketCheck, radonCheck,
   type Cadastre, type Health, type HealthItem, type HealthStatus
 } from '../../lib/health'
 import { Choice, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -93,7 +93,9 @@ export default function HomeHealth({ h, m, householdId, embedded }: { h: Home; m
 
           {/* La IA y los papeles */}
           <List title="Lo que dice el anuncio (a confirmar)" items={AI_CHECKS.filter(x => x.key !== 'precio_zona')} health={health} onOpen={setEdit} />
-          <List title="Con papeles o visitándola" items={MANUAL_CHECKS} health={health} onOpen={setEdit} />
+          <List title="Con papeles" items={MANUAL_CHECKS} health={health} onOpen={setEdit} />
+          <List title="Yendo a verla" items={VISIT_CHECKS} health={health} onOpen={setEdit} />
+          <p className="text-[11px] text-muted -mt-1">En la visita, apuntadlo aquí y en las notas de la ficha. Si os dicen la comunidad, el IBI o el certificado, corregidlos en Editar.</p>
           <p className="text-[11px] text-muted -mt-1">Lo de la IA se rellena al pegar su respuesta (pídeselo otra vez con el botón de la IA). Toca cualquier punto para cambiarlo, añadir notas o subir el documento.</p>
         </div>
       )}

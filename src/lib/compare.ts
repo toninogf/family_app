@@ -1,6 +1,7 @@
 // Resumen en texto de las diferencias importantes entre los pisos que se comparan (sin IA: reglas a partir de los datos)
 import { readyPrice, reformKnown } from './reforma'
-import { FEATURES, VISIT_CHECKLIST, mustHaveCheck, niceCount, perM2, price, type Criteria, type Home, type HomeVisit } from './mudanza'
+import { allChecks } from './health'
+import { FEATURES, mustHaveCheck, niceCount, perM2, price, type Criteria, type Home, type HomeVisit } from './mudanza'
 
 /** Nombre corto para el texto: barrio o calle y localidad */
 export const shortName = (h: Home) => [h.zone ?? h.address, h.municipality].filter(Boolean).join(' · ') || h.title
@@ -20,10 +21,9 @@ export const supplyCost = (h: Pick<Home, 'electricity_cents' | 'water_cents' | '
   return parts.every(x => x == null) ? null : parts.reduce<number>((s, x) => s + (x ?? 0), 0)
 }
 
-export function badPoints(h: Home, visits: HomeVisit[]) {
-  const keys = new Set<string>()
-  for (const v of visits.filter(v => v.home_id === h.id)) for (const [k, x] of Object.entries(v.checklist ?? {})) if (x.v === 'mal') keys.add(k)
-  return [...keys].map(k => VISIT_CHECKLIST.find(c => c.key === k)?.label.toLowerCase() ?? k)
+/** Puntos con problema en «Estado y documentos» (lo visto en la visita también se apunta ahí) */
+export function badPoints(h: Home) {
+  return allChecks(h).filter(c => c.item.s === 'bad').map(c => c.title.toLowerCase())
 }
 
 export function compareSummary(homes: Home[], criteria: Criteria | null, visits: HomeVisit[]): string[] {
@@ -120,7 +120,7 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
   }
   // Visitas
   for (const h of homes) {
-    const bad = badPoints(h, visits)
+    const bad = badPoints(h)
     if (bad.length) out.push(`🔎 En la visita de **${n(h)}** marcasteis mal: ${list(bad)}.`)
   }
   const notVisited = homes.filter(h => !visits.some(v => v.home_id === h.id && v.status === 'done'))

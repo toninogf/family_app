@@ -11,9 +11,9 @@ const HomesMap = lazy(() => import('./HomesMap'))
 import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
-  COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS, VISIT_CHECKLIST,
+  COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS,
   CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
-  type Check, type CheckValue, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
+  type Check, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -943,13 +943,9 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
 }
 
 function VisitSummary({ v, members }: { v: HomeVisit; members: Member[] }) {
-  const marked = Object.values(v.checklist ?? {}).filter(x => x.v).length
-  const bad = Object.values(v.checklist ?? {}).filter(x => x.v === 'mal').length
   return (
     <span className="text-[12px] text-muted">
       {v.attendee_id ? `Va ${nameOf(v.attendee_id, members)}` : 'Vais los dos'}
-      {marked > 0 && ` · Revisado ${marked}/${VISIT_CHECKLIST.length}`}{bad > 0 && ` · ${bad} punto${bad > 1 ? 's' : ''} malo${bad > 1 ? 's' : ''}`}
-      {v.status === 'done' && !marked && ' · ¿Cómo fue? Apúntalo'}
     </span>
   )
 }
@@ -1124,22 +1120,14 @@ function HomeVisitSheet({ home, visit, adults, m, onClose }: { home: Home; visit
   const [end, setEnd] = useState(hhmm(visit?.end_time))
   const [attendee, setAttendee] = useState<string | null>(visit?.attendee_id ?? null)
   const [status, setStatus] = useState<HomeVisit['status']>(visit?.status ?? 'scheduled')
-  const [checklist, setChecklist] = useState<Record<string, CheckValue>>(visit?.checklist ?? {})
-  const [notes, setNotes] = useState(visit?.notes ?? '')
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
-
-  const setItem = (k: string, patch: Partial<CheckValue>) =>
-    setChecklist(c => ({ ...c, [k]: { v: c[k]?.v ?? '', n: c[k]?.n ?? '', ...patch } }))
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (end && end <= start) { setError('La hora de fin debe ser posterior a la de inicio'); return }
-    const clean = Object.fromEntries(Object.entries(checklist)
-      .filter(([, x]) => x.v || x.n?.trim())
-      .map(([k, x]) => [k, { v: x.v, n: (x.n ?? '').trim().slice(0, 300) }]))
     const err = await m.write('home_visits', {
-      home_id: home.id, visit_date: date, start_time: start, end_time: end || null, attendee_id: attendee, status, checklist: clean, notes: notes.trim() || null
+      home_id: home.id, visit_date: date, start_time: start, end_time: end || null, attendee_id: attendee, status
     }, visit?.id)
     if (err) { setError(err); return }
     // El piso avanza de estado solo
@@ -1161,34 +1149,7 @@ function HomeVisitSheet({ home, visit, adults, m, onClose }: { home: Home; visit
         <Choice<HomeVisit['status']> label="Estado" value={status} onChange={setStatus}
           options={[{ value: 'scheduled', label: 'Prevista' }, { value: 'done', label: 'Hecha' }, { value: 'cancelled', label: 'Cancelada' }]} />
 
-        <section className="flex flex-col gap-3 bg-card rounded-2xl p-4">
-          <h3 className="font-bold text-[15px]">Qué revisar en la visita</h3>
-          {VISIT_CHECKLIST.map(item => {
-            const val = checklist[item.key]
-            return (
-              <div key={item.key} className="flex flex-col gap-1.5 border-b border-line last:border-0 pb-3 last:pb-0">
-                <div className="flex justify-between items-center gap-2">
-                  <span className="flex flex-col">
-                    <span className="text-[15px] font-semibold">{item.label}</span>
-                    {item.hint && <span className="text-[12px] text-muted">{item.hint}</span>}
-                  </span>
-                  <span className="flex gap-1 shrink-0">
-                    {(['ok', 'mal'] as const).map(v => (
-                      <button type="button" key={v} aria-pressed={val?.v === v} onClick={() => setItem(item.key, { v: val?.v === v ? '' : v })}
-                        className={`min-h-10 px-3 rounded-lg text-[13px] font-bold border ${val?.v === v ? (v === 'ok' ? 'bg-accent text-white dark:text-bg border-accent' : 'bg-danger text-white dark:text-bg border-danger') : 'bg-bg border-line'}`}>
-                        {v === 'ok' ? 'Bien' : 'Mal'}
-                      </button>
-                    ))}
-                  </span>
-                </div>
-                <input value={val?.n ?? ''} onChange={e => setItem(item.key, { n: e.target.value })} maxLength={300} placeholder="Nota…" aria-label={`Nota sobre ${item.label}`}
-                  className="min-h-10 px-3 rounded-lg border border-line bg-bg text-[15px]" />
-              </div>
-            )
-          })}
-        </section>
-
-        <TextArea label="Notas de la visita" value={notes} onChange={e => setNotes(e.target.value)} maxLength={2000} />
+        <p className="text-[13px] text-muted -mt-2">Lo que veáis (luz, humedades, ruido, derramas…) apuntadlo en la ficha: «📋 Estado y documentos» → «Yendo a verla», y lo demás en las notas de abajo. Así queda todo junto aunque hagáis varias visitas.</p>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">{visit ? 'Guardar' : 'Apuntar visita'}</button>
         {visit && <ConfirmDelete label="Eliminar visita" confirming={confirming} setConfirming={setConfirming} onConfirm={async () => { await m.remove('home_visits', visit.id); onClose() }} />}
@@ -1899,7 +1860,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Público primaria', show: h => { const s = schools[h.id]?.pubPri; return s ? `${distLabel(s.dist)}${s.bilingual ? ' · bil.' : ''}` : '—' }, value: h => schools[h.id]?.pubPri?.dist ?? null, better: 'low' },
     { label: 'Instituto público', show: h => { const s = schools[h.id]?.pubSec; return s ? distLabel(s.dist) : '—' }, value: h => schools[h.id]?.pubSec?.dist ?? null, better: 'low' },
     { label: 'Al cole', show: h => (h.minutes_to_school != null ? `${h.minutes_to_school} min` : '—'), value: h => h.minutes_to_school, better: 'low' },
-    { label: 'Puntos malos', show: h => badPoints(h, m.homeVisits).length || '—', value: h => badPoints(h, m.homeVisits).length, better: 'low' }
+    { label: 'Problemas', show: h => badPoints(h).length || '—', value: h => badPoints(h).length, better: 'low' }
   ]
   const isBest = (r: Row, h: Home) => {
     if (!r.value || !r.better) return false

@@ -272,21 +272,6 @@ export const HOME_STATUS: Record<HomeStatus, string> = {
   favorito: 'Favorito', descartado: 'Descartado', oferta: 'Oferta hecha'
 }
 export const HOME_STATUS_ORDER: HomeStatus[] = ['favorito', 'oferta', 'visitado', 'visita_pedida', 'llamar', 'interesa', 'propuesta', 'descartado']
-export const VISIT_CHECKLIST: { key: string; label: string; hint?: string }[] = [
-  { key: 'luz', label: 'Luz y orientación', hint: 'Mira a qué hora da el sol en el salón' },
-  { key: 'ruido', label: 'Ruido', hint: 'Calle, vecinos, bares, ascensor' },
-  { key: 'humedad', label: 'Humedades o grietas', hint: 'Techos, esquinas, baños, detrás de muebles' },
-  { key: 'agua', label: 'Agua y caldera', hint: 'Abre un grifo y la ducha; edad de la caldera' },
-  { key: 'ventanas', label: 'Ventanas y aislamiento' },
-  { key: 'electricidad', label: 'Instalación eléctrica', hint: 'Cuadro moderno, enchufes suficientes' },
-  { key: 'comunidad', label: 'Gastos de comunidad', hint: '¿Cuánto al mes y qué incluyen?' },
-  { key: 'derramas', label: 'Derramas', hint: '¿Hay alguna pendiente o prevista (fachada, ascensor…)?' },
-  { key: 'ibi', label: 'IBI', hint: '¿Cuánto al año?' },
-  { key: 'energia', label: 'Certificado energético' },
-  { key: 'cargas', label: 'Cargas', hint: 'Pide la nota simple: hipotecas o embargos' },
-  { key: 'motivo', label: 'Por qué venden y desde cuándo' },
-  { key: 'zona', label: 'Zona', hint: 'Aparcar, tiendas, parques, de noche' }
-]
 
 // ---------- Formatos ----------
 const eur0 = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })

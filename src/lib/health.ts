@@ -24,15 +24,24 @@ export const AI_CHECKS: { key: string; title: string; hint: string }[] = [
   { key: 'vpo', title: 'Vivienda protegida (VPO)', hint: 'Limita el precio de venta y quién puede comprarla.' },
   { key: 'ocupacion', title: 'Libre, alquilada u ocupada', hint: '«Nuda propiedad», «con inquilino» o «sin posesión» son señales de que no se entrega libre.' },
   { key: 'saneamiento', title: 'Saneamiento y agua', hint: 'Alcantarillado o fosa séptica; agua de red o pozo.' },
-  { key: 'ruido', title: 'Ruido', hint: 'Cerca de autopista, aeropuerto, tren o zona de ocio.' },
+  { key: 'ruido', title: 'Ruido', hint: 'Cerca de autopista, aeropuerto, tren o zona de ocio. En la visita: calle, vecinos, bares, ascensor.' },
   { key: 'precio_zona', title: 'Precio de la zona', hint: 'Precio medio del m² en compraventas reales (penotariado.com) comparado con el de este piso.' }
 ]
 /** Lo que solo se sabe pidiendo papeles o yendo a verlo */
 export const MANUAL_CHECKS: { key: string; title: string; hint: string; link?: { label: string; url: string } }[] = [
   { key: 'nota_simple', title: 'Nota simple (cargas)', hint: 'Titular, hipotecas, embargos, usufructos y afecciones. Unos 10 €.', link: { label: 'Pedirla en registradores.org', url: 'https://www.registradores.org' } },
-  { key: 'comunidad', title: 'Comunidad: deudas y derramas', hint: 'Certificado del administrador y últimas actas (derramas aprobadas o previstas).' },
-  { key: 'instalaciones', title: 'Caldera y electricidad', hint: 'Año y última revisión de la caldera; boletín eléctrico y potencia.' },
+  { key: 'comunidad', title: 'Comunidad: deudas y derramas', hint: 'Certificado del administrador y últimas actas (derramas aprobadas o previstas). En la visita: ¿hay alguna derrama prevista (fachada, ascensor…)? La cuota al mes va en Editar → El dinero.' },
+  { key: 'instalaciones', title: 'Caldera, agua y electricidad', hint: 'Año y última revisión de la caldera; abre un grifo y la ducha (presión y agua caliente); cuadro eléctrico moderno, enchufes suficientes, boletín y potencia.' },
   { key: 'revision', title: 'Revisión técnica', hint: 'Un arquitecto o aparejador antes de comprar: humedades, grietas, tejado, estructura.' }
+]
+
+/** Lo que solo se ve yendo a la casa (antes era la lista de cada visita; ahora queda en la ficha) */
+export const VISIT_CHECKS: { key: string; title: string; hint: string }[] = [
+  { key: 'luz', title: 'Luz y orientación', hint: 'A qué hora da el sol en el salón y los dormitorios.' },
+  { key: 'humedad', title: 'Humedades y grietas', hint: 'Techos, esquinas, baños y detrás de los muebles.' },
+  { key: 'ventanas', title: 'Ventanas y aislamiento', hint: 'Doble acristalamiento, corrientes, persianas.' },
+  { key: 'zona_visita', title: 'La zona en persona', hint: 'Aparcar, tiendas, parques; si podéis, volved de noche.' },
+  { key: 'motivo', title: 'Por qué venden y desde cuándo', hint: 'Ayuda a negociar: prisa, herencia, cambio de casa…' }
 ]
 
 // ---------- Radón (Comunidad de Madrid, CTE DB HS-6: Zona II = más radón) ----------
@@ -143,7 +152,7 @@ export function allChecks(h: Home): { key: string; title: string; item: HealthIt
     { key: 'radon', title: 'Radón', item: radonCheck(h) },
     { key: 'mercado', title: 'Precio e historial', item: marketCheck(h, health) }
   ]
-  const rest = [...AI_CHECKS, ...MANUAL_CHECKS].filter(c => c.key !== 'precio_zona')
+  const rest = [...AI_CHECKS, ...MANUAL_CHECKS, ...VISIT_CHECKS].filter(c => c.key !== 'precio_zona')
     .map(c => ({ key: c.key, title: c.title, item: health[c.key] ?? { s: 'unknown' as HealthStatus } }))
   return [...auto, ...rest]
 }
