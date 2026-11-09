@@ -264,11 +264,11 @@ function shortTitle(h: Home) {
 function useNearestSchool(h: Home) {
   const [s, setS] = useState<NearSchool | null>(null)
   useEffect(() => {
-    if (h.lat == null || h.lng == null || h.status === 'descartado') return
+    if (h.lat == null || h.lng == null) return
     let alive = true
     nearbySchools(h.lat, h.lng).then(l => { if (alive) { const x = schoolSummary(l); setS(x.pubPri ?? x.closest ?? null) } }).catch(() => {})
     return () => { alive = false }
-  }, [h.lat, h.lng, h.status])
+  }, [h.lat, h.lng])
   return s
 }
 
@@ -286,22 +286,6 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
   const budget = m.criteria?.max_price_cents ?? null
   const over = budget != null && ready != null && ready > budget
   const title = shortTitle(h)
-
-  // Descartado: en pequeño, sin foto, con el motivo
-  if (h.status === 'descartado') {
-    return (
-      <button onClick={onOpen} className="bg-card rounded-2xl px-4 py-3 text-left flex flex-col gap-0.5 opacity-70">
-        <span className="flex justify-between items-start gap-2">
-          <span className="text-[14px] font-semibold leading-snug min-w-0 truncate">{title}</span>
-          <StatusBadge s={h.status} />
-        </span>
-        <span className="text-[12px] text-muted truncate">
-          {[h.municipality, h.price_cents != null && `piden ${priceShort(h.price_cents)}`, ready != null && `${priceShort(ready)} para entrar`].filter(Boolean).join(' · ')}
-        </span>
-        {h.discard_reason && <span className="text-[12px] text-muted italic truncate">«{h.discard_reason}»</span>}
-      </button>
-    )
-  }
 
   const fails = checks.filter(c => c.ok === false)
   const unknown = checks.filter(c => c.ok == null).length
@@ -359,6 +343,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick }: {
         </span>
       )}
       {extra.length > 0 && <span className="text-[13px] text-muted">{extra.join(' · ')}</span>}
+      {h.status === 'descartado' && h.discard_reason && <span className="text-[13px] text-muted italic">Descartado: «{h.discard_reason}»</span>}
     </button>
     {h.links?.length > 0 && <div className="px-4 pb-3 -mt-1"><LinkChips links={h.links} ourPrice={h.price_cents} /></div>}
     <div className="flex border-t border-line">
