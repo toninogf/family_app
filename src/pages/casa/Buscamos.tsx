@@ -146,10 +146,10 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
           <span className="text-sm font-semibold text-accent">Ver ›</span>
         </button>
       )}
-      <FilterBar s={fs} count={list.length} statusCount={st => applyFilters(visibleHomes, { ...EMPTY, statuses: st }, ctx).length} onOpen={() => setFiltersOpen(true)} />
+      <FilterBar s={fs} count={list.length} statusCount={st => applyFilters(visibleHomes, { ...EMPTY, statuses: st }, ctx).length}
+        rejected={m.rejections.filter(r => !r.reproposed_at).length} onRejected={() => setRejectedOpen(true)} onOpen={() => setFiltersOpen(true)} />
       {filtersOpen && (
-        <FilterSheet s={fs} towns={towns} ours={m.criteria?.municipalities ?? []} countFor={f => applyFilters(visibleHomes, f, ctx).length}
-          rejected={m.rejections.filter(r => !r.reproposed_at).length} onRejected={() => { setFiltersOpen(false); setRejectedOpen(true) }} onClose={() => setFiltersOpen(false)} />
+        <FilterSheet s={fs} towns={towns} ours={m.criteria?.municipalities ?? []} countFor={f => applyFilters(visibleHomes, f, ctx).length} onClose={() => setFiltersOpen(false)} />
       )}
       {pickedHomes.length === 0 && m.homes.length >= 2 && (
         <p className="text-xs text-muted -mt-2">Para comparar, marca «☐ Comparar» en los pisos que quieras (hasta 4).</p>

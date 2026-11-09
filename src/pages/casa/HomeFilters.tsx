@@ -28,7 +28,9 @@ const heatingLabel = (k: string) => HEATING[k as keyof typeof HEATING] ?? k
 const same = (a: Filters, b: Filters) => JSON.stringify(a) === JSON.stringify(b)
 
 /** Barra: estado (como antes), botón del panel y chips de lo que está activo */
-export function FilterBar({ s, count, statusCount, onOpen }: { s: FilterState; count: number; statusCount: (st: HomeStatus[]) => number; onOpen: () => void }) {
+export function FilterBar({ s, count, statusCount, rejected, onRejected, onOpen }: {
+  s: FilterState; count: number; statusCount: (st: HomeStatus[]) => number; rejected: number; onRejected: () => void; onOpen: () => void
+}) {
   const { f, setF, sort, setSort, views } = s
   // Los estados van en el desplegable: no se repiten como chips
   const chips = activeChips({ ...f, statuses: [] }, { status: st => HOME_STATUS[st], feature: featureLabel, heating: heatingLabel })
@@ -38,6 +40,7 @@ export function FilterBar({ s, count, statusCount, onOpen }: { s: FilterState; c
   const pick = (v: string) => {
     if (v.startsWith('v:')) { const vw = views.find(x => `v:${x.name}` === v); if (vw) { setF(vw.f); setSort(vw.sort) } return }
     if (v === 'varios') return
+    if (v === 'rechazadas') { onRejected(); return }
     setF(x => ({ ...x, statuses: v === 'activos' ? [] : v === 'todos' ? ALL : [v as HomeStatus] }))
   }
   return (
@@ -55,6 +58,7 @@ export function FilterBar({ s, count, statusCount, onOpen }: { s: FilterState; c
               {views.map(v => <option key={v.name} value={`v:${v.name}`}>⭐ {v.name}</option>)}
             </optgroup>
           )}
+          {rejected > 0 && <option value="rechazadas">🙅 Rechazadas ({rejected})</option>}
         </select>
       </label>
       <div className="flex gap-2 items-center">
@@ -76,8 +80,8 @@ export function FilterBar({ s, count, statusCount, onOpen }: { s: FilterState; c
 }
 
 /** Panel completo, con el número de pisos en vivo */
-export function FilterSheet({ s, towns, ours, countFor, rejected, onRejected, onClose }: {
-  s: FilterState; towns: string[]; ours: string[]; countFor: (f: Filters) => number; rejected: number; onRejected: () => void; onClose: () => void
+export function FilterSheet({ s, towns, ours, countFor, onClose }: {
+  s: FilterState; towns: string[]; ours: string[]; countFor: (f: Filters) => number; onClose: () => void
 }) {
   const [d, setD] = useState<Filters>(s.f)
   const [sort, setSort] = useState<SortKey>(s.sort)
@@ -199,7 +203,6 @@ export function FilterSheet({ s, towns, ours, countFor, rejected, onRejected, on
               <button key={k} type="button" onClick={() => set('origin', k)} aria-pressed={d.origin === k} className={chip(d.origin === k)}>{l}</button>
             ))}
           </Chips>
-          {rejected > 0 && <button type="button" onClick={onRejected} className="self-start min-h-10 text-[13px] text-muted">🙅 Rechazadas ({rejected}) · <span className="text-accent font-semibold">ver</span></button>}
         </Block>
 
         <Block title="Vistas guardadas" hint="Guarda esta combinación de filtros y orden con un nombre: saldrá como atajo arriba.">
