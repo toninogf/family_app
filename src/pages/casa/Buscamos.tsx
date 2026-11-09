@@ -11,7 +11,7 @@ const HomesMap = lazy(() => import('./HomesMap'))
 import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
-  COOLING, FEATURES, HEATING, HOME_STATUS, HOME_STATUS_ORDER, OFFER_STATUS, VISIT_CHECKLIST,
+  COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS, VISIT_CHECKLIST,
   CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
   type Check, type CheckValue, type RejectReason, REJECT_REASONS, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
@@ -25,6 +25,8 @@ import { HomePrice } from './HomePrice'
 import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, reformTotal, type Reform } from '../../lib/reforma'
 import { HomeGastos } from './HomeGastos'
 import { HomeSchools, useSchoolSummaries } from './HomeSchools'
+import { FilterBar, FilterSheet, useHomeFilters } from './HomeFilters'
+import { applyFilters, sortHomes, type Ctx } from '../../lib/homeFilters'
 import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } from '../../lib/colegios'
 import { recommend } from '../../lib/pricing'
 import { HomeReforma } from './HomeReforma'
@@ -33,7 +35,6 @@ import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMess
 import type { AiSource } from '../../lib/listingParse'
 import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
 
-type Sort = 'estado' | 'recientes' | 'precio' | 'listo' | 'm2' | 'valoramos'
 const PROVINCE_NAMES = PROVINCES.map(p => p.name)
 const municipalitiesOf = (province: string | null) => {
   const code = PROVINCES.find(p => p.name === province)?.code
@@ -41,9 +42,6 @@ const municipalitiesOf = (province: string | null) => {
 }
 const ALL_MUNICIPALITIES = PROVINCES.flatMap(p => MUNICIPALITIES[p.code].map(x => x.name))
 
-/** «En marcha» (todo menos descartados), «Todos» o un estado concreto */
-type Filter = 'activos' | 'todos' | HomeStatus
-const STATUS_FILTERS: HomeStatus[] = ['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado']
 
 /** Número para WhatsApp: con prefijo de España si no lo trae */
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.length === 9 ? `34${d}` : d.replace(/^00/, '') }
@@ -56,7 +54,9 @@ const num = (s: string) => {
 }
 
 export default function Buscamos({ m, members, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
-  const [filter, setFilter] = useState<Filter>('activos')
+  const fs = useHomeFilters()
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const schools = useSchoolSummaries(m.homes)
   // «🙅 No nos interesa»: se oculta al momento y se hace de verdad a los 6 s (hasta entonces se puede deshacer)
   const [pending, setPending] = useState<{ id: string; title: string; reason: RejectReason | null } | null>(null)
   const pendingRef = useRef(pending)
@@ -90,35 +90,14 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   useEffect(() => { try { localStorage.setItem('compare-picked', JSON.stringify(picked)) } catch { /* nada */ } }, [picked])
   const pickedHomes = m.homes.filter(h => picked.includes(h.id))
   const togglePick = (id: string) => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id].slice(-4)))
-  const [town, setTown] = useState<string>('all')
-  const [minP, setMinP] = useState('')
-  const [maxP, setMaxP] = useState('')
-  const [sort, setSort] = useState<Sort>('estado')
-  const [showFilters, setShowFilters] = useState(false)
   const t = today()
   const towns = [...new Set(m.homes.map(h => h.municipality).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, 'es'))
 
-  const list = useMemo(() => {
-    const f = m.homes.filter(h => h.id !== pending?.id).filter(h =>
-      filter === 'todos' ? true
-        : filter === 'activos' ? h.status !== 'descartado' && h.status !== 'propuesta'
-          : h.status === filter)
-    const lo = minP.trim() ? parsePrice(minP) : null
-    const hi = maxP.trim() ? parsePrice(maxP) : null
-    const g = f.filter(h =>
-      (town === 'all' || (town === 'none' ? !h.municipality : h.municipality === town)) &&
-      (lo == null || (readyPrice(h) != null && readyPrice(h)! >= lo)) &&
-      (hi == null || (readyPrice(h) != null && readyPrice(h)! <= hi)))
-    const nullsLast = (x: number | null) => (x == null ? Number.MAX_SAFE_INTEGER : x)
-    return g.slice().sort((a, b) =>
-      sort === 'recientes' ? b.created_at.localeCompare(a.created_at)
-        : sort === 'precio' ? nullsLast(a.price_cents) - nullsLast(b.price_cents)
-          : sort === 'listo' ? nullsLast(readyPrice(a)) - nullsLast(readyPrice(b))
-          : sort === 'm2' ? nullsLast(perM2(a)) - nullsLast(perM2(b))
-            : sort === 'valoramos' ? niceCount(b, m.criteria).got.length - niceCount(a, m.criteria).got.length || HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status)
-              : HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status))
+  const ctx: Ctx = { criteria: m.criteria, visits: m.homeVisits, ratings: m.ratings, homes: m.homes, today: t, schools }
+  const visibleHomes = m.homes.filter(h => h.id !== pending?.id)
+  const list = useMemo(() => sortHomes(applyFilters(visibleHomes, fs.f, ctx), fs.sort, ctx),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [m.homes, m.criteria, filter, town, minP, maxP, sort, pending])
+    [m.homes, m.criteria, m.homeVisits, m.ratings, schools, fs.f, fs.sort, pending])
 
   const nextVisits = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t)
   // Portadas de los pisos de la lista (enlaces temporales pedidos de una vez)
@@ -160,61 +139,17 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
             className={`min-h-9 rounded-lg text-[13px] font-semibold ${view === k ? 'bg-ink text-bg' : 'text-muted'}`}>{l}</button>
         ))}
       </div>
-      <label className="flex items-center gap-2 min-w-0">
-        <span className="text-[13px] font-semibold text-muted shrink-0">Estado</span>
-        <select value={filter} onChange={e => setFilter(e.target.value as Filter)} aria-label="Filtrar por estado"
-          className="flex-1 min-w-0 w-full min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold truncate">
-          {([['activos', 'En marcha (sin descartados ni propuestas)'], ['todos', 'Todos'], ...STATUS_FILTERS.map(st => [st, HOME_STATUS[st]])] as [Filter, string][]).map(([k, l]) => {
-            const n = k === 'todos' ? m.homes.length : k === 'activos' ? m.homes.filter(h => h.status !== 'descartado' && h.status !== 'propuesta').length : m.homes.filter(h => h.status === k).length
-            return <option key={k} value={k}>{l} ({n})</option>
-          })}
-        </select>
-      </label>
-      {proposals > 0 && filter !== 'propuesta' && (
-        <button onClick={() => setFilter('propuesta')} className="-mt-1 rounded-2xl bg-accent-soft p-3 text-left flex items-center gap-2">
+      {proposals > 0 && !(fs.f.statuses.length === 1 && fs.f.statuses[0] === 'propuesta') && (
+        <button onClick={() => fs.setF(x => ({ ...x, statuses: ['propuesta'] }))} className="rounded-2xl bg-accent-soft p-3 text-left flex items-center gap-2">
           <span className="text-[20px]" aria-hidden="true">🤖</span>
           <span className="flex-1 text-[14px]"><b>{proposals} propuesta{proposals === 1 ? '' : 's'}</b> de la búsqueda automática por revisar</span>
           <span className="text-sm font-semibold text-accent">Ver ›</span>
         </button>
       )}
-      <div className="flex gap-2 -mt-2">
-        <button onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters} className="min-h-10 px-3 rounded-xl border border-line bg-card text-sm font-semibold">
-          Filtrar y ordenar{town !== 'all' || minP || maxP || sort !== 'estado' ? ' •' : ''}
-        </button>
-        {(town !== 'all' || minP || maxP || sort !== 'estado') && (
-          <button onClick={() => { setTown('all'); setMinP(''); setMaxP(''); setSort('estado') }} className="min-h-10 px-2 text-sm text-muted">Quitar</button>
-        )}
-      </div>
-      {showFilters && (
-        <Card className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-muted">Localidad</span>
-            <select value={town} onChange={e => setTown(e.target.value)} className="min-h-12 px-3 rounded-xl border border-line bg-card text-[16px]">
-              <option value="all">Todas</option>
-              {towns.map(x => <option key={x} value={x}>{x}</option>)}
-              <option value="none">Sin localidad</option>
-            </select>
-          </label>
-          <span className="text-[13px] font-semibold -mb-2">Precio para entrar a vivir (precio + reforma + gastos)</span>
-          <div className="grid grid-cols-2 gap-3">
-            <TextField label="Desde (€)" inputMode="decimal" value={minP} onChange={e => setMinP(e.target.value)} placeholder="200.000" />
-            <TextField label="Hasta (€)" inputMode="decimal" value={maxP} onChange={e => setMaxP(e.target.value)} placeholder="400.000" />
-          </div>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-muted">Ordenar por</span>
-            <select value={sort} onChange={e => setSort(e.target.value as Sort)} className="min-h-12 px-3 rounded-xl border border-line bg-card text-[16px]">
-              <option value="estado">Estado (favoritos primero)</option>
-              <option value="recientes">Guardados más recientes</option>
-              <option value="precio">Precio, de menor a mayor</option>
-              <option value="listo">Para entrar a vivir (precio + reforma)</option>
-              <option value="m2">€/m², de menor a mayor</option>
-              {(m.criteria?.nice_to_haves?.length ?? 0) > 0 && <option value="valoramos">Lo que valoramos (más primero)</option>}
-            </select>
-          </label>
-          {m.rejections.length > 0 && (
-            <button type="button" onClick={() => setRejectedOpen(true)} className="self-start min-h-10 text-[13px] text-muted">🙅 Rechazadas ({m.rejections.filter(r => !r.reproposed_at).length}) · <span className="text-accent font-semibold">ver</span></button>
-          )}
-        </Card>
+      <FilterBar s={fs} count={list.length} proposals={proposals} onOpen={() => setFiltersOpen(true)} />
+      {filtersOpen && (
+        <FilterSheet s={fs} towns={towns} ours={m.criteria?.municipalities ?? []} countFor={f => applyFilters(visibleHomes, f, ctx).length}
+          rejected={m.rejections.filter(r => !r.reproposed_at).length} onRejected={() => { setFiltersOpen(false); setRejectedOpen(true) }} onClose={() => setFiltersOpen(false)} />
       )}
       {pickedHomes.length === 0 && m.homes.length >= 2 && (
         <p className="text-xs text-muted -mt-2">Para comparar, marca «☐ Comparar» en los pisos que quieras (hasta 4).</p>
