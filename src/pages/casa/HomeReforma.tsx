@@ -75,7 +75,7 @@ function ReformaSheet({ h, m, householdId, onClose }: { h: Home; m: Mudanza; hou
   const [busy, setBusy] = useState(false)
   const items = r.items ?? []
   const total = reformTotal(r, h)
-  const sugg = suggestions({ ...h, reform: r })
+  const sugg = suggestions({ ...h, reform: r }, [...(m.criteria?.must_haves ?? []), ...(m.criteria?.nice_to_haves ?? [])])
   const integral = items.some(i => i.k === 'integral')
   const fee = buyingCosts(h)
   const ready = h.price_cents != null ? h.price_cents + (total?.mid ?? 0) + fee : null
@@ -162,7 +162,7 @@ function ReformaSheet({ h, m, householdId, onClose }: { h: Home; m: Mudanza; hou
 
             {sugg.length > 0 && (
               <div className="flex flex-col gap-1.5 mt-1">
-                <span className="text-[13px] font-semibold text-muted">💡 Sugerencias por el año, el certificado y la calefacción</span>
+                <span className="text-[13px] font-semibold text-muted">💡 Sugerencias (año, certificado, calefacción y lo que buscáis)</span>
                 {sugg.map(s => (
                   <button type="button" key={s.k} onClick={() => add(s.k, 'auto')} className="min-h-11 px-3 rounded-xl border border-dashed border-line text-left text-[13px]">
                     <b>+ {PARTIDA[s.k].icon} {PARTIDA[s.k].label}</b> <span className="text-muted">· {s.why}</span>

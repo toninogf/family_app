@@ -72,6 +72,8 @@ export const PARTIDAS: Partida[] = [
   { k: 'jardin', label: 'Arreglar jardín', icon: '🌿', unit: 'm2_jardin', lo: 12, hi: 30, auto: h => (plot(h) ? Math.min(800, Math.max(0, Math.round(plot(h)! - (m2(h) ?? 0) * 0.6))) : null), group: 'exterior' },
   { k: 'riego', label: 'Riego automático', icon: '💦', unit: 'global', lo: 1500, hi: 3500, auto: () => 1, group: 'exterior' },
   { k: 'cerramiento', label: 'Valla o muro de parcela', icon: '🚧', unit: 'ml', lo: 70, hi: 140, auto: h => (plot(h) ? Math.round(4 * Math.sqrt(plot(h)!)) : null), group: 'exterior' },
+  // Piscina nueva 8×4 de obra (gunitada o bloque), con depuradora, gresite y coronación; sin grandes movimientos de tierra
+  { k: 'piscina_nueva', label: 'Hacer piscina (8×4)', icon: '🏊', unit: 'global', lo: 18000, hi: 30000, auto: () => 1, licence: true, group: 'exterior' },
   { k: 'piscina', label: 'Arreglar piscina', icon: '🏊', unit: 'global', lo: 4000, hi: 10000, auto: () => 1, group: 'exterior' },
   { k: 'otros', label: 'Otra cosa', icon: '➕', unit: 'global', lo: 0, hi: 0, auto: () => 1, group: 'otros' }
 ]
@@ -187,7 +189,7 @@ export const STATE_ITEMS: Record<ReformState, string[]> = {
 
 type HomeFull = HomeLike & { year_built?: number | null; energy?: string | null; features?: string[]; heating_type?: string | null; cooling?: string | null; reform?: Reform | null }
 /** Sugerencias según el año, el certificado y lo que tiene el piso (no se añaden solas) */
-export function suggestions(h: HomeFull): { k: string; why: string }[] {
+export function suggestions(h: HomeFull, wants: string[] = []): { k: string; why: string }[] {
   const have = new Set((h.reform?.items ?? []).map(i => i.k))
   const integral = have.has('integral')
   const out: { k: string; why: string }[] = []
@@ -203,6 +205,8 @@ export function suggestions(h: HomeFull): { k: string; why: string }[] {
   }
   if (h.year_built && h.year_built < 1985 && !h.features?.includes('aislamiento')) add('ventanas', `construida en ${h.year_built}`)
   if (h.heating_type === 'gasoil' || h.heating_type === 'propano') add('aerotermia', `calefacción de ${h.heating_type === 'gasoil' ? 'gasóleo' : 'propano'}: cara de mantener`)
+  const hasPool = h.features?.includes('piscina') || h.features?.includes('piscina_comunitaria')
+  if (!hasPool && h.plot_m2 && wants.some(k => k === 'piscina' || k === 'piscina_cualquiera')) add('piscina_nueva', 'no tiene piscina y la buscáis')
   if (h.year_built && h.year_built < 1980 && h.plot_m2) add('cubierta', `casa de ${h.year_built}: revisar el tejado`)
   return out
 }

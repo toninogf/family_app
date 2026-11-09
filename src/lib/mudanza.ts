@@ -220,7 +220,9 @@ export const criteriaLabel = (k: string) => CRITERIA_EXTRA[k] ?? FEATURES[k] ?? 
 export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map((g, i) =>
   i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: [...g.keys, 'aerotermia', 'geotermia'] } : g)
 /** ¿Cumple el piso esta característica de lo que buscamos? */
-export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string) {
+export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null; reform?: { state?: string; items?: { k: string }[] } | null }, k: string) {
+  // Una piscina que vamos a hacer (partida de la reforma, ya sumada al precio para entrar a vivir) cuenta como que la tiene
+  if ((k === 'piscina' || k === 'piscina_cualquiera') && h.reform?.state !== 'listo' && h.reform?.items?.some(i => i.k === 'piscina_nueva')) return true
   if (k === 'calefaccion') return h.features.includes(k) || (!!h.heating_type && h.heating_type !== 'ninguna')
   if (k === 'aire') return h.features.includes(k) || (!!h.cooling && h.cooling !== 'no')
   if (k === 'piscina_cualquiera') return h.features.includes('piscina') || h.features.includes('piscina_comunitaria')
@@ -230,7 +232,7 @@ export function meets(h: { features: string[]; heating_type?: string | null; coo
   return h.features.includes(k)
 }
 /** Cuántos de los «Valoramos» tiene un piso */
-export function niceCount(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, c: { nice_to_haves?: string[] } | null) {
+export function niceCount(h: { features: string[]; heating_type?: string | null; cooling?: string | null; reform?: { state?: string; items?: { k: string }[] } | null }, c: { nice_to_haves?: string[] } | null) {
   const want = c?.nice_to_haves ?? []
   const got = want.filter(k => meets(h, k))
   return { got, want }
