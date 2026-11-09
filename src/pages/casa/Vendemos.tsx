@@ -8,15 +8,16 @@ import {
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
-import { MarketCompare, VentaFichaSheet, VentaPhotos } from './VentaFicha'
+import { VentaFichaSheet, VentaPhotos } from './VentaFicha'
+import { Competitors, MarketCard, ObjectionHelp } from './VentaMercado'
 import { VentaCuentas, VentaDocs, VentaPasos, docAlert, docsSummary, saleNet, stepsSummary } from './VentaGestion'
 import { DossierSheet } from './VentaDossier'
 import { SaleFacts, SaleGallery } from './VentaHeader'
 import { GroupBox, Tile, useOpenGroups } from '../../components/Groups'
 
-type SaleGroup = 'resumen' | 'visitas' | 'casa' | 'cuentas' | 'docs' | 'pasos' | 'enlaces' | 'fotos'
+type SaleGroup = 'resumen' | 'competencia' | 'visitas' | 'casa' | 'cuentas' | 'docs' | 'pasos' | 'enlaces' | 'fotos'
 const SALE_GROUPS: { k: SaleGroup; icon: string; title: string }[] = [
-  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'visitas', icon: '👀', title: 'Visitas y ofertas' }, { k: 'casa', icon: '🏠', title: 'Nuestra casa' },
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'competencia', icon: '🏘️', title: 'Competencia' }, { k: 'visitas', icon: '👀', title: 'Visitas y ofertas' }, { k: 'casa', icon: '🏠', title: 'Nuestra casa' },
   { k: 'cuentas', icon: '💶', title: '¿Cuánto nos queda?' }, { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'pasos', icon: '✍️', title: 'Pasos hasta la firma' },
   { k: 'enlaces', icon: '🔗', title: 'Enlaces' }, { k: 'fotos', icon: '📷', title: 'Fotos y capturas' }
 ]
@@ -69,6 +70,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
   const nextStep = m.saleSteps.filter(x => !x.done && x.step_date).sort((a, b) => a.step_date!.localeCompare(b.step_date!))[0]
   const lines: Record<SaleGroup, string> = {
     resumen: [`${done.length} visita${done.length === 1 ? '' : 's'}`, activeOffers.length ? `${activeOffers.length} oferta${activeOffers.length > 1 ? 's' : ''} abierta${activeOffers.length > 1 ? 's' : ''}` : null, docsPending ? `${docsPending} doc. pendientes` : null].filter(Boolean).join(' · '),
+    competencia: (() => { const a = m.competitors.filter(c => c.status === 'activo'); const d = a.filter(c => c.first_price_cents && c.price_cents && c.price_cents < c.first_price_cents).length; return a.length ? `${a.length} en venta${d ? ` · 📉 ${d} han bajado` : ''}` : 'pisos parecidos al vuestro en venta' })(),
     visitas: [upcoming.length ? `📅 ${relativeDay(upcoming[0].visit_date).toLowerCase()} ${hhmm(upcoming[0].start_time)}` : 'sin visitas previstas', pendingFeedback.length ? `${pendingFeedback.length} por valorar` : null, m.offers.length ? `${m.offers.length} oferta${m.offers.length > 1 ? 's' : ''}` : null].filter(Boolean).join(' · '),
     casa: [m.listing?.size_m2 && `${Number(m.listing.size_m2)} m²`, m.listing?.plot_m2 && `parcela ${Number(m.listing.plot_m2)} m²`, m.listing?.rooms != null && `${m.listing.rooms} hab.`, m.listing?.baths != null && `${m.listing.baths} baños`].filter(Boolean).join(' · ') || 'rellena la ficha',
     cuentas: net.net != null ? `${price(net.net)} tras hipoteca y gastos` : 'precio − hipoteca − gastos',
@@ -156,7 +158,11 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
           <Tile label="📄 Documentos" value={m.saleDocs.length ? (docsPending ? `${docsPending} pendiente${docsPending > 1 ? 's' : ''}` : '✅ al día') : 'sin lista'} tone={docAlerts.length ? 'bad' : docsPending ? 'warn' : m.saleDocs.length ? 'ok' : 'none'} onClick={() => g.go('docs')} />
           <Tile label="✍️ Siguiente paso" value={nextStep ? `${nextStep.title} · ${shortDate(nextStep.step_date!)}` : '—'} onClick={() => g.go('pasos')} />
         </div>
-        <MarketCompare m={m} />
+        <MarketCard m={m} householdId={householdId} />
+      </>)}
+
+      {grp('competencia', null, <>
+        <Competitors m={m} householdId={householdId} />
       </>)}
 
       {grp('visitas', <span className="flex">
@@ -272,6 +278,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         </Card>
       )}
 
+      <ObjectionHelp objections={stats.objections} />
       </>)}
 
       {grp('casa', null, <>

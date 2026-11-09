@@ -140,7 +140,7 @@ export const FEATURE_ICON: Record<string, string> = {
   parcela_llana: '➖', parcela_pendiente: '⛰️', orientacion_sur: '🧭', vistas: '🏞️',
   bateria: '🔋', suelo_radiante: '♨️', chimenea: '🪵', aislamiento: '🧱', cargador: '🔌', aerotermia: '🌬️', geotermia: '🌍',
   sotano: '⬇️', buhardilla: '🔼', dormitorio_pb: '🛏️', garaje_cerrado: '🚘', armarios: '🚪',
-  urb_cerrada: '🛡️', zonas_comunes: '🎾', fibra: '📶', gas_natural: '🔵'
+  portero: '🛎️', balcon: '🌇', urb_cerrada: '🛡️', zonas_comunes: '🎾', fibra: '📶', gas_natural: '🔵'
 }
 
 /** Chips de selección múltiple agrupados por tema (para que una lista larga se lea bien) */

@@ -55,6 +55,8 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const [water, setWater] = useState(priceInput(l?.water_cents))
   const [heating, setHeating] = useState(priceInput(l?.heating_cents))
   const [year, setYear] = useState(l?.year_built?.toString() ?? '')
+  const [reformYear, setReformYear] = useState(l?.reform_year?.toString() ?? '')
+  const [orientation, setOrientation] = useState<string | null>(l?.orientation ?? null)
   const [ref, setRef] = useState(l?.listing_ref ?? '')
   const [description, setDescription] = useState(l?.description ?? '')
   const [notes, setNotes] = useState(l?.notes ?? '')
@@ -117,7 +119,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
   const flashedIn = (id: string) => fieldsOf(id).some(([k]) => flash[k])
   const missingForAi = VSECTIONS.flatMap(sec => fieldsOf(sec.id)).filter(([, v]) => !v.trim()).map(([k]) => k)
   const fl = (k: string) => flash[k]
-  const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, features, energy, heatType, cooling,
+  const dirty = useDirty({ url, amount, published, title, type, address, zone, municipality, m2, useful, plot, rooms, baths, floor, reformYear, orientation, features, energy, heatType, cooling,
     fee, ibi, power, water, heating, year, ref, description, notes, shots: shots.length, ad: adPhotos.length, extraLinks })
   const requestClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
 
@@ -143,7 +145,7 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
       rooms: ints[0], baths: ints[1], floor: floor.trim() || null, features, energy, heating_type: heatType, cooling,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, ibi_cents: ibi.trim() ? parsePrice(ibi) : null,
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
-      year_built: ints[2], listing_ref: ref.trim() || null, description: description.trim() || null,
+      year_built: ints[2], reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear.trim()) : null, orientation, listing_ref: ref.trim() || null, description: description.trim() || null,
       notes: notes.trim() || null
     }, undefined, 'household_id')
     if (!err && shots.length) {
@@ -200,6 +202,11 @@ export function VentaFichaSheet({ m, householdId, onClose }: { m: Mudanza; house
             <Field label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} flash={fl('baños')} />
             <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} flash={fl('planta')} />
             <Field label="Año" inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} flash={fl('año')} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Año de la última reforma" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} placeholder="Ej. 2018" />
+            <SelectField label="Orientación" value={orientation} onChange={v => setOrientation(v)} empty="Sin saber"
+              options={['sur', 'sureste', 'suroeste', 'este', 'oeste', 'norte', 'noreste', 'noroeste'].map(x => ({ value: x, label: x[0].toUpperCase() + x.slice(1) }))} />
           </div>
         </EditSection>
 

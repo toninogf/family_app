@@ -17,8 +17,17 @@ export type Listing = {
   electricity_cents: number | null; water_cents: number | null; heating_cents: number | null
   heating_type: HeatingType | null; cooling: Cooling | null
   description: string | null; listing_ref: string | null
+  reform_year: number | null; orientation: string | null
+  /** Referencias de la zona: €/m² pagado (notarías) y pedido (portales), días medios a la venta */
+  market: { paid_m2?: number; asking_m2?: number; avg_days?: number; source?: string; at?: string }
   // Cuentas
   mortgage_cents: number | null; costs: SaleCost[]
+}
+export type Competitor = {
+  id: string; title: string; url: string | null; zone: string | null; price_cents: number | null; first_price_cents: number | null
+  size_m2: number | null; rooms: number | null; baths: number | null; floor: string | null; features: string[]; reform_year: number | null
+  condition: 'nuevo' | 'reformado' | 'buen_estado' | 'a_reformar' | null; status: 'activo' | 'vendido' | 'retirado'
+  first_seen: string; last_seen: string; price_history: { date: string; cents: number }[]; notes: string | null; source: 'manual' | 'ia'
 }
 export type SalePhoto = { id: string; path: string; kind: 'foto' | 'anuncio'; created_at: string }
 /** Archivo de un documento (PDF o foto) en el bucket privado sale-docs */
@@ -200,7 +209,7 @@ export const FEATURES: Record<string, string> = {
   cargador: 'Punto de carga (coche)',
   // La casa
   reformado: 'Reformado', sotano: 'Sótano', buhardilla: 'Buhardilla', dormitorio_pb: 'Dormitorio en planta baja',
-  garaje: 'Garaje', garaje_cerrado: 'Garaje cerrado', trastero: 'Trastero', armarios: 'Armarios empotrados', ascensor: 'Ascensor',
+  garaje: 'Garaje', garaje_cerrado: 'Garaje cerrado', trastero: 'Trastero', armarios: 'Armarios empotrados', ascensor: 'Ascensor', portero: 'Portero / conserje', balcon: 'Balcón',
   // Urbanización y servicios
   urb_cerrada: 'Urbanización cerrada / vigilancia', zonas_comunes: 'Zonas comunes (pádel, parque)', fibra: 'Fibra óptica',
   gas_natural: 'Gas natural', transporte: 'Transporte cerca', cerca_cole: 'Cerca del cole'
@@ -209,7 +218,7 @@ export const FEATURES: Record<string, string> = {
 export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
   { title: '🏊 Piscina y exterior', keys: ['piscina', 'piscina_comunitaria', 'jardin', 'terraza', 'porche', 'barbacoa', 'riego', 'huerto', 'zona_juegos', 'parcela_llana', 'parcela_pendiente', 'orientacion_sur', 'vistas', 'exterior'] },
   { title: '⚡ Energía y confort', keys: ['calefaccion', 'aire', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
-  { title: '🏠 La casa', keys: ['reformado', 'sotano', 'buhardilla', 'dormitorio_pb', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'ascensor'] },
+  { title: '🏠 La casa', keys: ['reformado', 'sotano', 'buhardilla', 'dormitorio_pb', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'ascensor', 'portero', 'balcon'] },
   { title: '🏘️ Urbanización y servicios', keys: ['urb_cerrada', 'zonas_comunes', 'fibra', 'gas_natural', 'transporte', 'cerca_cole'] }
 ]
 /** Opciones extra solo para lo que buscamos (no se marcan en la ficha: se deducen) */
@@ -314,7 +323,7 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
 }
 
 // ---------- Datos ----------
-const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers', 'home_rejections']
+const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers', 'home_rejections', 'sale_competitors']
 
 export type DiscardCategory = 'precio' | 'ubicacion' | 'parcela' | 'distribucion' | 'estado' | 'legal' | 'vendida' | 'otra' | 'otro'
 export const DISCARD_CATS: Record<DiscardCategory, string> = {
@@ -345,6 +354,7 @@ export function useMudanza() {
   const [criteria, setCriteria] = useState<Criteria | null>(null)
   const [homes, setHomes] = useState<Home[]>([])
   const [rejections, setRejections] = useState<Rejection[]>([])
+  const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [homeVisits, setHomeVisits] = useState<HomeVisit[]>([])
   const [ratings, setRatings] = useState<Rating[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -356,7 +366,7 @@ export function useMudanza() {
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
-    const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj] = await Promise.all([
+    const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp] = await Promise.all([
       supabase.from('sale_listing').select('*').maybeSingle(),
       supabase.from('sale_price_history').select('id, price_cents, changed_on, changed_at').order('changed_at'),
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
@@ -370,9 +380,10 @@ export function useMudanza() {
       supabase.from('sale_photos').select('id, path, kind, created_at').order('created_at'),
       supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, files, notes, position, updated_at').order('position').order('title'),
       supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position'),
-      supabase.from('home_rejections').select('id, title, url, municipality, zone, price_cents, size_m2, plot_m2, reason, created_at, reproposed_at').order('created_at', { ascending: false }).limit(200)
+      supabase.from('home_rejections').select('id, title, url, municipality, zone, price_cents, size_m2, plot_m2, reason, created_at, reproposed_at').order('created_at', { ascending: false }).limit(200),
+      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source').order('created_at', { ascending: false })
     ])
-    const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj].find(x => x.error)?.error
+    const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp].find(x => x.error)?.error
     if (firstError) setError(firstError.message)
     setListing((l.data as Listing | null) ?? null)
     setPrices((p.data ?? []) as PricePoint[])
@@ -388,6 +399,7 @@ export function useMudanza() {
     setSaleDocs((sd.data ?? []) as SaleDoc[])
     setSaleSteps((ss.data ?? []) as SaleStep[])
     setRejections((rj.data ?? []) as Rejection[])
+    setCompetitors((cp.data ?? []) as Competitor[])
     setLoading(false)
   }, [])
 
@@ -505,7 +517,7 @@ export function useMudanza() {
   }
 
   return {
-    rejections, rejectProposal, restoreRejection,
+    rejections, rejectProposal, restoreRejection, competitors,
     listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, loading, error,
     salePhotos, saleDocs, saleSteps, addSalePhoto, removeSalePhoto, uploadSaleDoc, removeSaleDocFile, removeSaleDoc,
     clearError: () => setError(''), reload: load, write, remove, removeHome, createHome, addPhoto, removePhoto
