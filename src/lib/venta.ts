@@ -4,7 +4,8 @@ import { BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuyerOffer, type BuyerVi
 
 export type Condition = 'nuevo' | 'reformado' | 'buen_estado' | 'a_reformar'
 export const CONDITION_LABEL: Record<Condition, string> = { nuevo: 'Obra nueva', reformado: 'Reformado (≤ 10 años)', buen_estado: 'Buen estado', a_reformar: 'A reformar' }
-const COND_SCORE: Record<Condition, number> = { nuevo: 9, reformado: 5, buen_estado: 0, a_reformar: -14 }
+// Estado: la diferencia entre «a reformar» y «reformado» ≈ coste de una reforma integral (600–900 €/m², ~8 % a precios de Chamberí) + algo por la molestia
+const COND_SCORE: Record<Condition, number> = { nuevo: 7, reformado: 3, buen_estado: 0, a_reformar: -8 }
 
 type Traits = {
   m2: number | null; rooms: number | null; baths: number | null; exterior: boolean | null; aire: boolean
@@ -21,6 +22,21 @@ export function floorInfo(floor: string | null) {
   const n = f.match(/(\d{1,2})\s*[ªºoa°]?/)
   return { n: bajo ? 0 : n ? Number(n[1]) : null, bajo, atico }
 }
+
+/**
+ * Planta frente a una 3ª–4ª (la referencia «media»): bajo −8 %, 1ª −4 %, 2ª −1 %, de la 5ª hacia arriba hasta +5 %
+ * (solo con ascensor). El ático va aparte (+5 %). Un piso alto sin ascensor se castiga en otra regla.
+ */
+export function floorScore(f: { floorN: number | null; bajo: boolean; atico: boolean; ascensor: boolean }): number | null {
+  if (f.atico) return 5
+  if (f.bajo) return -8
+  if (f.floorN == null) return null
+  if (f.floorN <= 1) return -4
+  if (f.floorN === 2) return -1
+  if (f.floorN <= 4) return 0
+  return f.ascensor ? Math.min(5, (f.floorN - 4) * 1.5) : 0
+}
+const floorLabel = (f: { floorN: number | null; bajo: boolean; atico: boolean }) => (f.atico ? 'ático' : f.bajo ? 'bajo' : `${f.floorN}ª planta`)
 
 export function conditionOf(x: { features: string[]; reform_year?: number | null; year_built?: number | null; condition?: Condition | null }, year = new Date().getFullYear()): Condition | null {
   if (x.condition) return x.condition
@@ -49,21 +65,23 @@ export type Adj = { label: string; pct: number }
 export function adjustments(ours: Listing, c: Competitor): Adj[] {
   const o = traits(ours, true)
   const t = traits(c, false)
+  // Si no está marcado como exterior pero el título o la nota dicen «interior», se toma como interior
+  if (t.exterior == null && /\binterior\b/i.test(`${c.title ?? ''} ${c.notes ?? ''}`)) t.exterior = false
   const out: Adj[] = []
   const add = (label: string, pct: number) => { if (Math.abs(pct) >= 0.5) out.push({ label, pct: Math.round(pct * 10) / 10 }) }
   if (o.exterior != null && t.exterior != null && o.exterior !== t.exterior) add(t.exterior ? 'es exterior y el nuestro no' : 'es interior', o.exterior ? 8 : -8)
   if (o.condition && t.condition && o.condition !== t.condition) add(`${CONDITION_LABEL[t.condition].toLowerCase()}`, COND_SCORE[o.condition] - COND_SCORE[t.condition])
-  if (o.aire !== t.aire) add(t.aire ? 'tiene aire y el nuestro no' : 'sin aire acondicionado', o.aire ? 2 : -2)
+  if (o.aire !== t.aire) add(t.aire ? 'tiene aire y el nuestro no' : 'sin aire acondicionado', o.aire ? 1.5 : -1.5)
   if (o.baths != null && t.baths != null && o.baths !== t.baths) add(`${t.baths} baño${t.baths === 1 ? '' : 's'}`, Math.max(-6, Math.min(6, (o.baths - t.baths) * 3)))
   if (o.m2 && t.m2 && Math.abs(t.m2 / o.m2 - 1) > 0.08) add(t.m2 > o.m2 ? `más grande (${t.m2} m²): €/m² más bajo` : `más pequeño (${t.m2} m²): €/m² más alto`, 15 * Math.log2(t.m2 / o.m2))
-  // Planta y ascensor
-  if (t.bajo && !o.bajo) add('es un bajo', 7)
-  if (o.bajo && !t.bajo) add('no es bajo', -7)
-  if (t.atico && !o.atico) add('es ático', -5)
-  if (!t.ascensor && (t.floorN ?? 0) >= 2 && o.ascensor) add(`${t.floorN}º sin ascensor`, Math.min(15, 4 * ((t.floorN ?? 1) - 1)))
+  // Planta (escala de floorScore) y ascensor
+  const fo = floorScore(o), ft = floorScore(t)
+  if (fo != null && ft != null && fo !== ft) add(floorLabel(t), fo - ft)
+  // Sin ascensor: en un 1º molesta poco (+2 %); a partir del 2º, mucho más
+  if (!t.ascensor && (t.floorN ?? 0) >= 1 && o.ascensor) add(`${t.floorN}º sin ascensor`, t.floorN === 1 ? 2 : Math.min(15, 4 * ((t.floorN ?? 1) - 1)))
   if (!o.ascensor && (o.floorN ?? 0) >= 2 && t.ascensor) add('tiene ascensor y el nuestro no', -Math.min(15, 4 * ((o.floorN ?? 1) - 1)))
   const extra = (k: keyof Traits, label: string, pct: number) => { if (o[k] !== t[k]) add(t[k] ? `tiene ${label}` : `sin ${label}`, o[k] ? pct : -pct) }
-  extra('terraza', 'terraza', 4); extra('balcon', 'balcón', 1.5); extra('trastero', 'trastero', 1.5)
+  extra('terraza', 'terraza', 6); extra('balcon', 'balcón', 1.5); extra('trastero', 'trastero', 1.5)
   // Garaje incluido en el precio: se descuenta lo que vale una plaza en la zona (no un %), así pesa igual en un piso caro que en uno barato
   if (o.garaje !== t.garaje) {
     const pct = c.price_cents ? (GARAGE_EUR * 100 * 100) / c.price_cents : 5
@@ -78,25 +96,26 @@ export function adjustments(ours: Listing, c: Competitor): Adj[] {
 
 /**
  * La finca: año de construcción y de su última rehabilitación (fachada, cubierta, bajantes, ascensor…).
- * Se compara la «edad efectiva» (la más reciente de las dos): ~1,5 % por década, hasta ±6 %.
+ * Se compara la «edad efectiva» (la rehabilitación cuenta a medias): ~1 % por década, hasta ±4 %.
  * Las fincas clásicas (antes de 1940) van aparte: en barrios como Chamberí se pagan más que una de los 60–70.
  */
 export function fincaAdjustment(ours: Listing, c: Competitor): Adj | null {
   if (!ours.year_built || !c.year_built) return null
-  const eff = (built: number, rehab: number | null) => Math.max(built, rehab ?? 0)
+  // La rehabilitación cuenta a medias (renueva fachada, cubierta, instalaciones comunes; no la estructura ni la distribución)
+  const eff = (built: number, rehab: number | null) => (rehab && rehab > built ? built + (rehab - built) / 2 : built)
   const label = `finca de ${c.year_built}${c.building_reform_year ? `, rehab. ${c.building_reform_year}` : ''}`
   const classic = (y: number) => y < 1940
   if (classic(c.year_built) && !classic(ours.year_built)) return { label: `${label} (clásica)`, pct: -3 }
   if (classic(ours.year_built) && !classic(c.year_built)) return { label, pct: 3 }
   const diff = eff(ours.year_built, ours.building_reform_year) - eff(c.year_built, c.building_reform_year)
-  const pct = Math.max(-6, Math.min(6, (diff / 10) * 1.5))
+  const pct = Math.max(-4, Math.min(4, diff / 10))
   return Math.abs(pct) >= 0.5 ? { label, pct: Math.round(pct * 10) / 10 } : null
 }
 
 /** Lo que vale una plaza de garaje en la zona (Chamberí, 2026): se descuenta del precio de los que la incluyen */
-export const GARAGE_EUR = 40000
+export const GARAGE_EUR = 50000
 
-const NOISE_SCORE = { tranquila: 3, normal: 0, ruidosa: -4 } as const
+const NOISE_SCORE = { tranquila: 2, normal: 0, ruidosa: -4 } as const
 const LIGHT_SCORE = { mucha: 3, normal: 0, poca: -4 } as const
 const BUILDING_SCORE = { bien: 0, ite_pendiente: -3, obras_previstas: -2 } as const
 const ENERGY = 'ABCDEFG'
@@ -123,14 +142,20 @@ export const adjTotal = (a: Adj[]) => Math.max(-35, Math.min(35, a.reduce((s, x)
 export function premium(ours: Listing): Adj[] {
   const o = traits(ours, true)
   const out: Adj[] = []
-  if (o.exterior) out.push({ label: '100 % exterior', pct: 4 })
-  if (o.condition) out.push({ label: CONDITION_LABEL[o.condition].toLowerCase(), pct: { nuevo: 8, reformado: 5, buen_estado: 0, a_reformar: -12 }[o.condition] })
-  if (o.aire) out.push({ label: 'aire acondicionado', pct: 1.5 })
-  if (o.baths != null && o.baths >= 2 && (o.rooms ?? 3) <= 2) out.push({ label: '2 baños con 2 habitaciones', pct: 2 })
-  if (o.ascensor && (o.floorN ?? 0) >= 1) out.push({ label: 'con ascensor', pct: 1 })
-  if (o.bajo) out.push({ label: 'bajo', pct: -6 })
-  if (o.atico) out.push({ label: 'ático', pct: 5 })
-  if (o.terraza) out.push({ label: 'terraza', pct: 3 })
+  if (o.exterior) out.push({ label: '100 % exterior', pct: 5 })
+  // Reformado: a estrenar (≤ 5 años) suma más que una reforma con unos años de uso
+  if (o.condition) {
+    const age = ours.reform_year ? new Date().getFullYear() - ours.reform_year : null
+    const pct = o.condition === 'reformado' ? (age != null && age <= 5 ? 4 : 2) : { nuevo: 6, reformado: 2, buen_estado: 0, a_reformar: -8 }[o.condition]
+    out.push({ label: o.condition === 'reformado' && ours.reform_year ? `reformado en ${ours.reform_year}` : CONDITION_LABEL[o.condition].toLowerCase(), pct })
+  }
+  if (o.aire) out.push({ label: 'aire acondicionado', pct: 1 })
+  if (o.baths != null && o.baths >= 2 && (o.rooms ?? 3) <= 2) out.push({ label: '2 baños con 2 habitaciones', pct: 2.5 })
+  const fs = floorScore(o)
+  if (fs) out.push({ label: floorLabel(o), pct: fs })
+  if (o.ascensor && (o.floorN ?? 0) >= 2) out.push({ label: 'con ascensor', pct: 1 })
+  if (!o.ascensor && (o.floorN ?? 0) >= 2) out.push({ label: `${o.floorN}ª sin ascensor`, pct: -Math.min(15, 4 * ((o.floorN ?? 1) - 1)) })
+  if (o.terraza) out.push({ label: 'terraza', pct: 5 })
   if (o.garaje) out.push({ label: 'garaje', pct: 4 })
   if (o.portero) out.push({ label: 'portero', pct: 1 })
   if (ours.orientation && /sur/.test(ours.orientation)) out.push({ label: `orientación ${ours.orientation}`, pct: 1.5 })
