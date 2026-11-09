@@ -72,8 +72,20 @@ export function MarketCard({ m, householdId }: { m: Mudanza; householdId: string
 }
 
 /** €/m² pagado (notarías), pedido (portales) y días medios a la venta: a mano o desde la búsqueda */
+/** Dónde mirar a mano las referencias (no hay API: se consultan cada cierto tiempo) */
+function refLinks(zone: string | null, municipality: string | null) {
+  const slug = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  // «Vallehermoso, Chamberí» → barrio y distrito (Madrid capital)
+  const [barrio, distrito] = (zone ?? '').split(',').map(x => x.trim()).filter(Boolean)
+  const base = 'https://www.idealista.com/sala-de-prensa/informes-precio-vivienda/venta/madrid-comunidad/madrid-provincia/madrid/'
+  const idealista = municipality === 'Madrid' && distrito && barrio ? `${base}${slug(distrito)}/${slug(barrio)}/`
+    : municipality === 'Madrid' && barrio ? `${base}${slug(barrio)}/` : 'https://www.idealista.com/sala-de-prensa/informes-precio-vivienda/'
+  return { notariado: 'https://penotariado.com/inmobiliario', idealista }
+}
+
 function MarketRefs({ m, householdId }: { m: Mudanza; householdId: string }) {
   const mk = m.listing?.market ?? {}
+  const links = refLinks(m.listing?.zone ?? null, m.listing?.municipality ?? null)
   const [paid, setPaid] = useState(mk.paid_m2?.toString() ?? '')
   const [ask, setAsk] = useState(mk.asking_m2?.toString() ?? '')
   const [days, setDays] = useState(mk.avg_days?.toString() ?? '')
@@ -99,6 +111,11 @@ function MarketRefs({ m, householdId }: { m: Mudanza; householdId: string }) {
         <Field label="Pedido €/m²" inputMode="numeric" value={ask} onChange={e => setAsk(e.target.value)} placeholder="Portales" />
         <Field label="Días a la venta" inputMode="numeric" value={days} onChange={e => setDays(e.target.value)} placeholder="Media" />
       </div>
+      <div className="flex gap-1.5 flex-wrap">
+        <a href={links.notariado} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🏛️ Pagado: Notariado ↗</a>
+        <a href={links.idealista} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🏷️ Pedido: idealista ↗</a>
+      </div>
+      <p className="text-[11px] text-muted -mt-1">En el Notariado, busca vuestro código postal en el mapa y mira la media de los últimos 3 meses (un mes suelto salta mucho). En idealista, el precio medio de venta del barrio. Revísalos cada mes.</p>
       {(mk.paid_note || mk.asking_note) ? (
         <div className="text-[12px] text-muted flex flex-col gap-0.5">
           {mk.paid_note && <span>Pagado: {mk.paid_note}</span>}
