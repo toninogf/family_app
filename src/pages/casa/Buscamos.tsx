@@ -1678,8 +1678,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
           <SubHead id="dinero-honorarios">💼 Honorarios de la agencia</SubHead>
           {advertiser === 'particular'
             ? <p className="text-[13px] text-muted">Lo anuncia un particular: no hay honorarios (se cambia en Contacto).</p>
-            : <>
-          {advertiser !== 'particular' && (
+            : (
             <div className="flex flex-col gap-3 rounded-2xl bg-card p-3">
               <SelectField<'no' | 'pct' | 'fijo'> label="¿Cobran algo al comprador?" value={feeKind} onChange={setFeeKind} empty="Sin preguntar" flash={fl('honorarios')}
                 options={[{ value: 'no', label: 'No cobra al comprador' }, { value: 'pct', label: 'Un % del precio' }, { value: 'fijo', label: 'Un importe fijo' }]} />
@@ -1691,7 +1690,10 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
                   <span>Más IVA (21 %)</span>
                 </label>
               )}
-            </>}
+              <Field label="Nota" value={feeNote} onChange={e => setFeeNote(e.target.value)} maxLength={300} placeholder="Ej. se pagan en arras / negociable" />
+              <p className="text-[12px] text-muted -mt-1">En Madrid lo normal es que pague el vendedor, pero algunas agencias cobran también al comprador. Se suma al precio para entrar a vivir.</p>
+            </div>
+          )}
           <SubHead id="dinero-compra">🧾 Impuestos de la compra</SubHead>
           <Field label="Valor de referencia del Catastro" suffix="€" inputMode="decimal" value={refValue} onChange={e => setRefValue(e.target.value)} onBlur={() => setRefValue(thousands)} placeholder="Opcional" />
           <p className="text-xs text-muted -mt-2">El ITP se paga sobre el mayor entre el precio y este valor. Lo consultas con la referencia catastral en la Sede del Catastro («Valor de referencia»).</p>
@@ -1749,10 +1751,6 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <Field label="Referencia" value={listingRef} onChange={e => setListingRef(e.target.value)} maxLength={60} placeholder="Ref. del anuncio" flash={fl('referencia')} />
           </div>
           <Field label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} flash={fl('email')} />
-              <Field label="Nota" value={feeNote} onChange={e => setFeeNote(e.target.value)} maxLength={300} placeholder="Ej. se pagan en arras / negociable" />
-              <p className="text-[12px] text-muted -mt-1">En Madrid lo normal es que pague el vendedor, pero algunas agencias cobran también al comprador. Se suma al precio para entrar a vivir.</p>
-            </div>
-          )}
         </EditSection>
 
         <EditSection id="enlaces" icon="🔗" title={home ? 'Enlaces y fotos' : 'Otros enlaces'} open={sections.isOpen('enlaces')} onToggle={() => sections.toggle('enlaces')}>
