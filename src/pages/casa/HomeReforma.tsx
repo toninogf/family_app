@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { parsePrice, price, priceInput, uploadDocFiles, type Home, type Mudanza } from '../../lib/mudanza'
 import {
-  DEFAULT_CONTINGENCY, GROUP_LABEL, IN_INTEGRAL, PARTIDA, PARTIDAS, REFORM_STATE, STATE_ITEMS, TIER, UNIT_LABEL,
+  DEFAULT_CONTINGENCY, GROUP_LABEL, IN_INTEGRAL, PARTIDA, PARTIDAS, REFORM_STATE, TIER, UNIT_LABEL,
   buyingCosts, itemCost, rangeK, readyPrice, reformKnown, reformTotal, suggestions,
   type Reform, type ReformItem, type ReformState, type Tier
 } from '../../lib/reforma'
@@ -101,7 +101,7 @@ export function ReformaEditor({ h, m, householdId, value: r, onChange: setR }: {
           <div className="grid grid-cols-2 gap-2">
             {STATES.map(s => (
               <button type="button" key={s} aria-pressed={r.state === s}
-                onClick={() => setR(x => ({ ...x, state: s, items: x.items?.length || s === 'listo' ? x.items : STATE_ITEMS[s].map(k => ({ k, src: 'auto' as const })) }))}
+                onClick={() => setR(x => ({ ...x, state: s }))}
                 className={`min-h-12 px-2 rounded-xl border text-[13px] font-semibold text-left ${r.state === s ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>
                 {REFORM_STATE[s].icon} {REFORM_STATE[s].label}
                 <span className={`block text-[11px] font-normal ${r.state === s ? 'opacity-80' : 'text-muted'}`}>{REFORM_STATE[s].hint}</span>

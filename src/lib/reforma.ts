@@ -183,13 +183,6 @@ export function valuePrice(h: ReadyLike) {
 /** ¿Se ha valorado la reforma? (estado puesto o alguna partida) */
 export const reformKnown = (r: Reform | null | undefined) => !!r && (!!r.state || !!r.items?.length)
 
-/** Partidas típicas de cada estado (para empezar rápido) */
-export const STATE_ITEMS: Record<ReformState, string[]> = {
-  listo: [],
-  lavado: ['pintura'],
-  parcial: ['pintura', 'cocina', 'banos'],
-  integral: ['integral', 'ventanas']
-}
 
 type HomeFull = HomeLike & { year_built?: number | null; energy?: string | null; features?: string[]; heating_type?: string | null; cooling?: string | null; reform?: Reform | null }
 /** Sugerencias según el año, el certificado y lo que tiene el piso (no se añaden solas) */
