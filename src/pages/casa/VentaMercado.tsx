@@ -608,7 +608,7 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
       {parsed && parsed.items.length > 0 && l && (
         <div className="flex flex-col gap-1.5">
           {parsed.items.map((x, i) => {
-            const fake = { ...x, id: String(i), first_seen: '', last_seen: '', price_history: [], source: 'ia', first_price_cents: x.price_cents } as Competitor
+            const fake = { ...x, id: String(i), first_seen: '', last_seen: '', price_history: [], source: 'ia', first_price_cents: x.price_cents, review: null, reject_reason: null } as Competitor
             const adj = adjustments(l, fake)
             const raw = x.price_cents && x.size_m2 ? x.price_cents / x.size_m2 : null
             const cur = m.competitors.find(c => sameUrl(c.url, x.url))
