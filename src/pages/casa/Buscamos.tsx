@@ -31,6 +31,7 @@ import { applyFilters, EMPTY, sortHomes, type Ctx } from '../../lib/homeFilters'
 import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } from '../../lib/colegios'
 import { recommend } from '../../lib/pricing'
 import { HomeReforma, ReformaEditor } from './HomeReforma'
+import { AiHomeSearch } from './AiHomeSearch'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
@@ -140,6 +141,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
             className={`min-h-9 rounded-lg text-[13px] font-semibold ${view === k ? 'bg-ink text-bg' : 'text-muted'}`}>{l}</button>
         ))}
       </div>
+      <AiHomeSearch m={m} householdId={householdId} />
       {proposals > 0 && !(fs.f.statuses.length === 1 && fs.f.statuses[0] === 'propuesta') && (
         <button onClick={() => fs.setF(x => ({ ...x, statuses: ['propuesta'] }))} className="rounded-2xl bg-accent-soft p-3 text-left flex items-center gap-2">
           <span className="text-[20px]" aria-hidden="true">🤖</span>
