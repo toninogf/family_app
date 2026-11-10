@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { compressImage } from './money'
 import { addDays } from './dates'
@@ -40,6 +40,8 @@ export type Competitor = {
   community_fee_cents: number | null; heating_type: string | null; energy: string | null
   building_state: BuildingState | null; derrama_cents: number | null; noise: Noise | null; light: Light | null
   year_built: number | null; building_reform_year: number | null
+  /** null = verificado; 'propuesta' = lo trajo la búsqueda automática y hay que revisarlo; 'rechazado' = no vuelve */
+  review: 'propuesta' | 'rechazado' | null; reject_reason: string | null
 }
 export type SalePhoto = { id: string; path: string; kind: 'foto' | 'anuncio'; created_at: string }
 /** Archivo de un documento (PDF o foto) en el bucket privado sale-docs */
@@ -351,7 +353,11 @@ export function useMudanza() {
   const [criteria, setCriteria] = useState<Criteria | null>(null)
   const [homes, setHomes] = useState<Home[]>([])
   const [rejections, setRejections] = useState<Rejection[]>([])
-  const [competitors, setCompetitors] = useState<Competitor[]>([])
+  const [allCompetitors, setAllCompetitors] = useState<Competitor[]>([])
+  // Solo los verificados cuentan para la valoración; las propuestas de la búsqueda automática esperan revisión
+  const competitors = useMemo(() => allCompetitors.filter(c => !c.review), [allCompetitors])
+  const competitorProposals = useMemo(() => allCompetitors.filter(c => c.review === 'propuesta'), [allCompetitors])
+  const competitorRejected = useMemo(() => allCompetitors.filter(c => c.review === 'rechazado'), [allCompetitors])
   const [homeVisits, setHomeVisits] = useState<HomeVisit[]>([])
   const [ratings, setRatings] = useState<Rating[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -378,7 +384,7 @@ export function useMudanza() {
       supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, files, notes, position, updated_at').order('position').order('title'),
       supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position'),
       supabase.from('home_rejections').select('id, title, url, municipality, zone, price_cents, size_m2, plot_m2, reason, created_at, reproposed_at').order('created_at', { ascending: false }).limit(200),
-      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light, year_built, building_reform_year').order('created_at', { ascending: false })
+      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light, year_built, building_reform_year, review, reject_reason').order('created_at', { ascending: false })
     ])
     const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp].find(x => x.error)?.error
     if (firstError) setError(firstError.message)
@@ -396,7 +402,7 @@ export function useMudanza() {
     setSaleDocs((sd.data ?? []) as SaleDoc[])
     setSaleSteps((ss.data ?? []) as SaleStep[])
     setRejections((rj.data ?? []) as Rejection[])
-    setCompetitors((cp.data ?? []) as Competitor[])
+    setAllCompetitors((cp.data ?? []) as Competitor[])
     setLoading(false)
   }, [])
 
@@ -514,7 +520,7 @@ export function useMudanza() {
   }
 
   return {
-    rejections, rejectProposal, restoreRejection, competitors,
+    rejections, rejectProposal, restoreRejection, competitors, competitorProposals, competitorRejected,
     listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, loading, error,
     salePhotos, saleDocs, saleSteps, addSalePhoto, removeSalePhoto, uploadSaleDoc, removeSaleDocFile, removeSaleDoc,
     clearError: () => setError(''), reload: load, write, remove, removeHome, createHome, addPhoto, removePhoto

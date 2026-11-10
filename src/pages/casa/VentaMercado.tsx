@@ -163,6 +163,87 @@ function Simulator({ m }: { m: Mudanza }) {
 }
 
 /** La competencia: pisos parecidos en venta, ajustados a cómo es el vuestro */
+/** Por qué no vale una propuesta de la búsqueda automática (la búsqueda lo lee para no volver a traerla) */
+const COMP_REJECT = ['Ya no está publicado', 'No se parece al nuestro', 'Otra zona', 'Datos erróneos', 'Repetido'] as const
+
+/**
+ * Pisos que ha traído la búsqueda automática: se revisan (abrir el anuncio) y se aceptan o se rechazan.
+ * Solo los aceptados cuentan en «¿Estamos en precio?»; los rechazados no vuelven.
+ */
+function CompetitorProposals({ m }: { m: Mudanza }) {
+  const [rejecting, setRejecting] = useState<string | null>(null)
+  const [other, setOther] = useState('')
+  const [showRejected, setShowRejected] = useState(false)
+  const l = m.listing
+  const ourM2 = l?.price_cents && l.size_m2 ? l.price_cents / Number(l.size_m2) : null
+  const props = m.competitorProposals
+  const rejected = m.competitorRejected
+  if (!props.length && !rejected.length) return null
+
+  const accept = (c: Competitor) => m.write('sale_competitors', { review: null, reject_reason: null }, c.id)
+  const reject = async (c: Competitor, reason: string) => {
+    await m.write('sale_competitors', { review: 'rechazado', reject_reason: reason.slice(0, 200) }, c.id)
+    setRejecting(null); setOther('')
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {props.length > 0 && (
+        <div className="rounded-2xl border border-dashed border-accent/60 p-3 flex flex-col gap-2">
+          <span className="font-semibold text-[14px]">🤖 Por revisar ({props.length})</span>
+          <span className="text-[12px] text-muted -mt-1">Los ha traído la búsqueda automática. Abre el anuncio y acepta los que sigan publicados y se parezcan al vuestro: solo los aceptados cuentan en la valoración.</span>
+          {props.map(c => {
+            const raw = c.price_cents && c.size_m2 ? c.price_cents / Number(c.size_m2) : null
+            const adj = l ? adjTotal(adjustments(l, c)) : 0
+            return (
+              <div key={c.id} className="rounded-xl bg-card p-3 flex flex-col gap-1">
+                <div className="flex justify-between items-baseline gap-2">
+                  <span className="font-semibold text-[14px] min-w-0 truncate">{c.title}</span>
+                  <span className="font-bold shrink-0">{c.price_cents != null ? price(c.price_cents) : '—'}</span>
+                </div>
+                <span className="text-[12px] text-muted">
+                  {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor,
+                    raw && `${Math.round(raw / 100).toLocaleString('es-ES')} €/m²${ourM2 ? ` (vuestro ${Math.round(ourM2 / 100).toLocaleString('es-ES')})` : ''}`,
+                    raw && Math.abs(adj) >= 0.5 && `ajustado ${adj > 0 ? '+' : ''}${adj.toFixed(1).replace('.', ',')} %`].filter(Boolean).join(' · ')}
+                </span>
+                {c.notes && <span className="text-[12px]">{c.notes}</span>}
+                <div className="flex gap-1.5 flex-wrap mt-1">
+                  {c.url && <a href={c.url} target="_blank" rel="noopener noreferrer" className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">🔗 {portalName(c.url) ?? 'Anuncio'} ↗</a>}
+                  <button onClick={() => accept(c)} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-[13px] font-semibold">✅ Aceptar</button>
+                  <button onClick={() => setRejecting(rejecting === c.id ? null : c.id)} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">🙅 Rechazar</button>
+                </div>
+                {rejecting === c.id && (
+                  <div className="flex flex-col gap-1.5 mt-1">
+                    <span className="text-[12px] text-muted">¿Por qué? (la búsqueda no volverá a traerlo)</span>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {COMP_REJECT.map(r => <button key={r} onClick={() => reject(c, r)} className="min-h-9 px-3 rounded-lg border border-line text-[12px]">{r}</button>)}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input value={other} onChange={e => setOther(e.target.value)} placeholder="Otro motivo" maxLength={200}
+                        className="flex-1 min-w-0 min-h-10 px-3 rounded-lg border border-line bg-bg text-[13px]" />
+                      {other.trim() && <button onClick={() => reject(c, other.trim())} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Rechazar</button>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {rejected.length > 0 && (
+        <button onClick={() => setShowRejected(!showRejected)} className="self-start text-[12px] text-muted min-h-9">
+          {showRejected ? '▾' : '▸'} Rechazados ({rejected.length})
+        </button>
+      )}
+      {showRejected && rejected.map(c => (
+        <div key={c.id} className="flex items-center justify-between gap-2 text-[12px] text-muted px-1">
+          <span className="min-w-0 truncate">{c.title}{c.reject_reason ? ` · ${c.reject_reason}` : ''}</span>
+          <button onClick={() => m.write('sale_competitors', { review: 'propuesta', reject_reason: null }, c.id)} className="shrink-0 min-h-9 px-2 text-accent font-semibold">Recuperar</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Competitors({ m, householdId }: { m: Mudanza; householdId: string }) {
   const [edit, setEdit] = useState<Competitor | 'new' | null>(null)
   const [showOld, setShowOld] = useState(false)
@@ -173,8 +254,9 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[12px] text-muted">El €/m² de cada uno se corrige por lo que le falta o le sobra frente al vuestro (exterior, estado, aire, baños, planta, terraza…). La búsqueda de los martes y viernes añade y vigila pisos; también puedes añadirlos a mano.</p>
+      <CompetitorProposals m={m} />
       <AiCompetitorSearch m={m} householdId={householdId} />
-      {list.length === 0 && <p className="text-sm text-muted">Aún no hay pisos de la competencia.</p>}
+      {list.length === 0 && <p className="text-sm text-muted">Aún no hay pisos de la competencia verificados.</p>}
       {list.map(c => {
         const adj = l ? adjustments(l, c) : []
         const total = adjTotal(adj)
