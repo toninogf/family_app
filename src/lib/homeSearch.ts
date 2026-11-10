@@ -16,16 +16,30 @@ export type HomeDraft = {
 const HEAT: HeatingType[] = ['gas_natural', 'gasoil', 'propano', 'electrica', 'aerotermia', 'geotermia', 'biomasa', 'central', 'ninguna']
 const COOL: Cooling[] = ['no', 'splits', 'conductos', 'aerotermia']
 
-/** Lo aprendido de rechazos («No nos interesa») y descartes, para que la IA no insista */
+/** Lo aprendido de rechazos («No nos interesa») y descartes, en corto (la petición tiene que caber en el enlace a la IA) */
 function learnings(homes: Home[], rejections: Rejection[]) {
   const out: string[] = []
-  for (const r of rejections.filter(r => !r.reproposed_at).slice(0, 25)) {
-    out.push(`- Rechazada (${r.reason ? REJECT_REASONS[r.reason].replace(/^\S+\s/, '') : 'sin motivo'}): ${[r.title, r.municipality, r.zone, r.price_cents ? price(r.price_cents) : null, r.plot_m2 ? `parcela ${r.plot_m2} m²` : null].filter(Boolean).join(', ')}`)
+  const cut = (x: string | null | undefined, n: number) => (x ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
+  for (const r of rejections.filter(r => !r.reproposed_at).slice(0, 10)) {
+    out.push(`- ${r.reason ? REJECT_REASONS[r.reason].replace(/^\S+\s/, '') : 'no'}: ${[cut(r.municipality, 30), r.price_cents ? kShort(r.price_cents) : null, r.plot_m2 ? `parcela ${r.plot_m2} m²` : null].filter(Boolean).join(', ')}`)
   }
-  for (const h of homes.filter(h => h.status === 'descartado' && h.discard_category && !['vendida', 'otra'].includes(h.discard_category)).slice(0, 25)) {
-    out.push(`- Descartada (${DISCARD_CATS[h.discard_category!].replace(/^\S+\s/, '')}${h.discard_reason ? `: «${h.discard_reason}»` : ''}): ${[h.title, h.municipality, h.price_cents ? price(h.price_cents) : null].filter(Boolean).join(', ')}`)
+  for (const h of homes.filter(h => h.status === 'descartado' && h.discard_category && !['vendida', 'otra'].includes(h.discard_category)).slice(0, 10)) {
+    out.push(`- ${DISCARD_CATS[h.discard_category!].replace(/^\S+\s/, '')}${h.discard_reason ? ` («${cut(h.discard_reason, 60)}»)` : ''}: ${[cut(h.municipality, 30), h.price_cents ? kShort(h.price_cents) : null].filter(Boolean).join(', ')}`)
   }
   return out
+}
+const kShort = (c: number) => `${Math.round(c / 100000)} k€`
+/** «idealista 111553510» en vez del enlace entero (para no alargar la petición) */
+function shortRef(url: string | null, title: string | null, town: string | null) {
+  if (url) {
+    try {
+      const u = new URL(url)
+      const host = u.hostname.replace(/^www\./, '').split('.')[0]
+      const id = u.pathname.split('/').filter(Boolean).pop() ?? ''
+      return `${host} ${id.slice(0, 40)}`
+    } catch { /* sigue */ }
+  }
+  return `${(title ?? '').slice(0, 40)}${town ? ` (${town})` : ''}`
 }
 
 export function homeSearchPrompt(c: Criteria | null, homes: Home[], rejections: Rejection[], extra: string) {
@@ -39,16 +53,16 @@ export function homeSearchPrompt(c: Criteria | null, homes: Home[], rejections: 
   ].filter(Boolean)
   const learned = learnings(homes, rejections)
   // Lo que ya tenemos (para no repetirlo): enlaces y, si no hay, título y localidad
-  const have = [
-    ...homes.map(h => h.url ?? `${h.title}${h.municipality ? ` (${h.municipality})` : ''}`),
-    ...rejections.map(r => r.url ?? `${r.title ?? ''}${r.municipality ? ` (${r.municipality})` : ''}`)
-  ].filter(Boolean).slice(0, 80)
+  const have = [...new Set([
+    ...homes.map(h => shortRef(h.url, h.title, h.municipality)),
+    ...rejections.map(r => shortRef(r.url, r.title, r.municipality))
+  ].filter(x => x.trim()))].slice(0, 60)
   return [
-    'Busca casas EN VENTA que encajen con lo que buscamos (familia con 2 hijos). Usa la búsqueda web en idealista, fotocasa, pisos.com, habitaclia, yaencontre y webs de inmobiliarias de la zona.',
+    'Busca casas EN VENTA que encajen con lo que buscamos (familia con 2 hijos), con la búsqueda web: idealista, fotocasa, pisos.com, habitaclia, yaencontre e inmobiliarias de la zona.',
     'Qué buscamos:', ...crit,
     extra.trim() ? `En esta búsqueda, además: ${extra.trim()}` : '',
-    learned.length ? 'Lo que NO nos ha gustado (evita casas parecidas o con esos problemas):\n' + learned.join('\n') : '',
-    have.length ? 'NO propongas estas, ya las tenemos o las hemos rechazado:\n' + have.map(x => `- ${x}`).join('\n') : '',
+    learned.length ? 'No nos ha gustado (evita casas parecidas):\n' + learned.join('\n') : '',
+    have.length ? `Ya las tenemos o rechazadas, NO las propongas (portal y referencia): ${have.join('; ')}` : '',
     'Reglas: solo anuncios que sigan publicados (abre el enlace para comprobarlo); prioriza los recientes y las bajadas de precio; máximo 10, los mejores primero; no inventes datos: lo que el anuncio no diga, null. Fuera: ocupadas, nuda propiedad, subastas.',
     `Extras posibles (solo estas claves): ${Object.keys(FEATURES).join(', ')}.`,
     `Reforma: estado para entrar a vivir mirando texto y fotos (listo | lavado | parcial | integral) y SOLO las partidas que se vean claramente (si dudas, no la pongas): ${Object.keys(PARTIDA).join(', ')}.`,

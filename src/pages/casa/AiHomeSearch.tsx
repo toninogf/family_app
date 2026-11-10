@@ -41,9 +41,11 @@ export function AiHomeSearch({ m, householdId }: { m: Mudanza; householdId: stri
     const prompt = homeSearchPrompt(c, m.homes, m.rejections, extra)
     let copied = true
     try { await navigator.clipboard.writeText(prompt) } catch { copied = false }
-    const q = prompt.length < 6000 ? encodeURIComponent(prompt) : ''
-    const target = ai === 'chatgpt' ? `https://chatgpt.com/${q ? `?q=${q}` : ''}` : ai === 'claude' ? `https://claude.ai/new${q ? `?q=${q}` : ''}` : 'https://gemini.google.com/app'
-    setNote(copied ? `Petición copiada${q ? '' : ' (es larga: pégala tú en el chat)'}. Cuando conteste, copia su respuesta y pulsa «Pegar respuesta».` : 'No se ha podido copiar: dale permiso al portapapeles.')
+    // Siempre con «?q=»: sin él, el móvil abre la web en vez de la app. Si es muy larga, va un aviso corto y la petición en el portapapeles
+    const fits = prompt.length < 6000
+    const q = encodeURIComponent(fits ? prompt : 'Ahora te pego mi petición para buscar casas (la tengo copiada). Espera a que la pegue.')
+    const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
+    setNote(copied ? `Petición copiada${fits ? '' : ' (es larga: pégala tú en el chat)'}. Cuando conteste, copia su respuesta y pulsa «Pegar respuesta».` : 'No se ha podido copiar: dale permiso al portapapeles.')
     window.open(target, '_blank', 'noopener')
   }
   function load(t: string) {

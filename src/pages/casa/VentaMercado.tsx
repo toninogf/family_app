@@ -512,8 +512,8 @@ function AiOpinion({ m }: { m: Mudanza }) {
     let copied = true
     try { await navigator.clipboard.writeText(prompt) } catch { copied = false }
     // Si el texto es muy largo, el enlace no lo lleva entero: se pega desde el portapapeles
-    const q = prompt.length < 6000 ? encodeURIComponent(prompt) : ''
-    const target = ai === 'chatgpt' ? `https://chatgpt.com/${q ? `?q=${q}` : ''}` : ai === 'claude' ? `https://claude.ai/new${q ? `?q=${q}` : ''}` : 'https://gemini.google.com/app'
+    const q = encodeURIComponent(prompt.length < 6000 ? prompt : 'Ahora te pego mi petición (la tengo copiada). Espera a que la pegue.')
+    const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
     setNote(copied ? (q && ai !== 'gemini' ? 'Abierta con todos los datos (también están copiados por si no aparecen).' : 'Datos copiados: pégalos en la IA y envía.') : 'No se ha podido copiar: dale permiso al portapapeles e inténtalo otra vez.')
     window.open(target, '_blank', 'noopener')
   }
@@ -546,8 +546,8 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
     const prompt = competitorsPrompt(l!, m.competitors)
     let copied = true
     try { await navigator.clipboard.writeText(prompt) } catch { copied = false }
-    const q = prompt.length < 6000 ? encodeURIComponent(prompt) : ''
-    const target = ai === 'chatgpt' ? `https://chatgpt.com/${q ? `?q=${q}` : ''}` : ai === 'claude' ? `https://claude.ai/new${q ? `?q=${q}` : ''}` : 'https://gemini.google.com/app'
+    const q = encodeURIComponent(prompt.length < 6000 ? prompt : 'Ahora te pego mi petición (la tengo copiada). Espera a que la pegue.')
+    const target = ai === 'chatgpt' ? `https://chatgpt.com/?q=${q}` : ai === 'claude' ? `https://claude.ai/new?q=${q}` : 'https://gemini.google.com/app'
     setNote(copied ? 'Petición copiada. Cuando conteste, copia su respuesta y vuelve a «Pegar respuesta de la IA».' : 'No se ha podido copiar: dale permiso al portapapeles.')
     window.open(target, '_blank', 'noopener')
   }
