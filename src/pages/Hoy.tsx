@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useHousehold } from '../lib/household'
 import { pendingByList, type ListPending } from '../lib/shopping'
 import { formatEur, moneySummary, partyName, todayISO, type Debt } from '../lib/money'
-import { hhmm, isoWeekday, relativeDay, today } from '../lib/dates'
+import { addDays, hhmm, isoWeekday, relativeDay, today } from '../lib/dates'
 import { useSchoolMenu } from '../lib/menu'
 import { PREP_ITEMS, mudanzaSummary } from '../lib/mudanza'
 import { gymSummary } from '../lib/gym'
@@ -48,6 +48,10 @@ export default function Hoy() {
   }, [])
 
   const mainDebt = money?.debts[0]
+  // «Próxima visita» solo si es después de mañana: hoy ya sale en la agenda del día y mañana en «⏰ Mañana»
+  const tmw = addDays(t, 1)
+  const nextSale = mud?.nextSale && nextSale.visit_date > tmw ? nextSale : null
+  const nextHome = mud?.nextHome && nextHome.visit_date > tmw ? nextHome : null
   const agenda = agendaFor(ev.events, ev.exceptions, t)
   const occ = useMemo(() => occurrencesBetween(tk.tasks, tk.completions, t, t, true), [tk.tasks, tk.completions, t])
   const overdue = occ.filter(o => o.date < t)
@@ -112,7 +116,7 @@ export default function Hoy() {
   ),
     mudanza: (
     <>
-      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0 || mud.toClose > 0 || mud.tomorrow.length > 0 || mud.expiringDocs.length > 0) && (
+      {mud && (nextSale || nextHome || mud.openOffers > 0 || mud.toClose > 0 || mud.tomorrow.length > 0 || mud.expiringDocs.length > 0) && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-bold">Mudanza</h2>
           <div className="bg-card rounded-2xl flex flex-col">
@@ -133,16 +137,16 @@ export default function Hoy() {
                 ))}
               </Link>
             )}
-            {mud.nextSale && (
+            {nextSale && (
               <Link to="/mudanza?vista=visitas" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
                 <span className="text-[13px] text-muted">🏠 Próxima visita a nuestra casa</span>
-                <span className="text-[15px] font-semibold">{relativeDay(mud.nextSale.visit_date)} · {hhmm(mud.nextSale.start_time)}{mud.nextSale.contact_name ? ` · ${mud.nextSale.contact_name}` : ''}</span>
+                <span className="text-[15px] font-semibold">{relativeDay(nextSale.visit_date)} · {hhmm(nextSale.start_time)}{nextSale.contact_name ? ` · ${nextSale.contact_name}` : ''}</span>
               </Link>
             )}
-            {mud.nextHome && (
+            {nextHome && (
               <Link to="/mudanza?vista=visitas" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
                 <span className="text-[13px] text-muted">🚗 Próxima visita a una casa</span>
-                <span className="text-[15px] font-semibold">{relativeDay(mud.nextHome.visit_date)} · {hhmm(mud.nextHome.start_time)} · {mud.nextHome.title}</span>
+                <span className="text-[15px] font-semibold">{relativeDay(nextHome.visit_date)} · {hhmm(nextHome.start_time)} · {nextHome.title}</span>
               </Link>
             )}
             {mud.openOffers > 0 && (
