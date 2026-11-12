@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { supabase, type Member } from '../../lib/supabase'
 import { aiPrompt, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
@@ -77,6 +77,17 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
   const proposals = m.homes.filter(h => h.status === 'propuesta' && h.id !== pending?.id).length
   const [view, setView] = useState<'lista' | 'mapa'>('lista')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [openGroup, setOpenGroup] = useState<GroupKey | null>(null)
+  // Abrir una ficha desde fuera (pestaña Visitas): /mudanza?piso=<id>&grupo=docs
+  const [sp, setSp] = useSearchParams()
+  useEffect(() => {
+    const p = sp.get('piso')
+    if (!p) return
+    setOpenId(p)
+    const g = sp.get('grupo') as GroupKey | null
+    setOpenGroup(g && GROUPS.some(x => x.k === g) ? g : null)
+    sp.delete('piso'); sp.delete('grupo'); setSp(sp, { replace: true })
+  }, [sp]) // eslint-disable-line react-hooks/exhaustive-deps
   const [editHome, setEditHome] = useState<{ open: boolean; home?: Home; initial?: Shared; focus?: EditFocus }>({ open: false })
   // Anuncio compartido desde la app de un portal (menú «Compartir» del móvil): abre un piso nuevo ya relleno
   const location = useLocation()
@@ -196,8 +207,8 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
       {rejectedOpen && <RejectedSheet m={m} onClose={() => setRejectedOpen(false)} />}
 
       {open && !editHome.open && (
-        <HomeSheet h={open} m={m} members={members} householdId={householdId}
-          onEdit={focus => setEditHome({ open: true, home: open, focus })} onClose={() => setOpenId(null)}
+        <HomeSheet h={open} m={m} members={members} householdId={householdId} startGroup={openGroup}
+          onEdit={focus => setEditHome({ open: true, home: open, focus })} onClose={() => { setOpenId(null); setOpenGroup(null) }}
           onReject={r => { setOpenId(null); reject(open, r) }} />
       )}
       {editHome.open && (
@@ -492,9 +503,9 @@ type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos' | 'reforma' | 'honora
  * Ficha de un piso: pensada para decidir qué hacer con él (llamar, visitar, ofertar o descartar) y tener a mano lo
  * necesario. Arriba lo visual y la acción que toca; luego los datos de un vistazo, si conviene, el seguimiento y el resto.
  */
-function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
+function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, startGroup }: {
   h: Home; m: Mudanza; members: Member[]; householdId: string; onEdit: (focus?: EditFocus) => void; onClose: () => void
-  onReject: (r: RejectReason | null) => void
+  onReject: (r: RejectReason | null) => void; startGroup?: GroupKey | null
 }) {
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: HomeVisit }>({ open: false })
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: HomeOffer }>({ open: false })
@@ -514,6 +525,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject }: {
 
   const nextV = visits.filter(v => v.status === 'scheduled' && v.visit_date >= today()).sort((x, y) => x.visit_date.localeCompare(y.visit_date))[0]
   const groups = useGroups(nextV ? ['resumen', 'seguimiento'] : ['resumen'])
+  useEffect(() => { if (startGroup) groups.go(startGroup) }, [startGroup]) // eslint-disable-line react-hooks/exhaustive-deps
   const sum = useGroupLines(h, m, visits, offers, nextV)
 
   if (visitSheet.open) return <HomeVisitSheet home={h} visit={visitSheet.visit} adults={adults} m={m} onClose={() => setVisitSheet({ open: false })} />
@@ -1116,7 +1128,7 @@ function Photos({ h, m, householdId, kind }: { h: Home; m: Mudanza; householdId:
   )
 }
 
-function HomeVisitSheet({ home, visit, adults, m, onClose }: { home: Home; visit?: HomeVisit; adults: Member[]; m: Mudanza; onClose: () => void }) {
+export function HomeVisitSheet({ home, visit, adults, m, onClose }: { home: Home; visit?: HomeVisit; adults: Member[]; m: Mudanza; onClose: () => void }) {
   const [date, setDate] = useState(visit?.visit_date ?? today())
   const [start, setStart] = useState(hhmm(visit?.start_time) || '18:00')
   const [end, setEnd] = useState(hhmm(visit?.end_time))

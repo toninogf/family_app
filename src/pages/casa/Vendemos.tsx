@@ -417,7 +417,7 @@ function VisitRow({ v, members, onOpen, highlight }: { v: BuyerVisit; members: M
   )
 }
 
-function VisitSheet({ visit, adults, m, onClose }: { visit?: BuyerVisit; adults: Member[]; m: Mudanza; onClose: () => void }) {
+export function VisitSheet({ visit, adults, m, onClose }: { visit?: BuyerVisit; adults: Member[]; m: Mudanza; onClose: () => void }) {
   const [date, setDate] = useState(visit?.visit_date ?? today())
   const [start, setStart] = useState(hhmm(visit?.start_time) || '18:00')
   const [end, setEnd] = useState(hhmm(visit?.end_time))

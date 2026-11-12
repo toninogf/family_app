@@ -75,7 +75,7 @@ export default function Ninos() {
   }
 
   /** Las visitas de la mudanza se gestionan en Casa */
-  const openOcc = (a: Agenda) => (a.event.origin ? navigate(`/casa?vista=${a.event.origin === 'venta' ? 'vendemos' : 'buscamos'}`) : setOccSheet(a))
+  const openOcc = (a: Agenda) => (a.event.origin ? navigate('/mudanza?vista=visitas') : setOccSheet(a))
   const filterChild = (a: Agenda) =>
     (person === 'all' || (person === 'family' ? a.event.child_id === null : a.event.child_id === person)) &&
     (cat === 'all' || a.event.category_id === cat)

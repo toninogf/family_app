@@ -112,19 +112,25 @@ export default function Hoy() {
   ),
     mudanza: (
     <>
-      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0 || mud.expiringDocs.length > 0) && (
+      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0 || mud.toClose > 0 || mud.expiringDocs.length > 0) && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-bold">Mudanza</h2>
           <div className="bg-card rounded-2xl flex flex-col">
+            {mud.toClose > 0 && (
+              <Link to="/mudanza?vista=visitas" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0 bg-accent-soft rounded-t-2xl">
+                <span className="text-[13px] text-muted">✍️ Visitas por cerrar</span>
+                <span className="text-[15px] font-semibold">¿Cómo {mud.toClose === 1 ? 'fue la visita' : `fueron las ${mud.toClose} visitas`}? Apuntadlo ›</span>
+              </Link>
+            )}
             {mud.nextSale && (
-              <Link to="/mudanza?vista=vendemos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
-                <span className="text-[13px] text-muted">Próxima visita de compradores</span>
+              <Link to="/mudanza?vista=visitas" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
+                <span className="text-[13px] text-muted">🏠 Próxima visita a nuestra casa</span>
                 <span className="text-[15px] font-semibold">{relativeDay(mud.nextSale.visit_date)} · {hhmm(mud.nextSale.start_time)}{mud.nextSale.contact_name ? ` · ${mud.nextSale.contact_name}` : ''}</span>
               </Link>
             )}
             {mud.nextHome && (
-              <Link to="/mudanza?vista=buscamos" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
-                <span className="text-[13px] text-muted">Próxima visita a un piso</span>
+              <Link to="/mudanza?vista=visitas" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0">
+                <span className="text-[13px] text-muted">🚗 Próxima visita a una casa</span>
                 <span className="text-[15px] font-semibold">{relativeDay(mud.nextHome.visit_date)} · {hhmm(mud.nextHome.start_time)} · {mud.nextHome.title}</span>
               </Link>
             )}
