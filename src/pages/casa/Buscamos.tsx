@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, type Member } from '../../lib/supabase'
 import { aiPrompt, parseAny, type ListingData } from '../../lib/listingParse'
 import { readImages } from '../../lib/ocr'
@@ -8,7 +8,7 @@ import { badPoints, compareSummary, monthlyCost, shortName } from '../../lib/com
 
 // El mapa (Leaflet) solo se descarga al abrirlo
 const HomesMap = lazy(() => import('./HomesMap'))
-import { hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
+import { addDays, hhmm, longDate, relativeDay, shortDate, today } from '../../lib/dates'
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS,
@@ -113,6 +113,9 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
     [m.homes, m.criteria, m.homeVisits, m.ratings, schools, fs.f, fs.sort, pending])
 
   const nextVisits = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t)
+    .sort((x, y) => x.visit_date.localeCompare(y.visit_date) || x.start_time.localeCompare(y.start_time))
+  const toClose = m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date < t).length
+  const navigate = useNavigate()
   // Portadas de los pisos de la lista (enlaces temporales pedidos de una vez)
   const [covers, setCovers] = useState<Record<string, string>>({})
   const coverPaths = list.map(h => coverPhoto(h, m.photos)?.path).filter((x): x is string => !!x)
@@ -130,21 +133,21 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
       {/* Qué buscamos: plegado por defecto (presupuesto y localidades + cuántos imprescindibles y valoramos) */}
       <CriteriaCard c={m.criteria} onEdit={() => setCriteriaOpen(true)} />
 
-      {nextVisits.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-base font-bold">Próximas visitas</h2>
-          {nextVisits.map(v => {
-            const h = m.homes.find(x => x.id === v.home_id)
-            return (
-              <button key={v.id} onClick={() => setOpenId(v.home_id)} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1 min-w-0">
-                <span className="text-sm font-semibold text-accent">📅 {relativeDay(v.visit_date)} · {hhmm(v.start_time)}</span>
-                <span className="text-[15px] font-bold break-words">{h?.title}</span>
-                <span className="text-[13px] text-muted">{v.attendee_id ? `Va ${nameOf(v.attendee_id, members)}` : 'Vais los dos'}{h?.zone ? ` · ${h.zone}` : ''}</span>
-              </button>
-            )
-          })}
-        </section>
-      )}
+      {/* Visitas: una línea que lleva a la pestaña Visitas (allí está todo) */}
+      {(nextVisits.length > 0 || toClose > 0) && (() => {
+        const v = nextVisits[0]
+        const h = v && m.homes.find(x => x.id === v.home_id)
+        const week = nextVisits.filter(x => x.visit_date <= addDays(t, 6)).length
+        return (
+          <button onClick={() => navigate('/mudanza?vista=visitas')} className="rounded-2xl bg-card px-4 py-3 text-left flex items-center gap-2">
+            <span className="flex-1 min-w-0 text-[14px] truncate">
+              {v ? <>📅 <b>{relativeDay(v.visit_date)} {hhmm(v.start_time)} · {h?.title ?? 'Visita'}</b>{week > 1 ? <span className="text-muted"> · {week - 1} más esta semana</span> : null}</> : null}
+              {toClose > 0 && <span className={v ? 'text-muted' : ''}>{v ? ' · ' : ''}✍️ {toClose} por cerrar</span>}
+            </span>
+            <span className="text-accent font-semibold" aria-hidden="true">›</span>
+          </button>
+        )
+      })()}
 
       <div className="grid grid-cols-2 p-1 rounded-xl bg-card border border-line" role="tablist" aria-label="Vista">
         {([['lista', '☰ Lista'], ['mapa', '🗺️ Mapa']] as const).map(([k, l]) => (
