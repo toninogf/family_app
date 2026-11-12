@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Member } from '../../lib/supabase'
 import { hhmm, longDate, relativeDay, today } from '../../lib/dates'
-import { INTEREST, PREP_ITEMS, mustHaveCheck, price, type BuyerVisit, type Home, type HomeVisit, type Mudanza } from '../../lib/mudanza'
+import { HOME_STATUS, INTEREST, PREP_ITEMS, mustHaveCheck, price, type BuyerVisit, type Home, type HomeVisit, type Mudanza } from '../../lib/mudanza'
 import { allChecks } from '../../lib/health'
 import { kEur, readyPrice } from '../../lib/reforma'
 import { HomeVisitSheet } from './Buscamos'
@@ -39,6 +39,7 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
   const [filter, setFilter] = useState<Filter>(() => { try { return (localStorage.getItem('visitas.filtro') as Filter) || 'todas' } catch { return 'todas' } })
   const setF = (f: Filter) => { setFilter(f); try { localStorage.setItem('visitas.filtro', f) } catch { /* nada */ } }
   const [showDone, setShowDone] = useState(false)
+  const [showCancelled, setShowCancelled] = useState(false)
   const [newOpen, setNewOpen] = useState(false)
   const [homeVisit, setHomeVisit] = useState<{ home: Home; visit?: HomeVisit } | null>(null)
   const [buyerVisit, setBuyerVisit] = useState<{ visit?: BuyerVisit } | null>(null)
@@ -52,7 +53,9 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
   // Por cerrar: previstas que ya han pasado (y de compradores, hechas sin apuntar qué le pareció)
   const toClose = items.filter(it => (it.v.status === 'scheduled' && isPast(it, t)) || (it.kind === 'venta' && it.v.status === 'done' && !it.v.interest))
   const upcoming = items.filter(it => it.v.status === 'scheduled' && !isPast(it, t))
-  const done = items.filter(it => !toClose.includes(it) && !upcoming.includes(it)).reverse()
+  const rest = items.filter(it => !toClose.includes(it) && !upcoming.includes(it)).reverse()
+  const done = rest.filter(it => it.v.status === 'done')
+  const cancelled = rest.filter(it => it.v.status !== 'done')
   const byDay = upcoming.reduce<Record<string, Item[]>>((acc, it) => { (acc[it.date] ??= []).push(it); return acc }, {})
 
   const open = (it: Item) => (it.kind === 'compra' ? it.home && setHomeVisit({ home: it.home, visit: it.v }) : setBuyerVisit({ visit: it.v }))
@@ -100,8 +103,14 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
 
       {done.length > 0 && (
         <section className="flex flex-col gap-2">
-          <button onClick={() => setShowDone(!showDone)} className="self-start text-[14px] font-semibold min-h-10">{showDone ? '▾' : '▸'} Hechas y canceladas ({done.length})</button>
+          <button onClick={() => setShowDone(!showDone)} className="self-start text-[14px] font-semibold min-h-10">{showDone ? '▾' : '▸'} ✅ Hechas ({done.length})</button>
           {showDone && done.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past />)}
+        </section>
+      )}
+      {cancelled.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <button onClick={() => setShowCancelled(!showCancelled)} className="self-start text-[14px] font-semibold min-h-10 text-muted">{showCancelled ? '▾' : '▸'} Canceladas ({cancelled.length})</button>
+          {showCancelled && cancelled.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past />)}
         </section>
       )}
 
@@ -125,6 +134,10 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past }: {
     const h = it.home
     const ready = h ? readyPrice(h) : null
     const maps = h ? mapsLink(h) : null
+    const ad = h ? h.url ?? h.links[0]?.url ?? null : null
+    // Nota media de los dos (si la habéis puesto) para ver de un vistazo cómo salió la visita
+    const rs = h ? m.ratings.filter(r => r.home_id === h.id) : []
+    const score = rs.length ? rs.reduce((a, r) => a + r.score, 0) / rs.length : null
     return (
       <div className={`rounded-2xl bg-card p-3 flex flex-col gap-1.5 border-l-4 border-accent ${past ? 'opacity-70' : ''}`}>
         <button onClick={onOpen} className="text-left flex flex-col gap-0.5">
@@ -140,6 +153,14 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past }: {
             {h?.contact_phone && <a href={`tel:${h.contact_phone.replace(/\s+/g, '')}`} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">📞 {h.agency ?? h.contact ?? 'Llamar'}</a>}
             {h && <button onClick={() => setPrepOpen(!prepOpen)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">🎒 Para llevar {prepOpen ? '▾' : '▸'}</button>}
             {h && <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>}
+          </div>
+        )}
+        {past && h && (
+          <div className="flex gap-1.5 flex-wrap items-center">
+            <span className="text-[12px] font-semibold">{HOME_STATUS[h.status]}</span>
+            {score != null && <span className="text-[12px] text-muted">· ⭐ {score.toLocaleString('es-ES', { maximumFractionDigits: 1 })}</span>}
+            {ad && <a href={ad} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 Anuncio ↗</a>}
+            <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>
           </div>
         )}
         {prepOpen && h && <ToBring h={h} m={m} />}

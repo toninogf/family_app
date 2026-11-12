@@ -480,8 +480,9 @@ export function VisitSheet({ visit, adults, m, onClose }: { visit?: BuyerVisit; 
       )}
 
       <form onSubmit={submit} className="flex flex-col gap-5">
-        <div className="grid grid-cols-3 gap-3">
-          <TextField label="Día" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+        {/* El día en su propia fila: en tres columnas no se leía entero */}
+        <TextField label="Día" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+        <div className="grid grid-cols-2 gap-3">
           <TextField label="Hora" type="time" value={start} onChange={e => setStart(e.target.value)} required />
           <TextField label="Hasta" type="time" value={end} onChange={e => setEnd(e.target.value)} />
         </div>
