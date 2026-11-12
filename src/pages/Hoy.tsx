@@ -5,7 +5,7 @@ import { pendingByList, type ListPending } from '../lib/shopping'
 import { formatEur, moneySummary, partyName, todayISO, type Debt } from '../lib/money'
 import { hhmm, isoWeekday, relativeDay, today } from '../lib/dates'
 import { useSchoolMenu } from '../lib/menu'
-import { mudanzaSummary } from '../lib/mudanza'
+import { PREP_ITEMS, mudanzaSummary } from '../lib/mudanza'
 import { gymSummary } from '../lib/gym'
 import { usePrefs, type SectionKey } from '../lib/prefs'
 import MenuCard from '../components/MenuCard'
@@ -112,7 +112,7 @@ export default function Hoy() {
   ),
     mudanza: (
     <>
-      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0 || mud.toClose > 0 || mud.expiringDocs.length > 0) && (
+      {mud && (mud.nextSale || mud.nextHome || mud.openOffers > 0 || mud.toClose > 0 || mud.tomorrow.length > 0 || mud.expiringDocs.length > 0) && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-bold">Mudanza</h2>
           <div className="bg-card rounded-2xl flex flex-col">
@@ -120,6 +120,17 @@ export default function Hoy() {
               <Link to="/mudanza?vista=visitas" className="p-4 flex flex-col gap-0.5 border-b border-line last:border-0 bg-accent-soft rounded-t-2xl">
                 <span className="text-[13px] text-muted">✍️ Visitas por cerrar</span>
                 <span className="text-[15px] font-semibold">¿Cómo {mud.toClose === 1 ? 'fue la visita' : `fueron las ${mud.toClose} visitas`}? Apuntadlo ›</span>
+              </Link>
+            )}
+            {mud.tomorrow.length > 0 && (
+              <Link to="/mudanza?vista=visitas" className="p-4 flex flex-col gap-1 border-b border-line last:border-0">
+                <span className="text-[13px] text-muted">⏰ Mañana</span>
+                {mud.tomorrow.map((x, i) => (
+                  <span key={i} className="text-[15px] font-semibold">
+                    {x.kind === 'compra' ? '🚗' : '🏠'} {hhmm(x.start)} · {x.title}
+                    <span className="block text-[12px] font-normal text-muted">{x.kind === 'compra' ? '🎒 Mira «Para llevar» antes de ir' : `Preparar la casa: ${x.prep}/${PREP_ITEMS.length}`}</span>
+                  </span>
+                ))}
               </Link>
             )}
             {mud.nextSale && (

@@ -50,7 +50,7 @@ export default function Mudanza() {
             </Card>
           )}
           {vista === 'visitas'
-            ? <Visitas m={m} members={members} />
+            ? <Visitas m={m} members={members} householdId={me.household_id} />
             : vista === 'vendemos'
             ? <Vendemos m={m} members={members} householdId={me.household_id} />
             : vista === 'compramos'

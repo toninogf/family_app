@@ -7,6 +7,7 @@ import { hhmm, longDate, relativeDay, today } from '../../lib/dates'
 import { HOME_STATUS, INTEREST, PREP_ITEMS, mustHaveCheck, price, type BuyerVisit, type Home, type HomeVisit, type Mudanza } from '../../lib/mudanza'
 import { allChecks } from '../../lib/health'
 import { kEur, readyPrice } from '../../lib/reforma'
+import { OBJECTION_HELP } from '../../lib/venta'
 import { HomeVisitSheet } from './Buscamos'
 import { VisitSheet } from './Vendemos'
 import { Sheet } from '../../components/Sheet'
@@ -31,7 +32,7 @@ function km(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
 /** Tiempo en coche aproximado: carretera ≈ 1,3 × la línea recta, a ~40 km/h, + 5 min de aparcar */
 const driveMin = (k: number) => Math.round((k * 1.3) / 40 * 60 + 5)
 
-export default function Visitas({ m, members }: { m: Mudanza; members: Member[] }) {
+export default function Visitas({ m, members, householdId }: { m: Mudanza; members: Member[]; householdId: string }) {
   const navigate = useNavigate()
   const t = today()
   const adults = members.filter(x => x.kind === 'adult')
@@ -43,6 +44,11 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
   const [newOpen, setNewOpen] = useState(false)
   const [homeVisit, setHomeVisit] = useState<{ home: Home; visit?: HomeVisit } | null>(null)
   const [buyerVisit, setBuyerVisit] = useState<{ visit?: BuyerVisit } | null>(null)
+  // «¿Segunda visita?» que habéis dicho «ahora no» (se recuerda en este móvil)
+  const [skip, setSkip] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('visitas.segunda.no') ?? '[]') } catch { return [] } })
+  const skipHome = (id: string) => { const n = [...skip, id]; setSkip(n); try { localStorage.setItem('visitas.segunda.no', JSON.stringify(n)) } catch { /* nada */ } }
+  const rate = (homeId: string, memberId: string, score: number) =>
+    m.write('home_ratings', { home_id: homeId, member_id: memberId, household_id: householdId, score, updated_at: new Date().toISOString() }, undefined, 'home_id,member_id')
 
   const items: Item[] = useMemo(() => [
     ...m.homeVisits.map(v => ({ kind: 'compra' as const, id: v.id, date: v.visit_date, start: v.start_time, end: v.end_time, v, home: m.homes.find(h => h.id === v.home_id) })),
@@ -60,6 +66,15 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
 
   const open = (it: Item) => (it.kind === 'compra' ? it.home && setHomeVisit({ home: it.home, visit: it.v }) : setBuyerVisit({ visit: it.v }))
   const openHome = (id: string, grupo?: string) => navigate(`/mudanza?piso=${id}${grupo ? `&grupo=${grupo}` : ''}`)
+  // Casas que os gustaron tras verlas y sin otra visita prevista: ¿segunda visita?
+  const second = filter === 'venta' ? [] : m.homes.filter(h => {
+    if (skip.includes(h.id) || ['descartado', 'propuesta'].includes(h.status)) return false
+    const vs = m.homeVisits.filter(v => v.home_id === h.id)
+    if (!vs.some(v => v.status === 'done') || vs.some(v => v.status === 'scheduled')) return false
+    const rs = m.ratings.filter(r => r.home_id === h.id)
+    const avg = rs.length ? rs.reduce((a, r) => a + r.score, 0) / rs.length : null
+    return h.status === 'favorito' || h.status === 'oferta' ? false : (h.status === 'interesa' || (avg != null && avg >= 4))
+  })
   const counts = { compra: m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t).length, venta: m.visits.filter(v => v.status === 'scheduled' && v.visit_date >= t).length }
 
   if (homeVisit) return <HomeVisitSheet home={homeVisit.home} visit={homeVisit.visit} adults={adults} m={m} onClose={() => setHomeVisit(null)} />
@@ -80,7 +95,28 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
       {toClose.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-bold">✍️ Por cerrar <span className="text-muted font-normal text-sm">· ¿cómo fue?</span></h2>
-          {toClose.map(it => <CloseCard key={it.id} it={it} m={m} onOpen={() => open(it)} onHome={openHome} />)}
+          {toClose.map(it => <CloseCard key={it.id} it={it} m={m} adults={adults} rate={rate} onOpen={() => open(it)} onHome={openHome} />)}
+        </section>
+      )}
+
+      {second.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-base font-bold">🔁 ¿Segunda visita? <span className="text-muted font-normal text-sm">· os gustaron al verlas</span></h2>
+          {second.map(h => {
+            const last = m.homeVisits.filter(v => v.home_id === h.id && v.status === 'done').sort((a, b) => b.visit_date.localeCompare(a.visit_date))[0]
+            const pend = bringCount(h, m)
+            return (
+              <div key={h.id} className="rounded-2xl bg-card p-3 flex flex-col gap-1.5 border-l-4 border-accent">
+                <span className="font-bold text-[15px] break-words">{h.title}</span>
+                <span className="text-[12px] text-muted">{[last && `vista ${relativeDay(last.visit_date).toLowerCase()}`, pend ? `${pend} cosa${pend > 1 ? 's' : ''} por mirar o preguntar` : 'nada pendiente'].filter(Boolean).join(' · ')}</span>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button onClick={() => setHomeVisit({ home: h })} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-[13px] font-semibold">📅 Apuntar 2ª visita</button>
+                  <button onClick={() => openHome(h.id, 'docs')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Qué falta ›</button>
+                  <button onClick={() => skipHome(h.id)} className="min-h-10 px-3 rounded-lg text-[13px] text-muted">Ahora no</button>
+                </div>
+              </div>
+            )
+          })}
         </section>
       )}
 
@@ -104,13 +140,13 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
       {done.length > 0 && (
         <section className="flex flex-col gap-2">
           <button onClick={() => setShowDone(!showDone)} className="self-start text-[14px] font-semibold min-h-10">{showDone ? '▾' : '▸'} ✅ Hechas ({done.length})</button>
-          {showDone && done.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past />)}
+          {showDone && done.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past adults={adults} rate={rate} />)}
         </section>
       )}
       {cancelled.length > 0 && (
         <section className="flex flex-col gap-2">
           <button onClick={() => setShowCancelled(!showCancelled)} className="self-start text-[14px] font-semibold min-h-10 text-muted">{showCancelled ? '▾' : '▸'} Canceladas ({cancelled.length})</button>
-          {showCancelled && cancelled.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past />)}
+          {showCancelled && cancelled.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past adults={adults} rate={rate} />)}
         </section>
       )}
 
@@ -124,8 +160,11 @@ export default function Visitas({ m, members }: { m: Mudanza; members: Member[] 
 }
 
 /** Tarjeta de una visita: 🚗 franja azul (vamos) · 🏠 franja ámbar (vienen) */
-function VisitCard({ it, m, nameOf, onOpen, onHome, past }: {
+type Rate = (homeId: string, memberId: string, score: number) => Promise<unknown>
+
+function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
   it: Item; m: Mudanza; nameOf: (id: string | null) => string | null; onOpen: () => void; onHome: (id: string, grupo?: string) => void; past?: boolean
+  adults?: Member[]; rate?: Rate
 }) {
   const [prepOpen, setPrepOpen] = useState(false)
   const time = `${hhmm(it.start)}${it.end ? `–${hhmm(it.end)}` : ''}`
@@ -163,12 +202,14 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past }: {
             <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>
           </div>
         )}
+        {past && h && adults && rate && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} />}
         {prepOpen && h && <ToBring h={h} m={m} />}
       </div>
     )
   }
   const v = it.v
-  const visits = m.visits.filter(x => x.contact_phone && x.contact_phone === v.contact_phone && x.status !== 'cancelled').length
+  const prior = previousOf(v, m.visits)
+  const visits = prior.length + 1
   return (
     <div className={`rounded-2xl bg-card p-3 flex flex-col gap-1.5 border-l-4 border-[#C77A12] ${past ? 'opacity-70' : ''}`}>
       <button onClick={onOpen} className="text-left flex flex-col gap-0.5">
@@ -178,6 +219,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past }: {
           {[v.source && `vía ${v.source}`, `enseña ${nameOf(v.host_id) ?? 'cualquiera'}`, !past && `preparar la casa ${v.prep_done.length}/${PREP_ITEMS.length}`, v.interest && `interés ${INTEREST[v.interest].toLowerCase()}`].filter(Boolean).join(' · ')}
         </span>
       </button>
+      {!past && prior.length > 0 && <Repeat prior={prior} />}
       {!past && v.contact_phone && (
         <div className="flex gap-1.5 flex-wrap">
           <a href={`tel:${v.contact_phone.replace(/\s+/g, '')}`} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">📞 Llamar</a>
@@ -188,7 +230,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past }: {
 }
 
 /** «Por cerrar»: la visita ya pasó; un toque para apuntar cómo fue */
-function CloseCard({ it, m, onOpen, onHome }: { it: Item; m: Mudanza; onOpen: () => void; onHome: (id: string, grupo?: string) => void }) {
+function CloseCard({ it, m, adults, rate, onOpen, onHome }: { it: Item; m: Mudanza; adults: Member[]; rate: Rate; onOpen: () => void; onHome: (id: string, grupo?: string) => void }) {
   const when = `${relativeDay(it.date)} · ${hhmm(it.start)}`
   if (it.kind === 'compra') {
     const h = it.home
@@ -207,6 +249,7 @@ function CloseCard({ it, m, onOpen, onHome }: { it: Item; m: Mudanza; onOpen: ()
             <button onClick={onOpen} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Cambiar fecha</button>
           </div>
         ) : null}
+        {h && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} />}
         {h && (
           <div className="flex gap-1.5 flex-wrap">
             <button onClick={() => onHome(h.id, 'docs')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">📋 Apuntar lo visto</button>
@@ -226,7 +269,7 @@ function CloseCard({ it, m, onOpen, onHome }: { it: Item; m: Mudanza; onOpen: ()
 }
 
 /** «🎒 Para llevar»: lo que conviene mirar o preguntar en esa casa (sale de su ficha; no guarda nada) */
-function ToBring({ h, m }: { h: Home; m: Mudanza }) {
+function bringLists(h: Home, m: Mudanza) {
   const ask: string[] = []
   if (h.community_fee_cents == null) ask.push('Gastos de comunidad al mes')
   if (h.ibi_cents == null) ask.push('IBI')
@@ -239,6 +282,12 @@ function ToBring({ h, m }: { h: Home; m: Mudanza }) {
   const must = mustHaveCheck(h, m.criteria)
   const unsure = must.filter(c => c.ok === null).map(c => c.label)
   const viaReform = must.filter(c => c.ok === false && c.reform).map(c => `${c.label} (pedir coste: ${c.reform!.label})`)
+  return { ask, look, warn, unsure, viaReform }
+}
+const bringCount = (h: Home, m: Mudanza) => { const l = bringLists(h, m); return l.ask.length + l.look.length + l.warn.length + l.unsure.length + l.viaReform.length }
+
+function ToBring({ h, m }: { h: Home; m: Mudanza }) {
+  const { ask, look, warn, unsure, viaReform } = bringLists(h, m)
   const block = (title: string, list: string[]) => list.length ? (
     <div className="flex flex-col gap-0.5">
       <span className="text-[12px] font-semibold">{title}</span>
@@ -329,3 +378,52 @@ function NewVisitSheet({ m, onClose, onCompra, onVenta }: { m: Mudanza; onClose:
   )
 }
 
+/** Nota rápida de cada uno (1–5) al cerrar la visita: la misma que usa la ficha y el comparador */
+function Stars({ h, m, adults, rate }: { h: Home; m: Mudanza; adults: Member[]; rate: Rate }) {
+  return (
+    <div className="flex flex-col gap-1">
+      {adults.map(a => {
+        const cur = m.ratings.find(r => r.home_id === h.id && r.member_id === a.id)?.score ?? 0
+        return (
+          <div key={a.id} className="flex items-center gap-1">
+            <span className="text-[12px] w-16 truncate" style={{ color: a.color }}>{a.display_name}</span>
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} onClick={() => void rate(h.id, a.id, n)} aria-label={`${a.display_name}: ${n} de 5`}
+                className={`w-9 h-9 text-[20px] leading-none ${n <= cur ? '' : 'opacity-25 grayscale'}`}>⭐</button>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Visitas anteriores del mismo comprador (por teléfono o, si no hay, por nombre) */
+function previousOf(v: BuyerVisit, all: BuyerVisit[]) {
+  const norm = (x: string | null) => (x ?? '').replace(/\s+/g, '').toLowerCase()
+  return all.filter(x => x.id !== v.id && x.status === 'done' && (x.visit_date < v.visit_date || (x.visit_date === v.visit_date && x.start_time < v.start_time)) && (
+    (v.contact_phone && norm(x.contact_phone) === norm(v.contact_phone)) || (!v.contact_phone && v.contact_name && norm(x.contact_name) === norm(v.contact_name))
+  )).sort((a, b) => b.visit_date.localeCompare(a.visit_date))
+}
+
+/** Comprador que vuelve: buena señal; sus objeciones de la vez anterior con la respuesta preparada */
+function Repeat({ prior }: { prior: BuyerVisit[] }) {
+  const last = prior[0]
+  const objs = [...new Set(prior.flatMap(p => p.objections))]
+  return (
+    <div className="rounded-xl bg-accent-soft p-2.5 flex flex-col gap-1">
+      <span className="text-[13px] font-semibold">🔁 Vuelve ({prior.length + 1}ª visita): buena señal</span>
+      <span className="text-[12px] text-muted">
+        La última vez ({relativeDay(last.visit_date).toLowerCase()}){last.interest ? `: interés ${INTEREST[last.interest].toLowerCase()}` : ''}{last.liked ? ` · le gustó: ${last.liked}` : ''}
+      </span>
+      {objs.length > 0 && (
+        <div className="flex flex-col gap-1 mt-0.5">
+          <span className="text-[12px] font-semibold">Lo que le frenaba, y qué contestar:</span>
+          {objs.map(o => (
+            <span key={o} className="text-[12px]"><b>{o}</b>{OBJECTION_HELP[o] ? `: ${OBJECTION_HELP[o].reply}` : ''}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
