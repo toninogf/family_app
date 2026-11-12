@@ -50,8 +50,8 @@ export default function Hoy() {
   const mainDebt = money?.debts[0]
   // «Próxima visita» solo si es después de mañana: hoy ya sale en la agenda del día y mañana en «⏰ Mañana»
   const tmw = addDays(t, 1)
-  const nextSale = mud?.nextSale && nextSale.visit_date > tmw ? nextSale : null
-  const nextHome = mud?.nextHome && nextHome.visit_date > tmw ? nextHome : null
+  const nextSale = mud?.nextSale && mud.nextSale.visit_date > tmw ? mud.nextSale : null
+  const nextHome = mud?.nextHome && mud.nextHome.visit_date > tmw ? mud.nextHome : null
   const agenda = agendaFor(ev.events, ev.exceptions, t)
   const occ = useMemo(() => occurrencesBetween(tk.tasks, tk.completions, t, t, true), [tk.tasks, tk.completions, t])
   const overdue = occ.filter(o => o.date < t)
