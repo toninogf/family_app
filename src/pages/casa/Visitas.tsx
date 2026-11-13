@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Member } from '../../lib/supabase'
 import { hhmm, longDate, relativeDay, today } from '../../lib/dates'
-import { HOME_STATUS, INTEREST, PREP_ITEMS, mustHaveCheck, price, type BuyerVisit, type Home, type HomeVisit, type Mudanza } from '../../lib/mudanza'
+import { HOME_STATUS, INTEREST, PREP_ITEMS, mustHaveCheck, portalName, price, type BuyerVisit, type Home, type HomeVisit, type Mudanza } from '../../lib/mudanza'
 import { allChecks } from '../../lib/health'
 import { kEur, readyPrice } from '../../lib/reforma'
 import { OBJECTION_HELP } from '../../lib/venta'
@@ -189,6 +189,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
         {!past && (
           <div className="flex gap-1.5 flex-wrap">
             {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">🗺️ Cómo llegar</a>}
+            {ad && <a href={ad} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 {portalName(ad) ?? 'Anuncio'} ↗</a>}
             {h?.contact_phone && <a href={`tel:${h.contact_phone.replace(/\s+/g, '')}`} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">📞 {h.agency ?? h.contact ?? 'Llamar'}</a>}
             {h && <button onClick={() => setPrepOpen(!prepOpen)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">🎒 Para llevar {prepOpen ? '▾' : '▸'}</button>}
             {h && <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>}
@@ -198,7 +199,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
           <div className="flex gap-1.5 flex-wrap items-center">
             <span className="text-[12px] font-semibold">{HOME_STATUS[h.status]}</span>
             {score != null && <span className="text-[12px] text-muted">· ⭐ {score.toLocaleString('es-ES', { maximumFractionDigits: 1 })}</span>}
-            {ad && <a href={ad} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 Anuncio ↗</a>}
+            {ad && <a href={ad} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 {portalName(ad) ?? 'Anuncio'} ↗</a>}
             <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>
           </div>
         )}

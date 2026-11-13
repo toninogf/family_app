@@ -1156,13 +1156,6 @@ export function HomeVisitSheet({ home, visit, adults, m, onClose }: { home: Home
   return (
     <Sheet title={`Visita · ${home.title}`} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-5">
-        {(home.url || home.links.length > 0) && (
-          <div className="flex gap-1.5 flex-wrap -mt-2">
-            {[...(home.url ? [{ label: '', url: home.url }] : []), ...home.links.filter(l => l.url !== home.url)].slice(0, 3).map(l => (
-              <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[13px] font-semibold text-accent flex items-center">🔗 {l.label || portalName(l.url) || 'Anuncio'} ↗</a>
-            ))}
-          </div>
-        )}
         {/* El día en su propia fila: en tres columnas no se leía entero */}
         <TextField label="Día" type="date" value={date} onChange={e => setDate(e.target.value)} required />
         <div className="grid grid-cols-2 gap-3">
