@@ -581,12 +581,11 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
   const adults = members.filter(x => x.kind === 'adult')
   const visits = m.homeVisits.filter(v => v.home_id === h.id)
   const offers = m.homeOffers.filter(o => o.home_id === h.id)
-  const pm2 = perM2(h)
   const maps = mapsHref({ location: [h.address, h.municipality].filter(Boolean).join(', ') || h.zone, maps_url: h.maps_url })
   const setStatus = (status: HomeStatus, extra: Record<string, unknown> = {}) => m.write('homes', { status, ...extra }, h.id)
   // Título corto (el resto del nombre ya sale en la línea de lugar)
   const short = h.title.split(' · ')[0] || h.title
-  const place = [h.zone, h.municipality].filter(Boolean).join(' · ')
+  const where = [h.address, h.zone, h.municipality].filter(Boolean).join(' · ')
 
   const nextV = visits.filter(v => v.status === 'scheduled' && v.visit_date >= today()).sort((x, y) => x.visit_date.localeCompare(y.visit_date))[0]
   const groups = useGroups(nextV ? ['resumen', 'visitas'] : ['resumen'])
@@ -601,17 +600,23 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
       {/* 1. Cabecera visual */}
       <div className="-mt-3 flex flex-col gap-2">
         <Gallery h={h} m={m} onAdd={() => onEdit('fotos')} />
-        <div className="flex justify-between items-center gap-2">
-          <span className="text-[13px] text-muted truncate min-w-0">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
-          <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
-            onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null, discard_category: null }) } }}
-            className="max-w-[52%] min-h-10 px-2 rounded-xl border border-line bg-card text-[13px] font-semibold">
-            {(['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(st => (
-              <option key={st} value={st}>{st === 'favorito' ? '★ ' : st === 'llamar' ? '📞 ' : ''}{HOME_STATUS[st]}</option>
-            ))}
-          </select>
-        </div>
-        {h.address && <span className="text-[13px] -mt-1">📍 {h.address}</span>}
+      </div>
+      {/* 2. Lo que toca hacer ahora */}
+      <PrimaryActions h={h} offers={offers}
+        onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
+        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
+      {/* Estado y dónde está (la dirección abre Maps) */}
+      <div className="flex flex-col gap-1.5">
+        <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
+          onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null, discard_category: null }) } }}
+          className="w-full min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold">
+          {(['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(st => (
+          <option key={st} value={st}>{st === 'favorito' ? '★ ' : st === 'llamar' ? '📞 ' : ''}{HOME_STATUS[st]}</option>
+          ))}
+        </select>
+        {where && (maps
+          ? <a href={maps} target="_blank" rel="noopener noreferrer" className="text-[14px] text-accent font-semibold min-h-9 flex items-start gap-1"><span>📍</span><span>{where} ↗</span></a>
+          : <span className="text-[14px] flex items-start gap-1"><span>📍</span><span>{where}</span></span>)}
       </div>
       {discarding && (
         <div className="flex flex-col gap-2 bg-card rounded-2xl p-4">
@@ -633,10 +638,6 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
       )}
       {h.status === 'descartado' && discardLabel(h) && <p className="text-sm text-muted -mt-3">Descartado: {discardLabel(h)}</p>}
 
-      {/* 2. Lo que toca hacer ahora */}
-      <PrimaryActions h={h} offers={offers} maps={maps}
-        onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
-        onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
       {/* 3. El dinero y la nota, seguidos y siempre a la vista (fuera de los grupos plegables) */}
       <div className="flex flex-col gap-2">
@@ -788,8 +789,8 @@ function Gallery({ h, m, onAdd }: { h: Home; m: Mudanza; onAdd: () => void }) {
 }
 
 /** La acción que toca según el estado, y los accesos rápidos */
-function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, onReject }: {
-  h: Home; offers: HomeOffer[]; maps: string | null | undefined; onVisit: () => void; onOffer: (o?: HomeOffer) => void
+function PrimaryActions({ h, offers, onVisit, onOffer, onEdit, onRecover, onReject }: {
+  h: Home; offers: HomeOffer[]; onVisit: () => void; onOffer: (o?: HomeOffer) => void
   onEdit: (focus?: EditFocus) => void; onRecover: () => void; onReject: (r: RejectReason | null) => void
 }) {
   const [askReason, setAskReason] = useState(false)
@@ -819,7 +820,6 @@ function PrimaryActions({ h, offers, maps, onVisit, onOffer, onEdit, onRecover, 
       {h.status === 'propuesta' && askReason && <ReasonPicker onPick={onReject} />}
       <div className="flex gap-1.5 flex-wrap">
         {h.url && <a href={h.url} target="_blank" rel="noopener noreferrer" className={`${small} text-accent`}>🔗 {portalName(h.url) ?? 'Anuncio'} ↗</a>}
-        {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className={`${small} text-accent`}>📍 Cómo llegar ↗</a>}
         <button onClick={() => onEdit()} className={small}>✏️ Editar</button>
       </div>
     </div>
@@ -838,7 +838,11 @@ function TwoPrices({ h, m, budget }: { h: Home; m: Mudanza; budget: number | nul
       <div className="flex justify-between items-baseline gap-2">
         <span className="flex flex-col min-w-0">
           <span className="text-[13px] text-muted">Piden</span>
-          <span className="text-[11px] text-muted">sobre esto se oferta</span>
+          {perM2(h) != null && (
+            <span className="text-[11px] text-muted">
+              {price(perM2(h))}/m²{h.market?.paid_m2 ? ` · en la zona se firma a ~${Math.round(h.market.paid_m2).toLocaleString('es-ES')} €/m²` : ''}
+            </span>
+          )}
         </span>
         <span className="text-[24px] font-bold leading-tight shrink-0">{price(h.price_cents)}</span>
       </div>
