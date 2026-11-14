@@ -286,6 +286,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
     visitas: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas',
       brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, h.contact_phone && '📞'),
+    brief: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas`),
     oferta: lastOffer ? join(`${price(lastOffer.amount_cents)}`, OFFER_STATUS[lastOffer.status]?.toLowerCase(), offers.length > 1 && `${offers.length} ofertas`) : join('sin oferta', rec && `recomendada ~${priceShort(rec.open)}`),
     enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
     fotos: nPhotos ? `${nPhotos} foto${nPhotos > 1 ? 's' : ''}` : 'sin fotos'
@@ -692,8 +693,16 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
             </button>
           ))
         )}
-        <span className="font-bold text-[15px] mt-1">🎯 Para la visita</span>
-        <VisitBrief h={h} m={m} />
+        {/* Plegable: abierto si hay una visita prevista */}
+        <details className="group mt-1" open={!!nextV}>
+          <summary className="list-none cursor-pointer min-h-10 flex items-center justify-between gap-2">
+            <span className="font-bold text-[15px]">🎯 Para la visita</span>
+            <span className="text-[13px] text-muted flex items-center gap-1">
+              {sum.brief}<span className="transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+            </span>
+          </summary>
+          <div className="mt-1"><VisitBrief h={h} m={m} /></div>
+        </details>
         <ContactCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
 
