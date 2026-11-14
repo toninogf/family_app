@@ -1,13 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { COOLING, COST_TEMPLATE, FEATURE_GROUPS, HOUSE_ONE_OF, HEAT_EMITTERS, FEATURES, HEATING, mergeLinks, parsePrice, portalName, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
+import { COOLING, COST_TEMPLATE, FEATURES, HEATING, mergeLinks, parsePrice, portalName, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
 } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
 import { Sheet, TextArea } from '../../components/Sheet'
 import Combobox from '../../components/Combobox'
 import ListingImport, { knownForAi, merger } from '../../components/ListingImport'
-import { EditSection, Field, GroupedChips, ImportSummary, SaveBar, SelectField, SubHead, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
+import { EquipChips } from './EquipChips'
+import { EditSection, Field, ImportSummary, SaveBar, SelectField, SubHead, thousands, useDirty, useFlash, useSections } from '../../components/FormKit'
 
 const VSECTIONS = [
   { id: 'casa', title: 'Nuestra casa' }, { id: 'cuentas', title: '¿Cuánto nos queda?' }, { id: 'texto', title: 'Descripción' }
@@ -225,16 +226,10 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
             <Field label="Año finca" inputMode="numeric" value={year} onChange={e => setYear(e.target.value)} flash={fl('año')} />
           </div>
           <SubHead id="casa-equip">Equipamiento</SubHead>
-          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
-            groups={FEATURE_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => k !== 'cerca_cole') }))} labels={k => FEATURES[k] ?? k}  sets={[...HOUSE_ONE_OF, HEAT_EMITTERS]} oneOf />
-          <div className="grid grid-cols-2 gap-3">
-            <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
-              options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
-            <SelectField<HeatingType> label="Calefacción" value={heatType} onChange={setHeatType} flash={fl('tipo de calefacción')}
-              options={(Object.keys(HEATING) as HeatingType[]).map(k => ({ value: k, label: HEATING[k] }))} />
-            <SelectField<Cooling> label="Aire acondicionado" value={cooling} onChange={setCooling} flash={fl('aire')}
-              options={(['splits', 'conductos', 'aerotermia', 'si', 'no'] as Cooling[]).map(k => ({ value: k, label: COOLING[k] }))} />
-          </div>
+          <EquipChips label={`Tiene${fl('características') || fl('tipo de calefacción') || fl('aire') ? ' ✨' : ''}`} features={features} setFeatures={setFeatures}
+            heat={heatType} setHeat={setHeatType} cool={cooling} setCool={setCooling} exclude={['cerca_cole']} />
+          <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
+            options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
           <SubHead id="casa-valor">⚖️ Lo que pesa en el precio</SubHead>
           <p className="text-xs text-muted -mt-2">Se usa en «¿Estamos en precio?» para comparar con pisos parecidos más allá del €/m².</p>
           <div className="grid grid-cols-2 gap-2">
