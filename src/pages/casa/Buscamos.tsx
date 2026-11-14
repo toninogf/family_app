@@ -35,6 +35,7 @@ import { AiHomeSearch } from './AiHomeSearch'
 import { VisitBrief, briefLists } from './VisitBrief'
 import { Stars, rateHome } from './HomeStars'
 import { EquipChips } from './EquipChips'
+import { DeepAnalysisPanel, VerdictChip, deepLine } from './DeepAnalysis'
 import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreWeights } from '../../lib/score'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
@@ -243,9 +244,9 @@ function StatusBadge({ s }: { s: HomeStatus }) {
 }
 
 // ---------- Ficha por grupos plegables ----------
-type GroupKey = 'resumen' | 'visitas' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'oferta' | 'enlaces' | 'fotos'
+type GroupKey = 'resumen' | 'analisis' | 'visitas' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'oferta' | 'enlaces' | 'fotos'
 const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
-  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'casa', icon: '🏠', title: 'La casa' },
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'analisis', icon: '🔬', title: 'Análisis a fondo (IA)' }, { k: 'casa', icon: '🏠', title: 'La casa' },
   { k: 'dinero', icon: '💶', title: 'Gastos e impuestos' }, { k: 'reforma', icon: '🔨', title: 'Reforma' },
   { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'estado', icon: '🔍', title: 'Estado de la vivienda' },
   { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'visitas', icon: '👀', title: 'Visitas' }, { k: 'oferta', icon: '💶', title: 'Oferta' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
@@ -276,6 +277,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const lastOffer = offers.slice().sort((x, y) => y.offer_date.localeCompare(x.offer_date))[0]
   const join = (...x: (string | number | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
   return {
+    analisis: deepLine(h),
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, roomsLabel(h), h.baths != null && `${h.baths} baños`),
     dinero: join(monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`,
@@ -665,6 +667,10 @@ function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, onReject
         <HomePrice h={h} m={m} />
       </Group>
 
+
+      <Group k="analisis" g={groups} line={sum.analisis}>
+        <DeepAnalysisPanel h={h} m={m} />
+      </Group>
 
       <Group k="casa" g={groups} line={sum.casa}>
         <QuickFacts h={h} m={m} onEdit={onEdit} />
@@ -1889,6 +1895,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   const [rooms, setRooms] = useState(c?.min_rooms?.toString() ?? '')
   const [m2, setM2] = useState(c?.min_m2?.toString() ?? '')
   const [plotMin, setPlotMin] = useState(c?.min_plot_m2?.toString() ?? '')
+  const [work, setWork] = useState(c?.work_address ?? '')
   const [zones, setZones] = useState((c?.zones ?? []).join(', '))
   const [towns, setTowns] = useState<string[]>(c?.municipalities ?? [])
   const [pick, setPick] = useState(0)
@@ -1905,6 +1912,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
       household_id: householdId, max_price_cents: maxCents,
       min_rooms: rooms.trim() ? parseInt(rooms, 10) : null, min_m2: m2.trim() ? parseInt(m2, 10) : null,
       min_plot_m2: plotMin.trim() ? parseInt(plotMin.replace(/\./g, ''), 10) || null : null,
+      work_address: work.trim().slice(0, 200) || null,
       zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k)).slice(0, 40), score_weights: weights
     }, undefined, 'household_id')
     if (err) setError(err); else onClose()
@@ -1921,6 +1929,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
           <TextField label="m² parcela mín." inputMode="numeric" value={plotMin} onChange={e => setPlotMin(e.target.value)} placeholder="Ej. 500" />
         </div>
         <p className="text-[12px] text-muted -mt-3">Las habitaciones cuentan la buhardilla y el sótano habitable. Si falla por poco (menos de un 10 % en metros o parcela) penaliza la mitad.</p>
+        <TextField label="💼 Dirección de mi trabajo (para los trayectos del análisis con IA)" value={work} onChange={e => setWork(e.target.value)} placeholder="Calle, número, Madrid" />
         <div className="flex flex-col gap-2">
           <Combobox key={pick} label="Localidades (Comunidad de Madrid)" value={null} options={ALL_MUNICIPALITIES.filter(x => !towns.includes(x))}
             onChange={v => { if (v) { setTowns(ts => (ts.includes(v) ? ts : [...ts, v])); setPick(p => p + 1) } }} placeholder="Añadir localidad…" />
@@ -1995,6 +2004,8 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
   // Cada fila: cómo se muestra y, si tiene sentido, qué valor es mejor (para resaltarlo)
   type Row = { label: string; show: (h: Home) => ReactNode; value?: (h: Home) => number | null; better?: 'low' | 'high' }
   const rows: Row[] = [
+    { label: 'Análisis IA', show: h => <VerdictChip h={h} /> },
+    { label: 'Precio justo (IA)', show: h => h.deep_analysis?.data?.precio?.justo ? `${Math.round(h.deep_analysis.data.precio.justo).toLocaleString('es-ES')} €` : '—', value: h => h.deep_analysis?.data?.precio?.justo ?? null },
     { label: 'Nota', show: h => { const s = schools[h.id]; return <ScoreBadge s={homeScore(h, m, s ? (s.pubPri ?? s.closest)?.dist ?? null : null)} /> }, value: h => { const s = schools[h.id]; return homeScore(h, m, s ? (s.pubPri ?? s.closest)?.dist ?? null : null).score }, better: 'high' },
     { label: 'Precio', show: h => price(h.price_cents), value: h => h.price_cents, better: 'low' },
     { label: 'Reforma', show: h => { const t = reformTotal(h.reform, h); return t ? rangeK(t.lo, t.hi) : h.reform?.state === 'listo' ? 'No necesita' : '¿?' }, value: h => (h.reform?.state || h.reform?.items?.length ? reformTotal(h.reform, h)?.mid ?? 0 : null), better: 'low' },
