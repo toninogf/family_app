@@ -1,5 +1,5 @@
 // Filtrar y ordenar los pisos de Buscamos con todo lo que calcula la app: criterios, reforma, gastos, colegios, riesgos…
-import { HOME_STATUS_ORDER, mustHaveCheck, niceCount, type Criteria, type Home, type HomeStatus, type HomeVisit, type Rating } from './mudanza'
+import { HOME_STATUS_ORDER, equivRooms, mustHaveCheck, niceCount, type Criteria, type Home, type HomeStatus, type HomeVisit, type Rating } from './mudanza'
 import { readyPrice, reformKnown, reformTotal } from './reforma'
 import { healthCounts } from './health'
 import { recommend } from './pricing'
@@ -107,7 +107,7 @@ export function applyFilters(homes: Home[], f: Filters, ctx: Ctx) {
     if (f.readyMax != null && (ready == null || ready > f.readyMax * 100)) return false
     if (f.minM2 != null && (h.size_m2 == null || Number(h.size_m2) < f.minM2)) return false
     if (f.minPlot != null && (h.plot_m2 == null || Number(h.plot_m2) < f.minPlot)) return false
-    if (f.minRooms != null && (h.rooms == null || h.rooms < f.minRooms)) return false
+    if (f.minRooms != null) { const e = equivRooms(h); if (!e || e.total < f.minRooms) return false }
     if (f.minBaths != null && (h.baths == null || h.baths < f.minBaths)) return false
     if (f.musts === 'todos' && fails(h, ctx, f.reformCounts) > 0) return false
     if (f.musts === 'falla1' && fails(h, ctx, f.reformCounts) > 1) return false
@@ -172,7 +172,7 @@ export function activeChips(f: Filters, labels: { status: (s: HomeStatus) => str
   if (f.readyMin != null || f.readyMax != null) out.push({ label: `Para entrar ${f.readyMin != null ? `desde ${k(f.readyMin, ' €')}` : ''} ${f.readyMax != null ? `hasta ${k(f.readyMax, ' €')}` : ''}`.trim(), clear: x => ({ ...x, readyMin: null, readyMax: null }) })
   if (f.minM2 != null) out.push({ label: `≥ ${k(f.minM2)} m²`, clear: x => ({ ...x, minM2: null }) })
   if (f.minPlot != null) out.push({ label: `Parcela ≥ ${k(f.minPlot)} m²`, clear: x => ({ ...x, minPlot: null }) })
-  if (f.minRooms != null) out.push({ label: `${f.minRooms}+ hab.`, clear: x => ({ ...x, minRooms: null }) })
+  if (f.minRooms != null) out.push({ label: `${f.minRooms}+ hab. (equiv.)`, clear: x => ({ ...x, minRooms: null }) })
   if (f.minBaths != null) out.push({ label: `${f.minBaths}+ baños`, clear: x => ({ ...x, minBaths: null }) })
   if (f.musts !== 'da_igual') out.push({ label: f.musts === 'todos' ? '🎯 Todos los imprescindibles' : '🎯 Falla 1 como mucho', clear: x => ({ ...x, musts: 'da_igual' }) })
   if (f.minNice != null) out.push({ label: `⭐ ${f.minNice}+ que valoramos`, clear: x => ({ ...x, minNice: null }) })

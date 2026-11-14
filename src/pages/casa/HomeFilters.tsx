@@ -130,7 +130,7 @@ export function FilterSheet({ s, towns, ours, countFor, onClose }: {
           <div className="grid grid-cols-2 gap-2">
             <Num label="m² mínimos" v={d.minM2} on={v => set('minM2', v)} />
             <Num label="Parcela mínima (m²)" v={d.minPlot} on={v => set('minPlot', v)} />
-            <Num label="Habitaciones mín." v={d.minRooms} on={v => set('minRooms', v)} />
+            <Num label="Habitaciones mín. (con buhardilla y sótano habitable)" v={d.minRooms} on={v => set('minRooms', v)} />
             <Num label="Baños mín." v={d.minBaths} on={v => set('minBaths', v)} />
           </div>
         </Block>

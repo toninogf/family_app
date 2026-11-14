@@ -222,7 +222,7 @@ export const FEATURES: Record<string, string> = {
   solar_termica: 'Solar térmica (agua)', suelo_radiante: 'Suelo radiante', chimenea: 'Chimenea o estufa', aislamiento: 'Buen aislamiento / doble cristal',
   cargador: 'Punto de carga (coche)',
   // La casa
-  reformado: 'Reformado', sotano: 'Sótano', buhardilla: 'Buhardilla', dormitorio_pb: 'Dormitorio en planta baja',
+  reformado: 'Reformado', sotano: 'Sótano', sotano_habitable: 'Sótano habitable', buhardilla: 'Buhardilla', dormitorio_pb: 'Dormitorio en planta baja',
   garaje: 'Garaje', garaje_cerrado: 'Garaje cerrado', trastero: 'Trastero', armarios: 'Armarios empotrados', ascensor: 'Ascensor', portero: 'Portero / conserje', balcon: 'Balcón',
   // Urbanización y servicios
   urb_cerrada: 'Urbanización cerrada / vigilancia', zonas_comunes: 'Zonas comunes (pádel, parque)', fibra: 'Fibra óptica',
@@ -232,7 +232,7 @@ export const FEATURES: Record<string, string> = {
 export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
   { title: '🏊 Piscina y exterior', keys: ['piscina', 'piscina_comunitaria', 'jardin', 'terraza', 'porche', 'barbacoa', 'riego', 'huerto', 'zona_juegos', 'parcela_llana', 'parcela_pendiente', 'orientacion_sur', 'vistas', 'exterior'] },
   { title: '⚡ Energía y confort', keys: ['calefaccion', 'aire', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
-  { title: '🏠 La casa', keys: ['reformado', 'sotano', 'buhardilla', 'dormitorio_pb', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'ascensor', 'portero', 'balcon'] },
+  { title: '🏠 La casa', keys: ['reformado', 'sotano', 'sotano_habitable', 'buhardilla', 'dormitorio_pb', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'ascensor', 'portero', 'balcon'] },
   { title: '🏘️ Urbanización y servicios', keys: ['urb_cerrada', 'zonas_comunes', 'fibra', 'gas_natural', 'transporte', 'cerca_cole'] }
 ]
 /** Opciones extra solo para lo que buscamos (no se marcan en la ficha: se deducen) */
@@ -249,6 +249,7 @@ export function meets(h: { features: string[]; heating_type?: string | null; coo
   if (k === 'aire') return h.features.includes(k) || (!!h.cooling && h.cooling !== 'no')
   if (k === 'piscina_cualquiera') return h.features.includes('piscina') || h.features.includes('piscina_comunitaria')
   if (k === 'geotermia' || k === 'aerotermia') return h.heating_type === k
+  if (k === 'sotano') return h.features.includes('sotano') || h.features.includes('sotano_habitable')
   if (k === 'garaje') return h.features.includes('garaje') || h.features.includes('garaje_cerrado')
   if (k === 'placas_solares') return h.features.includes('placas_solares') || h.features.includes('bateria')
   return h.features.includes(k)
@@ -306,15 +307,25 @@ export const perM2 = (h: Pick<Home, 'price_cents' | 'size_m2'>) =>
   h.price_cents && h.size_m2 ? Math.round(h.price_cents / Number(h.size_m2)) : null
 
 /** Qué imprescindibles cumple un piso (las habitaciones y m² mínimos cuentan como imprescindibles) */
+/** Espacios habitables que cuentan como una habitación más (para comparar huecos habitables) */
+export const EXTRA_ROOMS: Record<string, string> = { buhardilla: 'buhardilla', sotano_habitable: 'sótano' }
+/** Habitaciones equivalentes: las del anuncio + buhardilla + sótano habitable */
+export function equivRooms(h: Pick<Home, 'rooms' | 'features'>) {
+  if (h.rooms == null) return null
+  const extra = Object.keys(EXTRA_ROOMS).filter(k => h.features.includes(k)).map(k => EXTRA_ROOMS[k])
+  return { total: h.rooms + extra.length, extra }
+}
+/** «4 hab. + buhardilla» */
+export const roomsLabel = (h: Pick<Home, 'rooms' | 'features'>) => { const e = equivRooms(h); return e ? `${h.rooms} hab.${e.extra.length ? ` + ${e.extra.join(' + ')}` : ''}` : null }
+
 export function mustHaveCheck(h: Home, c: Criteria | null) {
   if (!c) return [] as Check[]
   const out: Check[] = []
   if (c.max_price_cents) { const r = readyPrice(h); out.push({ label: `≤ ${priceShort(c.max_price_cents)} para entrar`, ok: r == null ? null : r <= c.max_price_cents, near: r != null && r > c.max_price_cents && r <= c.max_price_cents * 1.1 }) }
-  // La buhardilla cuenta como una habitación más
+  // Cuentan las habitaciones equivalentes (buhardilla y sótano habitable, una más cada uno)
   if (c.min_rooms) {
-    const attic = h.features.includes('buhardilla')
-    const rooms = h.rooms == null ? null : h.rooms + (attic ? 1 : 0)
-    out.push({ label: `${c.min_rooms}+ hab.${attic && h.rooms != null && h.rooms < c.min_rooms ? ' (con la buhardilla)' : ''}`, ok: rooms == null ? null : rooms >= c.min_rooms })
+    const e = equivRooms(h)
+    out.push({ label: `${c.min_rooms}+ hab.${e && e.extra.length && h.rooms! < c.min_rooms ? ` (con ${e.extra.join(' y ')})` : ''}`, ok: e == null ? null : e.total >= c.min_rooms })
   }
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
   if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2, near: h.size_m2 != null && Number(h.size_m2) < c.min_m2 && Number(h.size_m2) >= c.min_m2 * 0.9 })

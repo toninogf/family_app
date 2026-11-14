@@ -13,7 +13,7 @@ import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS,
   CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
-  type Check, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
+  equivRooms, roomsLabel, type Check, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
 import { Choice, ConfirmDelete, Fab, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -275,7 +275,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const join = (...x: (string | number | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
   return {
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
-    casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
+    casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, roomsLabel(h), h.baths != null && `${h.baths} baños`),
     dinero: join(monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`,
       h.advertiser !== 'particular' && (!h.buyer_fee_kind ? 'honorarios ¿?' : (buyerFee(h) ?? 0) > 0 ? `honorarios ${kShort(buyerFee(h)!)}` : 'sin honorarios'),
       costs > 0 && `impuestos y gastos ${kShort(costs)}`),
@@ -468,7 +468,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   const viaReform = fails.filter(c => c.reform).length
   const unknown = checks.filter(c => c.ok == null).length
   const nice = niceCount(h, m.criteria)
-  const facts = [h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`, pm2 && `${price(pm2)}/m²`].filter(Boolean)
+  const facts = [h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, roomsLabel(h), h.baths != null && `${h.baths} baños`, pm2 && `${price(pm2)}/m²`].filter(Boolean)
   const extra = [
     school && `🏫 ${school.type_abbr === 'CP INF-PRI' ? 'CEIP' : school.ownership === 'publico' ? 'Público' : OWN_LABEL[school.ownership]} a ${distLabel(school.dist)}`,
     next && `📅 Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`,
@@ -996,7 +996,7 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
   const facts: [string, string][] = ([
     h.size_m2 && ['🏠', `${Number(h.size_m2)} m²${h.useful_m2 ? ` (${Number(h.useful_m2)} útiles)` : ''}`],
     h.plot_m2 && ['🌳', `parcela ${Number(h.plot_m2)} m²`],
-    h.rooms != null && ['🛏', `${h.rooms} hab.`],
+    h.rooms != null && ['🛏', roomsLabel(h)!],
     h.baths != null && ['🛁', `${h.baths} baños`],
     h.floor && ['🏢', h.floor.length > 18 ? `${h.floor.slice(0, 18)}…` : h.floor],
     h.year_built && ['🏗', `de ${h.year_built}`],
@@ -1981,7 +1981,8 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Parcela', show: h => (h.plot_m2 != null ? `${Number(h.plot_m2)} m²` : '—'), value: h => (h.plot_m2 != null ? Number(h.plot_m2) : null), better: 'high' },
     { label: 'Año', show: h => h.year_built ?? '—', value: h => h.year_built, better: 'high' },
     { label: '€/m²', show: h => price(perM2(h)), value: perM2, better: 'low' },
-    { label: 'Habitaciones', show: h => h.rooms ?? '—', value: h => h.rooms, better: 'high' },
+    { label: 'Habitaciones', show: h => roomsLabel(h) ?? '—' },
+    { label: 'Hab. equivalentes', show: h => equivRooms(h)?.total ?? '—', value: h => equivRooms(h)?.total ?? null, better: 'high' },
     { label: 'Baños', show: h => h.baths ?? '—', value: h => h.baths, better: 'high' },
     { label: 'Planta', show: h => h.floor ?? '—' },
     { label: 'Localidad', show: h => h.municipality ?? '—' },

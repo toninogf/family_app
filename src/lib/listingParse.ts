@@ -99,6 +99,7 @@ const FEATURE_PATTERNS: [string, RegExp][] = [
   ['orientacion_sur', /\borientaci[oó]n (sur|sureste|suroeste)\b|\borientad[oa] al sur\b/i],
   ['vistas', /\bvistas\b/i],
   ['sotano', /\bs[oó]tano\b|\bsemis[oó]tano\b/i],
+  ['sotano_habitable', /\b(semi)?s[oó]tano (habitable|acondicionado|diáfano acondicionado|con ventanas)\b|\b(semi)?s[oó]tano con (dormitorio|habitaci[oó]n|sal[oó]n)\b/i],
   ['buhardilla', /\bbuhardilla\b|\babuhardillad[oa]\b/i],
   ['dormitorio_pb', /\b(dormitorio|habitaci[oó]n) en (la )?planta baja\b/i],
   ['armarios', /\barmarios? empotrados?\b/i],
@@ -260,7 +261,7 @@ PARCELA: (m² de parcela, solo el número)
 HABITACIONES:
 BANOS:
 PLANTA:
-EXTRAS: (los que tenga, separados por comas: piscina propia, piscina comunitaria, jardín, terraza, porche, barbacoa, riego automático, huerto, zona de juegos, parcela llana, parcela en pendiente, orientación sur, vistas, exterior, calefacción, aire acondicionado, suelo radiante, chimenea, doble acristalamiento, batería, punto de carga, reformado, sótano, buhardilla, dormitorio en planta baja, garaje, garaje cerrado, trastero, armarios empotrados, ascensor, portero o conserje, balcón, urbanización cerrada, vigilancia, zonas comunes, pista de pádel, fibra óptica, gas natural)
+EXTRAS: (los que tenga, separados por comas: piscina propia, piscina comunitaria, jardín, terraza, porche, barbacoa, riego automático, huerto, zona de juegos, parcela llana, parcela en pendiente, orientación sur, vistas, exterior, calefacción, aire acondicionado, suelo radiante, chimenea, doble acristalamiento, batería, punto de carga, reformado, sótano, sótano habitable, buhardilla, dormitorio en planta baja, garaje, garaje cerrado, trastero, armarios empotrados, ascensor, portero o conserje, balcón, urbanización cerrada, vigilancia, zonas comunes, pista de pádel, fibra óptica, gas natural)
 SOLAR: (placas solares: «no», «fotovoltaicas» —con la potencia en kWp y si tienen batería, si aparece— o «térmicas» para agua caliente; NO CONSTA si no se sabe)
 CERTIFICADO: (letra de consumo, A-G)
 COMUNIDAD: (€/mes, solo el número)
