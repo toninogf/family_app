@@ -111,7 +111,7 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
                 <span className="text-[12px] text-muted">{[last && `vista ${relativeDay(last.visit_date).toLowerCase()}`, pend ? `${pend} cosa${pend > 1 ? 's' : ''} por mirar o preguntar` : 'nada pendiente'].filter(Boolean).join(' · ')}</span>
                 <div className="flex gap-1.5 flex-wrap">
                   <button onClick={() => setHomeVisit({ home: h })} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-[13px] font-semibold">📅 Apuntar 2ª visita</button>
-                  <button onClick={() => openHome(h.id, 'visita')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Qué falta ›</button>
+                  <button onClick={() => openHome(h.id, 'visitas')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Qué falta ›</button>
                   <button onClick={() => skipHome(h.id)} className="min-h-10 px-3 rounded-lg text-[13px] text-muted">Ahora no</button>
                 </div>
               </div>

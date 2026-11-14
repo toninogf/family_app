@@ -241,16 +241,16 @@ function StatusBadge({ s }: { s: HomeStatus }) {
 }
 
 // ---------- Ficha por grupos plegables ----------
-type GroupKey = 'resumen' | 'visita' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'seguimiento' | 'enlaces' | 'fotos'
+type GroupKey = 'resumen' | 'visitas' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'oferta' | 'enlaces' | 'fotos'
 const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
-  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'visita', icon: '🎯', title: 'Para la visita' }, { k: 'casa', icon: '🏠', title: 'La casa' },
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'visitas', icon: '👀', title: 'Visitas' }, { k: 'casa', icon: '🏠', title: 'La casa' },
   { k: 'dinero', icon: '💶', title: 'Gastos e impuestos' }, { k: 'reforma', icon: '🔨', title: 'Reforma' },
   { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'estado', icon: '🔍', title: 'Estado de la vivienda' },
-  { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'seguimiento', icon: '📅', title: 'Seguimiento' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
+  { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'oferta', icon: '💶', title: 'Oferta' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
   { k: 'fotos', icon: '📷', title: 'Fotos' }
 ]
 /** Grupos abiertos de la ficha (se recuerdan en este móvil); «go» abre uno y baja hasta él */
-const useGroups = (initial: GroupKey[]) => useOpenGroups<GroupKey>('ficha.grupos', initial.filter(k => k !== 'seguimiento'), initial.filter(k => k === 'seguimiento'))
+const useGroups = (initial: GroupKey[]) => useOpenGroups<GroupKey>('ficha.grupos', initial.filter(k => k !== 'visitas'), initial.filter(k => k === 'visitas'))
 type Groups = ReturnType<typeof useGroups>
 
 function Group({ k, g, line, extra, children, lineAlways }: { k: GroupKey; g: Groups; line: ReactNode; extra?: ReactNode; children: ReactNode; lineAlways?: boolean }) {
@@ -271,11 +271,11 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const costs = buyingCosts(h)
   const nPhotos = m.photos.filter(p => p.home_id === h.id).length
   const nLinks = (h.links?.length ?? 0) + (h.url ? 1 : 0)
+  const lastOffer = offers.slice().sort((x, y) => y.offer_date.localeCompare(x.offer_date))[0]
   const join = (...x: (string | number | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
   return {
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
-    visita: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas para negociar`),
     dinero: join(monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`,
       h.advertiser !== 'particular' && (!h.buyer_fee_kind ? 'honorarios ¿?' : (buyerFee(h) ?? 0) > 0 ? `honorarios ${kShort(buyerFee(h)!)}` : 'sin honorarios'),
       costs > 0 && `impuestos y gastos ${kShort(costs)}`),
@@ -284,7 +284,9 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     docs: join(`✅ ${hc.ok}`, `⚠️ ${hc.warn}`, hc.bad > 0 && `⛔ ${hc.bad}`, `❓ ${hc.unknown}`, `Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`,
       `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
-    seguimiento: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas', offers[0] && `oferta ${priceShort(offers[0].amount_cents)}`, h.contact_phone && '📞'),
+    visitas: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas',
+      brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, h.contact_phone && '📞'),
+    oferta: lastOffer ? join(`${price(lastOffer.amount_cents)}`, OFFER_STATUS[lastOffer.status]?.toLowerCase(), offers.length > 1 && `${offers.length} ofertas`) : join('sin oferta', rec && `recomendada ~${priceShort(rec.open)}`),
     enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
     fotos: nPhotos ? `${nPhotos} foto${nPhotos > 1 ? 's' : ''}` : 'sin fotos'
   }
@@ -587,7 +589,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
   const place = [h.zone, h.municipality].filter(Boolean).join(' · ')
 
   const nextV = visits.filter(v => v.status === 'scheduled' && v.visit_date >= today()).sort((x, y) => x.visit_date.localeCompare(y.visit_date))[0]
-  const groups = useGroups(nextV ? ['resumen', 'seguimiento'] : ['resumen'])
+  const groups = useGroups(nextV ? ['resumen', 'visitas'] : ['resumen'])
   useEffect(() => { if (startGroup) groups.go(startGroup) }, [startGroup]) // eslint-disable-line react-hooks/exhaustive-deps
   const sum = useGroupLines(h, m, visits, offers, nextV)
 
@@ -645,8 +647,22 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         <HomePrice h={h} m={m} />
       </Group>
 
-      <Group k="visita" g={groups} line={sum.visita}>
+      <Group k="visitas" g={groups} line={sum.visitas}
+        extra={<button onClick={() => setVisitSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Visita</button>}>
+        {visits.length === 0 ? <p className="text-sm text-muted">Aún no hay visitas. Las visitas salen en la Agenda.</p> : (
+          visits.slice().sort((a, b) => b.visit_date.localeCompare(a.visit_date)).map(v => (
+            <button key={v.id} onClick={() => setVisitSheet({ open: true, visit: v })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
+              <span className="flex justify-between gap-2 text-[14px] font-semibold">
+                <span>👀 Visita · {longDate(v.visit_date)} · {hhmm(v.start_time)}</span>
+                <span className="text-[12px] text-muted shrink-0">{v.status === 'done' ? 'Hecha' : v.status === 'cancelled' ? 'Cancelada' : 'Prevista'}</span>
+              </span>
+              <VisitSummary v={v} members={members} />
+            </button>
+          ))
+        )}
+        <span className="font-bold text-[15px] mt-1">🎯 Para la visita</span>
         <VisitBrief h={h} m={m} />
+        <ContactCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
 
       <Group k="casa" g={groups} line={sum.casa}>
@@ -677,21 +693,10 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         <HomeSchools h={h} m={m} />
       </Group>
 
-      <Group k="seguimiento" g={groups} line={sum.seguimiento}
-        extra={<span className="flex">
-          <button onClick={() => setVisitSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Visita</button>
-          <button onClick={() => setOfferSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Oferta</button>
-        </span>}>
-        {visits.length + offers.length === 0 ? <p className="text-sm text-muted">Aún no hay visitas ni ofertas. Las visitas salen en la Agenda.</p> : (
-          [...visits.map(v => ({ date: v.visit_date, el: (
-            <button key={v.id} onClick={() => setVisitSheet({ open: true, visit: v })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
-              <span className="flex justify-between gap-2 text-[14px] font-semibold">
-                <span>👀 Visita · {longDate(v.visit_date)} · {hhmm(v.start_time)}</span>
-                <span className="text-[12px] text-muted shrink-0">{v.status === 'done' ? 'Hecha' : v.status === 'cancelled' ? 'Cancelada' : 'Prevista'}</span>
-              </span>
-              <VisitSummary v={v} members={members} />
-            </button>
-          ) })), ...offers.map(o => ({ date: o.offer_date, el: (
+      <Group k="oferta" g={groups} line={sum.oferta}
+        extra={<button onClick={() => setOfferSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Oferta</button>}>
+        {offers.length === 0 ? <p className="text-sm text-muted">Aún no hay ofertas. La oferta recomendada está en el Resumen y las ideas para negociar, en Visitas.</p> : (
+          offers.slice().sort((a, b) => b.offer_date.localeCompare(a.offer_date)).map(o => (
             <button key={o.id} onClick={() => setOfferSheet({ open: true, offer: o })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
               <span className="flex justify-between items-baseline gap-2">
                 <span className="text-[14px] font-semibold">💶 Oferta · {price(o.amount_cents)}</span>
@@ -702,9 +707,8 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
                 {o.counter_cents ? ` · contraoferta ${price(o.counter_cents)}` : ''}
               </span>
             </button>
-          ) }))].sort((a, b) => b.date.localeCompare(a.date)).map(x => x.el)
+          ))
         )}
-        <ContactCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
 
       <Group k="enlaces" g={groups} line={sum.enlaces} extra={<button onClick={() => onEdit('enlaces')} aria-label="Editar los enlaces" className="min-h-9 px-2 text-sm">✏️</button>}>
