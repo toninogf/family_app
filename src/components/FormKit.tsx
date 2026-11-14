@@ -179,7 +179,7 @@ export function GroupedChips({ label, groups, labels, value, onChange, counts = 
               const ks = st.keys.filter(k => g.keys.includes(k))
               return ks.length > 1 ? (
                 <div key={st.title} className="rounded-xl border border-dashed border-line p-2 flex flex-col gap-1.5">
-                  <span className="text-[11px] text-muted">{st.title}: {st.together ? <>se pueden tener <b>las dos</b> (cada una suma)</> : oneOf ? <b>elige una</b> : <><b>una de estas</b> (si marcáis varias, basta con tener una)</>}</span>
+                  <span className="text-[11px] text-muted">{st.title}: {st.together ? <>se pueden tener <b>varias</b> (cada una suma)</> : oneOf ? <b>elige una</b> : <><b>una de estas</b> (si marcáis varias, basta con tener una)</>}</span>
                   <div className="flex gap-1.5 flex-wrap">{ks.map(chip)}</div>
                 </div>
               ) : null

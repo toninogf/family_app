@@ -233,7 +233,9 @@ export const FEATURES: Record<string, string> = {
 /** Los extras agrupados, para elegirlos sin una lista enorme */
 export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
   { title: '🏊 Piscina y exterior', keys: ['piscina', 'piscina_comunitaria', 'jardin', 'terraza', 'porche', 'barbacoa', 'riego', 'huerto', 'zona_juegos', 'parcela_llana', 'parcela_pendiente', 'orientacion_sur', 'vistas', 'exterior'] },
-  { title: '⚡ Energía y confort', keys: ['radiadores', 'aire', 'aerotermia', 'geotermia', 'gas_natural', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
+  { title: '🔥 Calefacción', keys: ['gas_natural', 'aerotermia', 'geotermia', 'radiadores', 'suelo_radiante', 'chimenea'] },
+  { title: '❄️ Climatización y aislamiento', keys: ['aire', 'aislamiento'] },
+  { title: '☀️ Solar y energía', keys: ['placas_solares', 'bateria', 'solar_termica', 'cargador'] },
   { title: '🏠 La casa', keys: ['reformado', 'sotano', 'sotano_habitable', 'buhardilla', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'portero', 'balcon'] },
   { title: '♿ Accesibilidad', keys: ['entrada_sin_escaleras', 'acceso_llano', 'una_planta', 'dormitorio_pb', 'ascensor'] },
   { title: '🏘️ Urbanización y servicios', keys: ['urb_cerrada', 'zonas_comunes', 'fibra', 'transporte', 'cerca_cole'] }
@@ -249,7 +251,7 @@ const oneLabel = (k: string) => CRITERIA_EXTRA[k] ?? CRITERIA_RENAME[k] ?? FEATU
 export const criteriaLabel = (k: string) => k.split('|').map(oneLabel).join(' o ')
 /** Opciones que se excluyen entre sí (no se puede tener todo): si se eligen varias, cuentan como una sola («una de ellas») */
 export const EXCLUSIVE_SETS: { title: string; keys: string[] }[] = [
-  { title: '🔥 Calefacción · sistema', keys: ['calefaccion_cualquiera', 'gas_natural', 'gasoil', 'propano', 'aerotermia', 'geotermia'] },
+  { title: 'Sistema', keys: ['calefaccion_cualquiera', 'gas_natural', 'gasoil', 'propano', 'aerotermia', 'geotermia'] },
   { title: 'Piscina', keys: ['piscina_cualquiera', 'piscina', 'piscina_comunitaria'] },
   { title: 'Parcela', keys: ['parcela_llana', 'parcela_pendiente'] },
   { title: 'Garaje', keys: ['garaje', 'garaje_cerrado'] },
@@ -257,7 +259,7 @@ export const EXCLUSIVE_SETS: { title: string; keys: string[] }[] = [
 ]
 export const EXCLUSIVE: string[][] = EXCLUSIVE_SETS.map(x => x.keys)
 /** Opciones que van juntas pero no se excluyen (cada una suma) */
-export const HEAT_EMITTERS = { title: '♨️ Calefacción · cómo calienta', keys: ['radiadores', 'suelo_radiante'], together: true }
+export const HEAT_EMITTERS = { title: 'Cómo calienta', keys: ['radiadores', 'suelo_radiante', 'chimenea'], together: true }
 /** Recuadros de «Qué buscamos» */
 export const CRITERIA_BOXES = [...EXCLUSIVE_SETS, HEAT_EMITTERS]
 /** En una casa, opciones de las que solo puede tener una (al marcar una se quita la otra) */
@@ -290,8 +292,8 @@ export function critItems(keys: string[]) {
   return out
 }
 /** Grupos para elegir en lo que buscamos (con las opciones deducidas al principio de cada grupo) */
-export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map((g, i) =>
-  i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: ['calefaccion_cualquiera', 'gasoil', 'propano', ...g.keys] } : g)
+export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map(g =>
+  g.title.includes('Piscina') ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : g.title.includes('Calefacción') ? { ...g, keys: ['calefaccion_cualquiera', 'gasoil', 'propano', ...g.keys] } : g)
 /** ¿Cumple el piso esta característica de lo que buscamos? */
 export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string): boolean {
   if (k.includes('|')) return k.split('|').some(x => meets(h, x))
