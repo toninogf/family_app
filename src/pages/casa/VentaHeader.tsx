@@ -59,7 +59,7 @@ export function SaleFacts({ m, onEdit, onEditValue }: { m: Mudanza; onEdit: () =
     l.heating_type && ['🔥', HEATING[l.heating_type]],
     l.cooling && ['❄️', `aire: ${COOLING[l.cooling]}`]
   ].filter(Boolean) as [string, string][])
-  const extras = (l.features ?? []).filter(f => !(f === 'calefaccion' && l.heating_type) && !(f === 'aire' && l.cooling))
+  const extras = (l.features ?? []).filter(f => f !== 'calefaccion' && !(f === 'aire' && l.cooling))
   const place = [l.address, l.zone, l.municipality].filter(Boolean).join(' · ')
   // «Lo que pesa en el precio» (lo usa «¿Estamos en precio?» para comparar más allá del €/m²)
   const value = [

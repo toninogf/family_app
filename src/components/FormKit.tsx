@@ -143,7 +143,7 @@ export const FEATURE_ICON: Record<string, string> = {
   piscina: '🏊', reformado: '✨', placas_solares: '🔆', solar_termica: '♨️', cerca_cole: '🏫', transporte: '🚌',
   piscina_comunitaria: '🏊‍♂️', piscina_cualquiera: '🏊', porche: '⛱️', barbacoa: '🍖', riego: '💧', huerto: '🥕', zona_juegos: '🛝',
   parcela_llana: '➖', parcela_pendiente: '⛰️', orientacion_sur: '🧭', vistas: '🏞️',
-  bateria: '🔋', suelo_radiante: '♨️', chimenea: '🪵', aislamiento: '🧱', cargador: '🔌', aerotermia: '🌬️', geotermia: '🌍',
+  bateria: '🔋', suelo_radiante: '♨️', radiadores: '🌡️', chimenea: '🪵', aislamiento: '🧱', cargador: '🔌', aerotermia: '🌬️', geotermia: '🌍',
   sotano: '⬇️', entrada_sin_escaleras: '♿', acceso_llano: '🛣️', una_planta: '🏠', sotano_habitable: '🛋️', buhardilla: '🔼', dormitorio_pb: '🛏️', garaje_cerrado: '🚘', armarios: '🚪',
   portero: '🛎️', balcon: '🌇', urb_cerrada: '🛡️', zonas_comunes: '🎾', fibra: '📶', gas_natural: '🔵'
 }

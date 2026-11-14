@@ -77,6 +77,7 @@ const FEATURE_PATTERNS: [string, RegExp][] = [
   ['terraza', /\bterraza\b/i],
   ['exterior', /\bexterior\b/i],
   ['calefaccion', /\bcalefacci[oó]n\b/i],
+  ['radiadores', /\bradiador(es)?\b/i],
   ['aire', /\baire acondicionado\b/i],
   ['jardin', /\bjard[ií]n\b/i],
   ['piscina', /\bpiscina\b(?!\s+(comunitaria|com[uú]n|de la (urbanizaci[oó]n|comunidad)))/i],
@@ -266,7 +267,7 @@ PARCELA: (m² de parcela, solo el número)
 HABITACIONES:
 BANOS:
 PLANTA:
-EXTRAS: (los que tenga, separados por comas: piscina propia, piscina comunitaria, jardín, terraza, porche, barbacoa, riego automático, huerto, zona de juegos, parcela llana, parcela en pendiente, orientación sur, vistas, exterior, calefacción, aire acondicionado, aerotermia, geotermia, suelo radiante, chimenea, doble acristalamiento, batería, punto de carga, reformado, sótano, sótano habitable, buhardilla, dormitorio en planta baja, entrada sin escaleras, acceso llano (sin cuestas), todo en una planta, garaje, garaje cerrado, trastero, armarios empotrados, ascensor, portero o conserje, balcón, urbanización cerrada, vigilancia, zonas comunes, pista de pádel, fibra óptica, gas natural)
+EXTRAS: (los que tenga, separados por comas: piscina propia, piscina comunitaria, jardín, terraza, porche, barbacoa, riego automático, huerto, zona de juegos, parcela llana, parcela en pendiente, orientación sur, vistas, exterior, radiadores, aire acondicionado, aerotermia, geotermia, suelo radiante, chimenea, doble acristalamiento, batería, punto de carga, reformado, sótano, sótano habitable, buhardilla, dormitorio en planta baja, entrada sin escaleras, acceso llano (sin cuestas), todo en una planta, garaje, garaje cerrado, trastero, armarios empotrados, ascensor, portero o conserje, balcón, urbanización cerrada, vigilancia, zonas comunes, pista de pádel, fibra óptica, gas natural)
 SOLAR: (placas solares: «no», «fotovoltaicas» —con la potencia en kWp y si tienen batería, si aparece— o «térmicas» para agua caliente; NO CONSTA si no se sabe)
 CERTIFICADO: (letra de consumo, A-G)
 COMUNIDAD: (€/mes, solo el número)

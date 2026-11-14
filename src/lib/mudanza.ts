@@ -218,7 +218,7 @@ export const FEATURES: Record<string, string> = {
   barbacoa: 'Barbacoa', riego: 'Riego automático', huerto: 'Huerto', zona_juegos: 'Zona de juegos',
   parcela_llana: 'Parcela llana', parcela_pendiente: 'Parcela en pendiente', orientacion_sur: 'Orientación sur', vistas: 'Vistas', exterior: 'Exterior',
   // Energía y confort
-  calefaccion: 'Calefacción', aire: 'Aire acondicionado', aerotermia: 'Aerotermia', geotermia: 'Geotermia', placas_solares: 'Placas solares', bateria: 'Batería (placas)',
+  radiadores: 'Radiadores', calefaccion: 'Calefacción', aire: 'Aire acondicionado', aerotermia: 'Aerotermia', geotermia: 'Geotermia', placas_solares: 'Placas solares', bateria: 'Batería (placas)',
   solar_termica: 'Solar térmica (agua)', suelo_radiante: 'Suelo radiante', chimenea: 'Chimenea o estufa', aislamiento: 'Buen aislamiento / doble cristal',
   cargador: 'Punto de carga (coche)',
   // La casa
@@ -233,7 +233,7 @@ export const FEATURES: Record<string, string> = {
 /** Los extras agrupados, para elegirlos sin una lista enorme */
 export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
   { title: '🏊 Piscina y exterior', keys: ['piscina', 'piscina_comunitaria', 'jardin', 'terraza', 'porche', 'barbacoa', 'riego', 'huerto', 'zona_juegos', 'parcela_llana', 'parcela_pendiente', 'orientacion_sur', 'vistas', 'exterior'] },
-  { title: '⚡ Energía y confort', keys: ['calefaccion', 'aire', 'aerotermia', 'geotermia', 'gas_natural', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
+  { title: '⚡ Energía y confort', keys: ['radiadores', 'aire', 'aerotermia', 'geotermia', 'gas_natural', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
   { title: '🏠 La casa', keys: ['reformado', 'sotano', 'sotano_habitable', 'buhardilla', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'portero', 'balcon'] },
   { title: '♿ Accesibilidad', keys: ['entrada_sin_escaleras', 'acceso_llano', 'una_planta', 'dormitorio_pb', 'ascensor'] },
   { title: '🏘️ Urbanización y servicios', keys: ['urb_cerrada', 'zonas_comunes', 'fibra', 'transporte', 'cerca_cole'] }
@@ -264,7 +264,8 @@ const FEATURE_ORDER = FEATURE_GROUPS.flatMap(g => g.keys)
 /** Extras de una casa para enseñar: en el orden de los grupos y sin repetir (garaje cerrado ya es garaje, etc.) */
 export function shownFeatures(h: Pick<Home, 'features' | 'heating_type' | 'cooling'>) {
   const f = h.features
-  return f.filter(k => !(k === 'calefaccion' && h.heating_type) && !(k === 'aire' && h.cooling)
+  // «Calefacción» a secas ya no se enseña (es genérico: va con su tipo arriba)
+  return f.filter(k => k !== 'calefaccion' && !(k === 'aire' && h.cooling)
     && !(k === 'garaje' && f.includes('garaje_cerrado')) && !(k === 'sotano' && f.includes('sotano_habitable'))
     && !((k === 'gas_natural' || k === 'aerotermia' || k === 'geotermia') && h.heating_type === k))
     .sort((a, b) => (FEATURE_ORDER.indexOf(a) + 1 || 999) - (FEATURE_ORDER.indexOf(b) + 1 || 999))
