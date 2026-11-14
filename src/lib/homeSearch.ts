@@ -48,6 +48,7 @@ export function homeSearchPrompt(c: Criteria | null, homes: Home[], rejections: 
     c?.municipalities.length ? `- Localidades: ${c.municipalities.join(', ')}${c.zones.length ? ` (zonas: ${c.zones.join(', ')})` : ''}. Puedes incluir alguna de los alrededores si es muy buena, avisándolo en la nota.` : c?.zones.length ? `- Zonas: ${c.zones.join(', ')}` : null,
     c?.min_rooms ? `- Mínimo ${c.min_rooms} habitaciones (la buhardilla y el sótano habitable cuentan como una más cada uno)` : null,
     c?.min_m2 ? `- Mínimo ${c.min_m2} m² construidos` : null,
+    c?.min_plot_m2 ? `- Parcela de al menos ${c.min_plot_m2} m²` : null,
     c?.must_haves.length ? `- IMPRESCINDIBLE: ${critItems(c.must_haves).map(criteriaLabel).join(', ')}` : null,
     c?.nice_to_haves.length ? `- Valoramos (suma, no obliga): ${critItems(c.nice_to_haves).map(criteriaLabel).join(', ')}` : null
   ].filter(Boolean)

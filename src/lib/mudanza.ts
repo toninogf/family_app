@@ -92,7 +92,7 @@ export type BuyerOffer = {
   notes: string | null
 }
 
-export type Criteria = { household_id: string; max_price_cents: number | null; min_rooms: number | null; min_m2: number | null; zones: string[]; municipalities: string[]; must_haves: string[]; nice_to_haves: string[]; score_weights?: Record<string, number> | null }
+export type Criteria = { household_id: string; max_price_cents: number | null; min_rooms: number | null; min_m2: number | null; min_plot_m2?: number | null; zones: string[]; municipalities: string[]; must_haves: string[]; nice_to_haves: string[]; score_weights?: Record<string, number> | null }
 export type HomeStatus = 'propuesta' | 'interesa' | 'llamar' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta'
 export type Home = {
   id: string
@@ -408,6 +408,7 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
     out.push({ label: `${c.min_rooms}+ hab.${e && e.extra.length && h.rooms! < c.min_rooms ? ` (con ${e.extra.join(' y ')})` : ''}`, ok: e == null ? null : e.total >= c.min_rooms })
   }
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
+  if (c.min_plot_m2) { const p = h.plot_m2 == null ? null : Number(h.plot_m2); out.push({ label: `Parcela ${c.min_plot_m2.toLocaleString('es-ES')}+ m²`, ok: p == null ? null : p >= c.min_plot_m2, near: p != null && p < c.min_plot_m2 && p >= c.min_plot_m2 * 0.9 }) }
   if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2, near: h.size_m2 != null && Number(h.size_m2) < c.min_m2 && Number(h.size_m2) >= c.min_m2 * 0.9 })
   for (const k of critItems(c.must_haves)) {
     const ok = meets(h, k)
@@ -471,7 +472,7 @@ export function useMudanza() {
       supabase.from('sale_price_history').select('id, price_cents, changed_on, changed_at').order('changed_at'),
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
-      supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, zones, municipalities, must_haves, nice_to_haves, score_weights').maybeSingle(),
+      supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, min_plot_m2, zones, municipalities, must_haves, nice_to_haves, score_weights').maybeSingle(),
       supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, reform, ref_value_cents, new_build, plot_m2, useful_m2, year_built, contact, advertiser, buyer_fee_kind, buyer_fee_pct, buyer_fee_cents, buyer_fee_vat, buyer_fee_note, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, status, discard_reason, discard_category, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),

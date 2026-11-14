@@ -943,7 +943,7 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
   const [open, setOpen] = useState(() => { try { return localStorage.getItem('buscamos.criterios') === '1' } catch { return false } })
   const toggle = () => setOpen(o => { try { localStorage.setItem('buscamos.criterios', o ? '0' : '1') } catch { /* sin almacenamiento */ } return !o })
   const nice = c?.nice_to_haves ?? []
-  const has = c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length || nice.length)
+  const has = c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.min_plot_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length || nice.length)
   if (!has) {
     return (
       <button onClick={onEdit} className="bg-card rounded-2xl p-4 text-left flex flex-col gap-1.5">
@@ -958,7 +958,8 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
   const basics = [
     c.max_price_cents ? `Hasta ${priceShort(c.max_price_cents)} para entrar a vivir` : null,
     c.min_rooms ? `${c.min_rooms}+ hab.` : null,
-    c.min_m2 ? `${c.min_m2}+ m²` : null
+    c.min_m2 ? `${c.min_m2}+ m²` : null,
+    c.min_plot_m2 ? `parcela ${c.min_plot_m2.toLocaleString('es-ES')}+ m²` : null
   ].filter(Boolean).join(' · ')
   const places = [...(c.municipalities ?? []), ...c.zones]
   return (
@@ -1878,6 +1879,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   const [max, setMax] = useState(priceInput(c?.max_price_cents))
   const [rooms, setRooms] = useState(c?.min_rooms?.toString() ?? '')
   const [m2, setM2] = useState(c?.min_m2?.toString() ?? '')
+  const [plotMin, setPlotMin] = useState(c?.min_plot_m2?.toString() ?? '')
   const [zones, setZones] = useState((c?.zones ?? []).join(', '))
   const [towns, setTowns] = useState<string[]>(c?.municipalities ?? [])
   const [pick, setPick] = useState(0)
@@ -1893,6 +1895,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
     const err = await m.write('search_criteria', {
       household_id: householdId, max_price_cents: maxCents,
       min_rooms: rooms.trim() ? parseInt(rooms, 10) : null, min_m2: m2.trim() ? parseInt(m2, 10) : null,
+      min_plot_m2: plotMin.trim() ? parseInt(plotMin.replace(/\./g, ''), 10) || null : null,
       zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k)).slice(0, 40), score_weights: weights
     }, undefined, 'household_id')
     if (err) setError(err); else onClose()
@@ -1903,10 +1906,12 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
       <form onSubmit={submit} className="flex flex-col gap-5">
         <TextField label="Presupuesto máximo para entrar a vivir (€)" inputMode="decimal" value={max} onChange={e => setMax(e.target.value)} placeholder="Ej. 650.000" />
         <p className="text-[12px] text-muted -mt-3">Lo que os cuesta en total: precio + reforma + impuestos y gastos. Así todos los pisos se comparan igual.</p>
-        <div className="grid grid-cols-2 gap-3">
-          <TextField label="Habitaciones mínimas" inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} />
-          <TextField label="Metros mínimos" inputMode="numeric" value={m2} onChange={e => setM2(e.target.value)} />
+        <div className="grid grid-cols-3 gap-3">
+          <TextField label="Habitaciones mín." inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} />
+          <TextField label="m² casa mín." inputMode="numeric" value={m2} onChange={e => setM2(e.target.value)} />
+          <TextField label="m² parcela mín." inputMode="numeric" value={plotMin} onChange={e => setPlotMin(e.target.value)} placeholder="Ej. 500" />
         </div>
+        <p className="text-[12px] text-muted -mt-3">Las habitaciones cuentan la buhardilla y el sótano habitable. Si falla por poco (menos de un 10 % en metros o parcela) penaliza la mitad.</p>
         <div className="flex flex-col gap-2">
           <Combobox key={pick} label="Localidades (Comunidad de Madrid)" value={null} options={ALL_MUNICIPALITIES.filter(x => !towns.includes(x))}
             onChange={v => { if (v) { setTowns(ts => (ts.includes(v) ? ts : [...ts, v])); setPick(p => p + 1) } }} placeholder="Añadir localidad…" />
