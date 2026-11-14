@@ -157,9 +157,17 @@ export function allChecks(h: Home): { key: string; title: string; item: HealthIt
   return [...auto, ...rest]
 }
 
-export function healthCounts(h: Home) {
+/**
+ * Las dos partes de «Estado y documentos» en la ficha:
+ * - docs: papeles y situación legal (Catastro, inundable, radón, precio, nota simple, comunidad, ITE, VPO, ocupación…)
+ * - estado: cómo está la casa, lo que se comprueba yendo a verla (instalaciones, humedades, luz, ruido…)
+ */
+export const ESTADO_KEYS = ['saneamiento', 'ruido', 'instalaciones', 'revision', ...VISIT_CHECKS.map(c => c.key)]
+export const partOf = (key: string): 'docs' | 'estado' => (ESTADO_KEYS.includes(key) ? 'estado' : 'docs')
+
+export function healthCounts(h: Home, part?: 'docs' | 'estado') {
   const c = { ok: 0, warn: 0, bad: 0, unknown: 0 }
-  for (const x of allChecks(h)) c[x.item.s]++
+  for (const x of allChecks(h)) if (!part || partOf(x.key) === part) c[x.item.s]++
   return c
 }
 

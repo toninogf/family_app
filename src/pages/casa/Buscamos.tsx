@@ -22,7 +22,7 @@ import Combobox from '../../components/Combobox'
 import HomeHealth from './HomeHealth'
 import { aiStatus, allChecks, healthCounts, type Health, type Market } from '../../lib/health'
 import { HomePrice } from './HomePrice'
-import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, readyPriceAt, reformTotal, type Reform } from '../../lib/reforma'
+import { buyerFee, buyingCosts, feeLabel, mergeAiReform, rangeK, readyPrice, readyPriceAt, reformTotal, REFORM_STATE, type Reform } from '../../lib/reforma'
 import { HomeGastos } from './HomeGastos'
 import { HomeSchools, useSchoolSummaries } from './HomeSchools'
 import { FilterBar, FilterSheet, useHomeFilters } from './HomeFilters'
@@ -32,6 +32,7 @@ import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } f
 import { recommend } from '../../lib/pricing'
 import { HomeReforma, ReformaEditor } from './HomeReforma'
 import { AiHomeSearch } from './AiHomeSearch'
+import { VisitBrief, briefLists } from './VisitBrief'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
@@ -239,10 +240,11 @@ function StatusBadge({ s }: { s: HomeStatus }) {
 }
 
 // ---------- Ficha por grupos plegables ----------
-type GroupKey = 'resumen' | 'casa' | 'dinero' | 'docs' | 'zona' | 'seguimiento' | 'enlaces' | 'fotos'
+type GroupKey = 'resumen' | 'visita' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'seguimiento' | 'enlaces' | 'fotos'
 const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
-  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'casa', icon: '🏠', title: 'La casa' }, { k: 'dinero', icon: '💶', title: 'El dinero' },
-  { k: 'docs', icon: '📋', title: 'Estado y documentos' },
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'visita', icon: '🎯', title: 'Para la visita' }, { k: 'casa', icon: '🏠', title: 'La casa' },
+  { k: 'dinero', icon: '💶', title: 'Gastos e impuestos' }, { k: 'reforma', icon: '🔨', title: 'Reforma' },
+  { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'estado', icon: '🔍', title: 'Estado de la vivienda' },
   { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'seguimiento', icon: '📅', title: 'Seguimiento' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
   { k: 'fotos', icon: '📷', title: 'Fotos' }
 ]
@@ -260,7 +262,9 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const school = useNearestSchool(h)
   const rec = recommend(h, m.homes)
   const checks = mustHaveCheck(h, m.criteria)
-  const hc = healthCounts(h)
+  const hc = healthCounts(h, 'docs')
+  const he = healthCounts(h, 'estado')
+  const brief = briefLists(h, m)
   const checksAll = allChecks(h)
   const t = reformTotal(h.reform, h)
   const costs = buyingCosts(h)
@@ -270,9 +274,12 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   return {
     resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
+    visita: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas para negociar`),
     dinero: join(monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`,
       h.advertiser !== 'particular' && (!h.buyer_fee_kind ? 'honorarios ¿?' : (buyerFee(h) ?? 0) > 0 ? `honorarios ${kShort(buyerFee(h)!)}` : 'sin honorarios'),
-      costs > 0 && `gastos ${kShort(costs)}`, t ? `reforma ${rangeK(t.lo, t.hi)}` : h.reform?.state === 'listo' ? 'sin reforma' : 'reforma sin valorar'),
+      costs > 0 && `impuestos y gastos ${kShort(costs)}`),
+    reforma: t ? `${rangeK(t.lo, t.hi)}${h.reform?.state ? ` · ${REFORM_STATE[h.reform.state].label.toLowerCase()}` : ''}` : h.reform?.state === 'listo' ? 'para entrar a vivir' : h.reform?.state ? `${REFORM_STATE[h.reform.state].label.toLowerCase()} · sin partidas` : 'sin valorar',
+    estado: join(`✅ ${he.ok}`, `⚠️ ${he.warn}`, he.bad > 0 && `⛔ ${he.bad}`, `❓ ${he.unknown}`),
     docs: join(`✅ ${hc.ok}`, `⚠️ ${hc.warn}`, hc.bad > 0 && `⛔ ${hc.bad}`, `❓ ${hc.unknown}`, `Catastro ${statusIcon(checksAll.find(c => c.key === 'catastro')?.item.s)}`,
       `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
@@ -582,6 +589,10 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         <HomePrice h={h} m={m} />
       </Group>
 
+      <Group k="visita" g={groups} line={sum.visita}>
+        <VisitBrief h={h} m={m} />
+      </Group>
+
       <Group k="casa" g={groups} line={sum.casa}>
         <QuickFacts h={h} m={m} onEdit={onEdit} />
       </Group>
@@ -590,11 +601,18 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         <MonthlyCard h={h} onEdit={() => onEdit('gastos')} />
         <FeeCard h={h} onEdit={() => onEdit('honorarios')} />
         <HomeGastos h={h} onEdit={() => onEdit('compra')} />
+      </Group>
+
+      <Group k="reforma" g={groups} line={sum.reforma}>
         <HomeReforma h={h} onEdit={() => onEdit('reforma')} />
       </Group>
 
       <Group k="docs" g={groups} line={sum.docs} lineAlways>
-        <HomeHealth h={h} m={m} householdId={householdId} embedded />
+        <HomeHealth h={h} m={m} householdId={householdId} embedded part="docs" />
+      </Group>
+
+      <Group k="estado" g={groups} line={sum.estado} lineAlways>
+        <HomeHealth h={h} m={m} householdId={householdId} embedded part="estado" />
       </Group>
 
       <Group k="zona" g={groups} line={sum.zona} extra={<button onClick={() => onEdit('zona')} aria-label="Editar la zona" className="min-h-9 px-2 text-sm">✏️</button>}>
@@ -1167,7 +1185,7 @@ export function HomeVisitSheet({ home, visit, adults, m, onClose }: { home: Home
         <Choice<HomeVisit['status']> label="Estado" value={status} onChange={setStatus}
           options={[{ value: 'scheduled', label: 'Prevista' }, { value: 'done', label: 'Hecha' }, { value: 'cancelled', label: 'Cancelada' }]} />
 
-        <p className="text-[13px] text-muted -mt-2">Lo que veáis (luz, humedades, ruido, derramas…) apuntadlo en la ficha: «📋 Estado y documentos» → «Yendo a verla», y lo demás en las notas de abajo. Así queda todo junto aunque hagáis varias visitas.</p>
+        <p className="text-[13px] text-muted -mt-2">Lo que veáis (luz, humedades, ruido, derramas…) apuntadlo en la ficha: «🔍 Estado de la vivienda», y lo demás en las notas de abajo. Así queda todo junto aunque hagáis varias visitas.</p>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">{visit ? 'Guardar' : 'Apuntar visita'}</button>
         {visit && <ConfirmDelete label="Eliminar visita" confirming={confirming} setConfirming={setConfirming} onConfirm={async () => { await m.remove('home_visits', visit.id); onClose() }} />}
@@ -1231,7 +1249,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
   // Bloques: en un piso nuevo, abiertos «anuncio» y «lo básico»; al venir del ✏️ de la ficha, solo ese bloque
   // Mismos bloques y en el mismo orden que la ficha; el ✏️ de cada tarjeta lleva a su sitio (bloque y apartado)
   const target = focus ? ({
-    datos: ['casa', 'casa'], gastos: ['dinero', 'dinero-mes'], reforma: ['dinero', 'dinero-reforma'], honorarios: ['dinero', 'dinero-honorarios'],
+    datos: ['casa', 'casa'], gastos: ['dinero', 'dinero-mes'], reforma: ['reforma', 'reforma'], honorarios: ['dinero', 'dinero-honorarios'],
     compra: ['dinero', 'dinero-compra'], zona: ['zona', 'zona'], contacto: ['contacto', 'contacto'], fotos: ['enlaces', 'enlaces'], enlaces: ['enlaces', 'enlaces']
   } as const)[focus] : null
   const focusSection = target?.[0] ?? null
@@ -1645,7 +1663,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
           </div>
         </EditSection>
 
-        <EditSection id="dinero" icon="💶" title="El dinero" {...cnt('dinero')} flashed={flashedIn('dinero')} open={sections.isOpen('dinero')} onToggle={() => sections.toggle('dinero')}>
+        <EditSection id="dinero" icon="💶" title="Gastos e impuestos" {...cnt('dinero')} flashed={flashedIn('dinero')} open={sections.isOpen('dinero')} onToggle={() => sections.toggle('dinero')}>
           <SubHead id="dinero-mes" first>📆 Gastos al mes</SubHead>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Comunidad" suffix="€/mes" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} flash={fl('comunidad')} />
@@ -1683,7 +1701,9 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <input type="checkbox" checked={newBuild} onChange={e => setNewBuild(e.target.checked)} className="w-5 h-5" />
             <span>Obra nueva (IVA 10 % + AJD en lugar de ITP)</span>
           </label>
-          <SubHead id="dinero-reforma">🔨 Reforma</SubHead>
+        </EditSection>
+
+        <EditSection id="reforma" icon="🔨" title="Reforma" open={sections.isOpen('reforma')} onToggle={() => sections.toggle('reforma')}>
           <ReformaEditor m={m} householdId={householdId} value={reform} onChange={setReform}
             h={{ ...(home ?? {}), id: home?.id, price_cents: parsePrice(amount) ?? null, size_m2: num(m2) ?? null, useful_m2: num(useful) ?? null,
               rooms: rooms.trim() ? parseInt(rooms, 10) : null, baths: baths.trim() ? parseInt(baths, 10) : null, year_built: year.trim() ? parseInt(year, 10) : null,
@@ -1765,7 +1785,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
 }
 
 const SECTIONS = [
-  { id: 'casa', title: 'La casa' }, { id: 'dinero', title: 'El dinero' }, { id: 'zona', title: 'La zona' }, { id: 'contacto', title: 'Contacto' }
+  { id: 'casa', title: 'La casa' }, { id: 'dinero', title: 'Gastos e impuestos' }, { id: 'zona', title: 'La zona' }, { id: 'contacto', title: 'Contacto' }
 ]
 
 function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: string; onClose: () => void }) {

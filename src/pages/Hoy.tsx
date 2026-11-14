@@ -132,7 +132,7 @@ export default function Hoy() {
                 {mud.tomorrow.map((x, i) => (
                   <span key={i} className="text-[15px] font-semibold">
                     {x.kind === 'compra' ? '🚗' : '🏠'} {hhmm(x.start)} · {x.title}
-                    <span className="block text-[12px] font-normal text-muted">{x.kind === 'compra' ? '🎒 Mira «Para llevar» antes de ir' : `Preparar la casa: ${x.prep}/${PREP_ITEMS.length}`}</span>
+                    <span className="block text-[12px] font-normal text-muted">{x.kind === 'compra' ? '🎯 Mira «Para la visita» antes de ir' : `Preparar la casa: ${x.prep}/${PREP_ITEMS.length}`}</span>
                   </span>
                 ))}
               </Link>

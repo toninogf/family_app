@@ -4,11 +4,11 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Member } from '../../lib/supabase'
 import { hhmm, longDate, relativeDay, today } from '../../lib/dates'
-import { HOME_STATUS, INTEREST, PREP_ITEMS, mustHaveCheck, portalName, price, type BuyerVisit, type Home, type HomeVisit, type Mudanza } from '../../lib/mudanza'
-import { allChecks } from '../../lib/health'
+import { HOME_STATUS, INTEREST, PREP_ITEMS, portalName, price, type BuyerVisit, type Home, type HomeVisit, type Mudanza } from '../../lib/mudanza'
 import { kEur, readyPrice } from '../../lib/reforma'
 import { OBJECTION_HELP } from '../../lib/venta'
 import { HomeVisitSheet } from './Buscamos'
+import { VisitBrief, briefCount } from './VisitBrief'
 import { VisitSheet } from './Vendemos'
 import { Sheet } from '../../components/Sheet'
 
@@ -104,14 +104,14 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
           <h2 className="text-base font-bold">🔁 ¿Segunda visita? <span className="text-muted font-normal text-sm">· os gustaron al verlas</span></h2>
           {second.map(h => {
             const last = m.homeVisits.filter(v => v.home_id === h.id && v.status === 'done').sort((a, b) => b.visit_date.localeCompare(a.visit_date))[0]
-            const pend = bringCount(h, m)
+            const pend = briefCount(h, m)
             return (
               <div key={h.id} className="rounded-2xl bg-card p-3 flex flex-col gap-1.5 border-l-4 border-accent">
                 <span className="font-bold text-[15px] break-words">{h.title}</span>
                 <span className="text-[12px] text-muted">{[last && `vista ${relativeDay(last.visit_date).toLowerCase()}`, pend ? `${pend} cosa${pend > 1 ? 's' : ''} por mirar o preguntar` : 'nada pendiente'].filter(Boolean).join(' · ')}</span>
                 <div className="flex gap-1.5 flex-wrap">
                   <button onClick={() => setHomeVisit({ home: h })} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-[13px] font-semibold">📅 Apuntar 2ª visita</button>
-                  <button onClick={() => openHome(h.id, 'docs')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Qué falta ›</button>
+                  <button onClick={() => openHome(h.id, 'visita')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Qué falta ›</button>
                   <button onClick={() => skipHome(h.id)} className="min-h-10 px-3 rounded-lg text-[13px] text-muted">Ahora no</button>
                 </div>
               </div>
@@ -191,7 +191,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
             {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">🗺️ Cómo llegar</a>}
             {ad && <a href={ad} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 {portalName(ad) ?? 'Anuncio'} ↗</a>}
             {h?.contact_phone && <a href={`tel:${h.contact_phone.replace(/\s+/g, '')}`} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">📞 {h.agency ?? h.contact ?? 'Llamar'}</a>}
-            {h && <button onClick={() => setPrepOpen(!prepOpen)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">🎒 Para llevar {prepOpen ? '▾' : '▸'}</button>}
+            {h && <button onClick={() => setPrepOpen(!prepOpen)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">🎯 Para la visita {prepOpen ? '▾' : '▸'}</button>}
             {h && <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>}
           </div>
         )}
@@ -204,7 +204,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
           </div>
         )}
         {past && h && adults && rate && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} />}
-        {prepOpen && h && <ToBring h={h} m={m} />}
+        {prepOpen && h && <VisitBrief h={h} m={m} compact />}
       </div>
     )
   }
@@ -253,7 +253,7 @@ function CloseCard({ it, m, adults, rate, onOpen, onHome }: { it: Item; m: Mudan
         {h && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} />}
         {h && (
           <div className="flex gap-1.5 flex-wrap">
-            <button onClick={() => onHome(h.id, 'docs')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">📋 Apuntar lo visto</button>
+            <button onClick={() => onHome(h.id, 'estado')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">🔍 Apuntar lo visto</button>
             <button onClick={() => onHome(h.id)} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">👍 / 🙅 Decidir en la ficha</button>
           </div>
         )}
@@ -266,45 +266,6 @@ function CloseCard({ it, m, adults, rate, onOpen, onHome }: { it: Item; m: Mudan
       <span className="font-bold text-[15px]">{it.v.contact_name || 'Comprador'}</span>
       <span className="text-[13px]">¿Qué le pareció? Interés, lo que le gustó, objeciones… ›</span>
     </button>
-  )
-}
-
-/** «🎒 Para llevar»: lo que conviene mirar o preguntar en esa casa (sale de su ficha; no guarda nada) */
-function bringLists(h: Home, m: Mudanza) {
-  const ask: string[] = []
-  if (h.community_fee_cents == null) ask.push('Gastos de comunidad al mes')
-  if (h.ibi_cents == null) ask.push('IBI')
-  if (!h.energy) ask.push('Certificado energético')
-  if (!h.year_built) ask.push('Año de construcción')
-  if (h.advertiser !== 'particular' && !h.buyer_fee_kind) ask.push('¿Cobráis honorarios al comprador?')
-  const checks = allChecks(h).filter(c => c.item.s !== 'ok' && !['catastro', 'inundable', 'radon', 'mercado'].includes(c.key))
-  const look = checks.filter(c => c.item.s === 'unknown').map(c => c.title)
-  const warn = checks.filter(c => c.item.s !== 'unknown').map(c => `${c.item.s === 'bad' ? '⛔' : '⚠️'} ${c.title}${c.item.n ? `: ${c.item.n}` : ''}`)
-  const must = mustHaveCheck(h, m.criteria)
-  const unsure = must.filter(c => c.ok === null).map(c => c.label)
-  const viaReform = must.filter(c => c.ok === false && c.reform).map(c => `${c.label} (pedir coste: ${c.reform!.label})`)
-  return { ask, look, warn, unsure, viaReform }
-}
-const bringCount = (h: Home, m: Mudanza) => { const l = bringLists(h, m); return l.ask.length + l.look.length + l.warn.length + l.unsure.length + l.viaReform.length }
-
-function ToBring({ h, m }: { h: Home; m: Mudanza }) {
-  const { ask, look, warn, unsure, viaReform } = bringLists(h, m)
-  const block = (title: string, list: string[]) => list.length ? (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[12px] font-semibold">{title}</span>
-      {list.map(x => <span key={x} className="text-[12px] text-muted">· {x}</span>)}
-    </div>
-  ) : null
-  const any = ask.length + look.length + warn.length + unsure.length + viaReform.length
-  return (
-    <div className="rounded-xl bg-bg p-3 flex flex-col gap-2">
-      {!any && <span className="text-[12px] text-muted">Lo tenéis todo: id a disfrutar la visita.</span>}
-      {block('⚠️ Ojo con', warn)}
-      {block('❓ Imprescindibles por confirmar', unsure)}
-      {block('🔨 Faltan y se pueden hacer', viaReform)}
-      {block('🗣️ Preguntar', ask)}
-      {block('👀 Mirar (Estado y documentos)', look)}
-    </div>
   )
 }
 

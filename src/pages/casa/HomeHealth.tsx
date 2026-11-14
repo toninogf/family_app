@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { saleDocUrl, uploadDocFiles, type DocFile, type Home, type Mudanza } from '../../lib/mudanza'
 import { NOTA_PROMPT, notaStatus, parseNota, pdfText } from '../../lib/notaSimple'
 import {
-  AI_CHECKS, MANUAL_CHECKS, VISIT_CHECKS, STATUS_ICON, STATUS_LABEL, cadastreCheck, floodCheck, healthCounts, marketCheck, radonCheck,
+  AI_CHECKS, ESTADO_KEYS, MANUAL_CHECKS, VISIT_CHECKS, STATUS_ICON, STATUS_LABEL, cadastreCheck, floodCheck, healthCounts, marketCheck, radonCheck,
   type Cadastre, type Health, type HealthItem, type HealthStatus
 } from '../../lib/health'
 import { Choice, Sheet, TextArea, TextField } from '../../components/Sheet'
@@ -16,7 +16,7 @@ type CheckResult = { error?: string; candidates?: Candidate[]; units?: Unit[]; p
 const tone = (s: HealthStatus) => (s === 'ok' ? 'text-accent' : s === 'bad' ? 'text-danger' : s === 'warn' ? 'text-[#C77A12]' : 'text-muted')
 
 /** «Estado y riesgos» de un piso: semáforo con lo automático, lo de la IA y lo que hay que comprobar con papeles */
-export default function HomeHealth({ h, m, householdId, embedded }: { h: Home; m: Mudanza; householdId: string; embedded?: boolean }) {
+export default function HomeHealth({ h, m, householdId, embedded, part }: { h: Home; m: Mudanza; householdId: string; embedded?: boolean; part?: 'docs' | 'estado' }) {
   // «embedded»: ya va dentro de un grupo plegable de la ficha, así que sin cabecera propia y siempre abierto
   const [openState, setOpen] = useState(false)
   const open = embedded || openState
@@ -68,8 +68,8 @@ export default function HomeHealth({ h, m, householdId, embedded }: { h: Home; m
       </button>}
       {open && (
         <div className="flex flex-col gap-3">
-          {/* Automático */}
-          <div className="bg-card rounded-2xl p-3 flex flex-col gap-3">
+          {/* Automático (papeles y riesgos: va con los documentos) */}
+          {part !== 'estado' && <div className="bg-card rounded-2xl p-3 flex flex-col gap-3">
             <Row icon={cad.s} title="Catastro" note={cd ? `${cd.rc} · ${[cd.built_m2 && `${cd.built_m2} m² construidos`, cd.plot_m2 && `${flat ? 'parcela del edificio' : 'parcela'} ${cd.plot_m2} m²`, cd.year && `de ${cd.year}`, cd.use].filter(Boolean).join(' · ')}` : undefined} detail={cad.n}>
               <button onClick={() => setCatOpen(true)} className="min-h-9 px-3 rounded-lg border border-line text-[13px] font-semibold">{cd ? 'Cambiar' : 'Consultar'}</button>
             </Row>
@@ -89,13 +89,20 @@ export default function HomeHealth({ h, m, householdId, embedded }: { h: Home; m
             {busy && <p role="status" className="text-xs text-muted">{busy}</p>}
             {error && <p role="alert" className="text-xs text-danger">{error}</p>}
             <p className="text-[11px] text-muted">Datos públicos del Catastro y de los mapas oficiales de zonas inundables del Ministerio (solo las zonas estudiadas). El radón, según la lista de municipios de la Comunidad de Madrid.</p>
-          </div>
+          </div>}
 
           {/* La IA y los papeles */}
-          <List title="Lo que dice el anuncio (a confirmar)" items={AI_CHECKS.filter(x => x.key !== 'precio_zona')} health={health} onOpen={setEdit} />
-          <List title="Con papeles" items={MANUAL_CHECKS} health={health} onOpen={setEdit} />
-          <List title="Yendo a verla" items={VISIT_CHECKS} health={health} onOpen={setEdit} />
-          <p className="text-[11px] text-muted -mt-1">En la visita, apuntadlo aquí y en las notas de la ficha. Si os dicen la comunidad, el IBI o el certificado, corregidlos en Editar.</p>
+          {(() => {
+            // Cada lista, con los puntos de su parte (documentos o estado de la vivienda)
+            const pick = <T extends { key: string }>(xs: T[]) => (!part ? xs : xs.filter(x => (part === 'estado') === ESTADO_KEYS.includes(x.key)))
+            const ai = pick(AI_CHECKS.filter(x => x.key !== 'precio_zona')), man = pick(MANUAL_CHECKS), vis = pick(VISIT_CHECKS)
+            return <>
+              {ai.length > 0 && <List title={part === 'estado' ? 'Lo que dice el anuncio (a confirmar en la visita)' : 'Lo que dice el anuncio (a confirmar)'} items={ai} health={health} onOpen={setEdit} />}
+              {man.length > 0 && <List title={part === 'estado' ? 'Instalaciones y revisión' : 'Con papeles'} items={man} health={health} onOpen={setEdit} />}
+              {vis.length > 0 && <List title="Yendo a verla" items={vis} health={health} onOpen={setEdit} />}
+            </>
+          })()}
+          {part !== 'docs' && <p className="text-[11px] text-muted -mt-1">En la visita, apuntadlo aquí y en las notas de la ficha. Si os dicen la comunidad, el IBI o el certificado, corregidlos en Editar.</p>}
           <p className="text-[11px] text-muted -mt-1">Lo de la IA se rellena al pegar su respuesta (pídeselo otra vez con el botón de la IA). Toca cualquier punto para cambiarlo, añadir notas o subir el documento.</p>
         </div>
       )}
