@@ -33,7 +33,7 @@ function km(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
 /** Tiempo en coche aproximado: carretera ≈ 1,3 × la línea recta, a ~40 km/h, + 5 min de aparcar */
 const driveMin = (k: number) => Math.round((k * 1.3) / 40 * 60 + 5)
 
-export default function Visitas({ m, members, householdId }: { m: Mudanza; members: Member[]; householdId: string }) {
+export default function Visitas({ m, members, householdId, meId }: { m: Mudanza; members: Member[]; householdId: string; meId: string }) {
   const navigate = useNavigate()
   const t = today()
   const adults = members.filter(x => x.kind === 'adult')
@@ -95,7 +95,7 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
       {toClose.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-bold">✍️ Por cerrar <span className="text-muted font-normal text-sm">· ¿cómo fue?</span></h2>
-          {toClose.map(it => <CloseCard key={it.id} it={it} m={m} adults={adults} rate={rate} onOpen={() => open(it)} onHome={openHome} />)}
+          {toClose.map(it => <CloseCard key={it.id} it={it} m={m} adults={adults} rate={rate} meId={meId} onOpen={() => open(it)} onHome={openHome} />)}
         </section>
       )}
 
@@ -140,13 +140,13 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
       {done.length > 0 && (
         <section className="flex flex-col gap-2">
           <button onClick={() => setShowDone(!showDone)} className="self-start text-[14px] font-semibold min-h-10">{showDone ? '▾' : '▸'} ✅ Hechas ({done.length})</button>
-          {showDone && done.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past adults={adults} rate={rate} />)}
+          {showDone && done.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past adults={adults} rate={rate} meId={meId} />)}
         </section>
       )}
       {cancelled.length > 0 && (
         <section className="flex flex-col gap-2">
           <button onClick={() => setShowCancelled(!showCancelled)} className="self-start text-[14px] font-semibold min-h-10 text-muted">{showCancelled ? '▾' : '▸'} Canceladas ({cancelled.length})</button>
-          {showCancelled && cancelled.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past adults={adults} rate={rate} />)}
+          {showCancelled && cancelled.map(it => <VisitCard key={it.id} it={it} m={m} nameOf={nameOf} onOpen={() => open(it)} onHome={openHome} past adults={adults} rate={rate} meId={meId} />)}
         </section>
       )}
 
@@ -161,9 +161,9 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
 
 /** Tarjeta de una visita: 🚗 franja azul (vamos) · 🏠 franja ámbar (vienen) */
 
-function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
+function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate, meId }: {
   it: Item; m: Mudanza; nameOf: (id: string | null) => string | null; onOpen: () => void; onHome: (id: string, grupo?: string) => void; past?: boolean
-  adults?: Member[]; rate?: Rate
+  adults?: Member[]; rate?: Rate; meId?: string
 }) {
   const [prepOpen, setPrepOpen] = useState(false)
   const time = `${hhmm(it.start)}${it.end ? `–${hhmm(it.end)}` : ''}`
@@ -202,7 +202,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
             <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>
           </div>
         )}
-        {past && h && adults && rate && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} />}
+        {past && h && adults && rate && meId && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} meId={meId} />}
         {prepOpen && h && <VisitBrief h={h} m={m} compact />}
       </div>
     )
@@ -230,7 +230,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
 }
 
 /** «Por cerrar»: la visita ya pasó; un toque para apuntar cómo fue */
-function CloseCard({ it, m, adults, rate, onOpen, onHome }: { it: Item; m: Mudanza; adults: Member[]; rate: Rate; onOpen: () => void; onHome: (id: string, grupo?: string) => void }) {
+function CloseCard({ it, m, adults, rate, meId, onOpen, onHome }: { it: Item; m: Mudanza; adults: Member[]; rate: Rate; meId: string; onOpen: () => void; onHome: (id: string, grupo?: string) => void }) {
   const when = `${relativeDay(it.date)} · ${hhmm(it.start)}`
   if (it.kind === 'compra') {
     const h = it.home
@@ -249,7 +249,7 @@ function CloseCard({ it, m, adults, rate, onOpen, onHome }: { it: Item; m: Mudan
             <button onClick={onOpen} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Cambiar fecha</button>
           </div>
         ) : null}
-        {h && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} />}
+        {h && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} meId={meId} />}
         {h && (
           <div className="flex gap-1.5 flex-wrap">
             <button onClick={() => onHome(h.id, 'estado')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">🔍 Apuntar lo visto</button>

@@ -10,11 +10,18 @@ export const rateHome = (m: Mudanza, householdId: string): Rate => (homeId, memb
 /** Mismos colores que la nota 0–10 */
 const tone = (s: number) => (s >= 8 ? 'bg-[#1F8A4C]' : s >= 6 ? 'bg-[#7BAE3F]' : s >= 5 ? 'bg-[#E0A21B]' : 'bg-[#C8452F]')
 
-export function Stars({ h, m, adults, rate }: { h: Home; m: Mudanza; adults: Member[]; rate: Rate }) {
+/** Cada uno solo puede cambiar su propia nota (lo impone la base de datos): la del otro se ve pero no se toca */
+export function Stars({ h, m, adults, rate, meId }: { h: Home; m: Mudanza; adults: Member[]; rate: Rate; meId: string }) {
   return (
     <div className="flex flex-col gap-1">
       {adults.map(a => {
         const cur = m.ratings.find(r => r.home_id === h.id && r.member_id === a.id)?.score ?? 0
+        const mine = a.id === meId
+        if (!mine) return (
+          <span key={a.id} className="text-[12px] font-semibold" style={{ color: a.color }}>
+            {a.display_name}: {cur ? <span className={`inline-block px-1.5 rounded-md text-white ${tone(cur)}`}>{cur}</span> : <span className="text-muted font-normal">aún sin nota</span>}
+          </span>
+        )
         return (
           <div key={a.id} className="flex flex-col gap-0.5">
             <span className="text-[12px] font-semibold" style={{ color: a.color }}>{a.display_name}{cur ? <span className="text-muted font-normal"> · {cur} de 10</span> : null}</span>

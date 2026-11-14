@@ -149,10 +149,21 @@ export const FEATURE_ICON: Record<string, string> = {
 }
 
 /** Chips de selección múltiple agrupados por tema (para que una lista larga se lea bien) */
-export function GroupedChips({ label, groups, labels, value, onChange, counts = true }: {
+export function GroupedChips({ label, groups, labels, value, onChange, counts = true, sets }: {
   label: string; groups: { title: string; keys: string[] }[]; labels: (k: string) => string
   value: string[]; onChange: (v: string[]) => void; counts?: boolean
+  /** Opciones que se excluyen entre sí: se pintan juntas en un recuadro «una de» */
+  sets?: { title: string; keys: string[] }[]
 }) {
+  const chip = (k: string) => {
+    const on = value.includes(k)
+    return (
+      <button type="button" key={k} aria-pressed={on} onClick={() => onChange(on ? value.filter(x => x !== k) : [...value, k])}
+        className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>
+        {FEATURE_ICON[k] ? `${FEATURE_ICON[k]} ` : ''}{labels(k)}
+      </button>
+    )
+  }
   return (
     <fieldset className="flex flex-col gap-3">
       {label && <legend className="text-sm font-medium text-muted mb-1.5">{label}</legend>}
@@ -161,16 +172,17 @@ export function GroupedChips({ label, groups, labels, value, onChange, counts = 
         return (
           <div key={g.title} className="flex flex-col gap-1.5">
             <span className="text-[13px] font-semibold">{g.title}{counts && n ? <span className="text-accent"> · {n}</span> : null}</span>
+            {(sets ?? []).map(st => {
+              const ks = st.keys.filter(k => g.keys.includes(k))
+              return ks.length > 1 ? (
+                <div key={st.title} className="rounded-xl border border-dashed border-line p-2 flex flex-col gap-1.5">
+                  <span className="text-[11px] text-muted">{st.title}: <b>una de estas</b> (si marcáis varias, basta con tener una)</span>
+                  <div className="flex gap-1.5 flex-wrap">{ks.map(chip)}</div>
+                </div>
+              ) : null
+            })}
             <div className="flex gap-1.5 flex-wrap">
-              {g.keys.map(k => {
-                const on = value.includes(k)
-                return (
-                  <button type="button" key={k} aria-pressed={on} onClick={() => onChange(on ? value.filter(x => x !== k) : [...value, k])}
-                    className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>
-                    {FEATURE_ICON[k] ? `${FEATURE_ICON[k]} ` : ''}{labels(k)}
-                  </button>
-                )
-              })}
+              {g.keys.filter(k => !(sets ?? []).some(st => st.keys.filter(x => g.keys.includes(x)).length > 1 && st.keys.includes(k))).map(chip)}
             </div>
           </div>
         )

@@ -12,7 +12,7 @@ import { addDays, hhmm, longDate, relativeDay, shortDate, today } from '../../li
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS,
-  CRITERIA_GROUPS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
+  CRITERIA_GROUPS, EXCLUSIVE_SETS, FEATURE_GROUPS, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
   equivRooms, roomsLabel, type Check, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
@@ -58,7 +58,7 @@ const num = (s: string) => {
   return Number(/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(',', '.'))
 }
 
-export default function Buscamos({ m, members, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
+export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; members: Member[]; me: Member; householdId: string }) {
   const fs = useHomeFilters()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const schools = useSchoolSummaries(m.homes)
@@ -213,7 +213,7 @@ export default function Buscamos({ m, members, householdId }: { m: Mudanza; memb
       {rejectedOpen && <RejectedSheet m={m} onClose={() => setRejectedOpen(false)} />}
 
       {open && !editHome.open && (
-        <HomeSheet h={open} m={m} members={members} householdId={householdId} startGroup={openGroup}
+        <HomeSheet h={open} m={m} members={members} householdId={householdId} meId={me.id} startGroup={openGroup}
           onEdit={focus => setEditHome({ open: true, home: open, focus })} onClose={() => { setOpenId(null); setOpenGroup(null) }}
           onReject={r => { setOpenId(null); reject(open, r) }} />
       )}
@@ -571,8 +571,8 @@ type EditFocus = 'datos' | 'gastos' | 'contacto' | 'fotos' | 'reforma' | 'honora
  * Ficha de un piso: pensada para decidir qué hacer con él (llamar, visitar, ofertar o descartar) y tener a mano lo
  * necesario. Arriba lo visual y la acción que toca; luego los datos de un vistazo, si conviene, el seguimiento y el resto.
  */
-function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, startGroup }: {
-  h: Home; m: Mudanza; members: Member[]; householdId: string; onEdit: (focus?: EditFocus) => void; onClose: () => void
+function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, onReject, startGroup }: {
+  h: Home; m: Mudanza; members: Member[]; householdId: string; meId: string; onEdit: (focus?: EditFocus) => void; onClose: () => void
   onReject: (r: RejectReason | null) => void; startGroup?: GroupKey | null
 }) {
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: HomeVisit }>({ open: false })
@@ -703,7 +703,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
             <span className="font-bold text-[15px]">⭐ Vuestra valoración</span>
             {avg != null && <span className="text-[13px] text-muted">media {avg.toLocaleString('es-ES', { maximumFractionDigits: 1 })} de 10</span>}
           </span>
-          <Stars h={h} m={m} adults={adults} rate={rateHome(m, householdId)} />
+          <Stars h={h} m={m} adults={adults} rate={rateHome(m, householdId)} meId={meId} />
           {avg == null && <span className="text-[11px] text-muted">Del 1 al 10, tras verla: entra en la nota de la casa («Vuestra opinión»).</span>}
         </div>
         {/* Plegable: abierto si hay una visita prevista */}
@@ -1928,12 +1928,12 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
         <details className="rounded-2xl border border-line p-3" open={must.length > 0}>
           <summary className="font-bold text-[15px] cursor-pointer">🎯 Imprescindibles{must.length ? ` · ${must.length}` : ''}</summary>
           <p className="text-[12px] text-muted mt-1 mb-2">Sin esto no nos interesa. Cada piso dirá si lo cumple.</p>
-          <GroupedChips label="" groups={CRITERIA_GROUPS} labels={criteriaLabel} value={must} onChange={v => { setMust(v); setNice(n => n.filter(k => !v.includes(k))) }} />
+          <GroupedChips label="" groups={CRITERIA_GROUPS} labels={criteriaLabel} sets={EXCLUSIVE_SETS} value={must} onChange={v => { setMust(v); setNice(n => n.filter(k => !v.includes(k))) }} />
         </details>
         <details className="rounded-2xl border border-line p-3" open={nice.length > 0}>
           <summary className="font-bold text-[15px] cursor-pointer">⭐ Valoramos{nice.length ? ` · ${nice.length}` : ''}</summary>
-          <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Las opciones que se excluyen entre sí (aerotermia, geotermia o gas; piscina propia o comunitaria; garaje o garaje cerrado; sótano o sótano habitable; parcela llana o en pendiente) cuentan como una sola: basta con tener una.</p>
-          <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} value={nice} onChange={setNice} />
+          <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Las opciones en un recuadro discontinuo se excluyen entre sí: cuentan como una sola.</p>
+          <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} sets={EXCLUSIVE_SETS} value={nice} onChange={setNice} />
         </details>
         <WeightsEditor w={weights} onChange={setWeights} />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
