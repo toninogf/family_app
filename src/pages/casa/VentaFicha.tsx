@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { shortDate } from '../../lib/dates'
-import { COOLING, COST_TEMPLATE, FEATURE_GROUPS, HOUSE_ONE_OF, FEATURES, HEATING, mergeLinks, parsePrice, portalName, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
+import { COOLING, COST_TEMPLATE, FEATURE_GROUPS, HOUSE_ONE_OF, HEAT_EMITTERS, FEATURES, HEATING, mergeLinks, parsePrice, portalName, perM2, photoUrl, price, priceInput, type Cooling, type HeatingType, type Link, type Listing, type Mudanza, type SalePhoto, BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuildingState, type Light, type Noise
 } from '../../lib/mudanza'
 import { MUNICIPALITIES, MADRID_DISTRICTS } from '../../data/places'
 import type { ListingData } from '../../lib/listingParse'
@@ -226,7 +226,7 @@ export function VentaFichaSheet({ m, householdId, onClose, focus }: { m: Mudanza
           </div>
           <SubHead id="casa-equip">Equipamiento</SubHead>
           <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} value={features} onChange={setFeatures}
-            groups={FEATURE_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => k !== 'cerca_cole') }))} labels={k => FEATURES[k] ?? k}  sets={HOUSE_ONE_OF} oneOf />
+            groups={FEATURE_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => k !== 'cerca_cole') }))} labels={k => FEATURES[k] ?? k}  sets={[...HOUSE_ONE_OF, HEAT_EMITTERS]} oneOf />
           <div className="grid grid-cols-2 gap-3">
             <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
               options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />

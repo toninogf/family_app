@@ -12,7 +12,7 @@ import { addDays, hhmm, longDate, relativeDay, shortDate, today } from '../../li
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS,
-  CRITERIA_GROUPS, EXCLUSIVE_SETS, FEATURE_GROUPS, HOUSE_ONE_OF, shownFeatures, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
+  CRITERIA_GROUPS, CRITERIA_BOXES, FEATURE_GROUPS, HOUSE_ONE_OF, HEAT_EMITTERS, shownFeatures, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
   equivRooms, roomsLabel, type Check, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
@@ -1741,7 +1741,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
             <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} placeholder="3º" flash={fl('planta')} />
           </div>
           <SubHead id="casa-equip">Equipamiento</SubHead>
-          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} groups={FEATURE_GROUPS} labels={k => FEATURES[k] ?? k} sets={HOUSE_ONE_OF} oneOf value={features} onChange={setFeatures} />
+          <GroupedChips label={`Tiene${fl('características') ? ' ✨' : ''}`} groups={FEATURE_GROUPS} labels={k => FEATURES[k] ?? k} sets={[...HOUSE_ONE_OF, HEAT_EMITTERS]} oneOf value={features} onChange={setFeatures} />
           <div className="grid grid-cols-2 gap-3">
             <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
               options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
@@ -1928,12 +1928,12 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
         <details className="rounded-2xl border border-line p-3" open={must.length > 0}>
           <summary className="font-bold text-[15px] cursor-pointer">🎯 Imprescindibles{must.length ? ` · ${must.length}` : ''}</summary>
           <p className="text-[12px] text-muted mt-1 mb-2">Sin esto no nos interesa. Cada piso dirá si lo cumple.</p>
-          <GroupedChips label="" groups={CRITERIA_GROUPS} labels={criteriaLabel} sets={EXCLUSIVE_SETS} value={must} onChange={v => { setMust(v); setNice(n => n.filter(k => !v.includes(k))) }} />
+          <GroupedChips label="" groups={CRITERIA_GROUPS} labels={criteriaLabel} sets={CRITERIA_BOXES} value={must} onChange={v => { setMust(v); setNice(n => n.filter(k => !v.includes(k))) }} />
         </details>
         <details className="rounded-2xl border border-line p-3" open={nice.length > 0}>
           <summary className="font-bold text-[15px] cursor-pointer">⭐ Valoramos{nice.length ? ` · ${nice.length}` : ''}</summary>
           <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Las opciones en un recuadro discontinuo se excluyen entre sí: cuentan como una sola.</p>
-          <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} sets={EXCLUSIVE_SETS} value={nice} onChange={setNice} />
+          <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} sets={CRITERIA_BOXES} value={nice} onChange={setNice} />
         </details>
         <WeightsEditor w={weights} onChange={setWeights} />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}

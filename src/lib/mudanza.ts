@@ -240,7 +240,7 @@ export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
 ]
 /** Opciones extra solo para lo que buscamos (no se marcan en la ficha: se deducen) */
 export const CRITERIA_EXTRA: Record<string, string> = {
-  piscina_cualquiera: 'Piscina (propia o comunitaria)', calefaccion_cualquiera: 'Calefacción (cualquiera)'
+  piscina_cualquiera: 'Piscina (propia o comunitaria)', calefaccion_cualquiera: 'Calefacción (cualquiera)', gasoil: 'Gasóleo', propano: 'Propano'
 }
 /** En lo que buscamos, nombre que deja claro que vale cualquier variante */
 const CRITERIA_RENAME: Record<string, string> = { garaje: 'Garaje (cualquiera)', sotano: 'Sótano (cualquiera)' }
@@ -249,13 +249,17 @@ const oneLabel = (k: string) => CRITERIA_EXTRA[k] ?? CRITERIA_RENAME[k] ?? FEATU
 export const criteriaLabel = (k: string) => k.split('|').map(oneLabel).join(' o ')
 /** Opciones que se excluyen entre sí (no se puede tener todo): si se eligen varias, cuentan como una sola («una de ellas») */
 export const EXCLUSIVE_SETS: { title: string; keys: string[] }[] = [
-  { title: 'Calefacción', keys: ['calefaccion_cualquiera', 'aerotermia', 'geotermia', 'gas_natural'] },
+  { title: '🔥 Calefacción · sistema', keys: ['calefaccion_cualquiera', 'gas_natural', 'gasoil', 'propano', 'aerotermia', 'geotermia'] },
   { title: 'Piscina', keys: ['piscina_cualquiera', 'piscina', 'piscina_comunitaria'] },
   { title: 'Parcela', keys: ['parcela_llana', 'parcela_pendiente'] },
   { title: 'Garaje', keys: ['garaje', 'garaje_cerrado'] },
   { title: 'Sótano', keys: ['sotano', 'sotano_habitable'] }
 ]
 export const EXCLUSIVE: string[][] = EXCLUSIVE_SETS.map(x => x.keys)
+/** Opciones que van juntas pero no se excluyen (cada una suma) */
+export const HEAT_EMITTERS = { title: '♨️ Calefacción · cómo calienta', keys: ['radiadores', 'suelo_radiante'], together: true }
+/** Recuadros de «Qué buscamos» */
+export const CRITERIA_BOXES = [...EXCLUSIVE_SETS, HEAT_EMITTERS]
 /** En una casa, opciones de las que solo puede tener una (al marcar una se quita la otra) */
 export const HOUSE_ONE_OF: { title: string; keys: string[] }[] = [
   { title: 'Parcela', keys: ['parcela_llana', 'parcela_pendiente'] },
@@ -287,7 +291,7 @@ export function critItems(keys: string[]) {
 }
 /** Grupos para elegir en lo que buscamos (con las opciones deducidas al principio de cada grupo) */
 export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map((g, i) =>
-  i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: ['calefaccion_cualquiera', ...g.keys] } : g)
+  i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: ['calefaccion_cualquiera', 'gasoil', 'propano', ...g.keys] } : g)
 /** ¿Cumple el piso esta característica de lo que buscamos? */
 export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string): boolean {
   if (k.includes('|')) return k.split('|').some(x => meets(h, x))
@@ -297,6 +301,7 @@ export function meets(h: { features: string[]; heating_type?: string | null; coo
   // Aerotermia y geotermia: como sistema de calefacción, como aire (aerotermia) o marcadas como extra (p. ej. solo para el agua)
   // Cualquier calefacción: un sistema indicado (no «ninguna») o algún extra de calefacción
   if (k === 'calefaccion_cualquiera') return (!!h.heating_type && h.heating_type !== 'ninguna') || ['calefaccion', 'radiadores', 'suelo_radiante', 'aerotermia', 'geotermia', 'gas_natural'].some(x => h.features.includes(x))
+  if (k === 'gasoil' || k === 'propano') return h.heating_type === k
   if (k === 'gas_natural') return h.heating_type === k || h.features.includes(k)
   if (k === 'geotermia') return h.heating_type === k || h.features.includes(k)
   if (k === 'aerotermia') return h.heating_type === k || h.cooling === 'aerotermia' || h.features.includes(k)

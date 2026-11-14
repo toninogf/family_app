@@ -153,13 +153,13 @@ export function GroupedChips({ label, groups, labels, value, onChange, counts = 
   label: string; groups: { title: string; keys: string[] }[]; labels: (k: string) => string
   value: string[]; onChange: (v: string[]) => void; counts?: boolean
   /** Opciones que se excluyen entre sí: se pintan juntas en un recuadro «una de» */
-  sets?: { title: string; keys: string[] }[]
+  sets?: { title: string; keys: string[]; together?: boolean }[]
   /** true: en cada recuadro solo se puede marcar una (al marcar una se quita la otra) */
   oneOf?: boolean
 }) {
   const chip = (k: string) => {
     const on = value.includes(k)
-    const others = oneOf ? (sets ?? []).find(st => st.keys.includes(k))?.keys.filter(x => x !== k) ?? [] : []
+    const others = oneOf ? (sets ?? []).find(st => !st.together && st.keys.includes(k))?.keys.filter(x => x !== k) ?? [] : []
     return (
       <button type="button" key={k} aria-pressed={on} onClick={() => onChange(on ? value.filter(x => x !== k) : [...value.filter(x => !others.includes(x)), k])}
         className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>
@@ -179,7 +179,7 @@ export function GroupedChips({ label, groups, labels, value, onChange, counts = 
               const ks = st.keys.filter(k => g.keys.includes(k))
               return ks.length > 1 ? (
                 <div key={st.title} className="rounded-xl border border-dashed border-line p-2 flex flex-col gap-1.5">
-                  <span className="text-[11px] text-muted">{st.title}: {oneOf ? <b>elige una</b> : <><b>una de estas</b> (si marcáis varias, basta con tener una)</>}</span>
+                  <span className="text-[11px] text-muted">{st.title}: {st.together ? <>se pueden tener <b>las dos</b> (cada una suma)</> : oneOf ? <b>elige una</b> : <><b>una de estas</b> (si marcáis varias, basta con tener una)</>}</span>
                   <div className="flex gap-1.5 flex-wrap">{ks.map(chip)}</div>
                 </div>
               ) : null
