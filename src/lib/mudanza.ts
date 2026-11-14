@@ -310,7 +310,12 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
   if (!c) return [] as Check[]
   const out: Check[] = []
   if (c.max_price_cents) { const r = readyPrice(h); out.push({ label: `≤ ${priceShort(c.max_price_cents)} para entrar`, ok: r == null ? null : r <= c.max_price_cents, near: r != null && r > c.max_price_cents && r <= c.max_price_cents * 1.1 }) }
-  if (c.min_rooms) out.push({ label: `${c.min_rooms}+ hab.`, ok: h.rooms == null ? null : h.rooms >= c.min_rooms })
+  // La buhardilla cuenta como una habitación más
+  if (c.min_rooms) {
+    const attic = h.features.includes('buhardilla')
+    const rooms = h.rooms == null ? null : h.rooms + (attic ? 1 : 0)
+    out.push({ label: `${c.min_rooms}+ hab.${attic && h.rooms != null && h.rooms < c.min_rooms ? ' (con la buhardilla)' : ''}`, ok: rooms == null ? null : rooms >= c.min_rooms })
+  }
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
   if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2, near: h.size_m2 != null && Number(h.size_m2) < c.min_m2 && Number(h.size_m2) >= c.min_m2 * 0.9 })
   for (const k of c.must_haves) {
