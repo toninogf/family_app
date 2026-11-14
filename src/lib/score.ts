@@ -8,8 +8,9 @@ import { distLabel } from './colegios'
 
 export type ScoreKey = 'musts' | 'price' | 'nice' | 'estado' | 'ubicacion' | 'opinion'
 /** penalty: % que se quita a la nota por cada imprescindible que no se cumple (la mitad si falla por poco) */
-export type ScoreWeights = Record<ScoreKey | 'penalty', number>
-export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 30, price: 25, nice: 15, estado: 15, ubicacion: 15, opinion: 20, penalty: 30 }
+/** niceFull: % de lo que valoráis con el que ya se saca un 10 en ese bloque */
+export type ScoreWeights = Record<ScoreKey | 'penalty' | 'niceFull', number>
+export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 30, price: 25, nice: 15, estado: 15, ubicacion: 15, opinion: 20, penalty: 30, niceFull: 60 }
 export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: string }[] = [
   { k: 'musts', icon: '🎯', label: 'Imprescindibles', help: 'Cumple = 10, con reforma = 6, sin dato = 5, no cumple = 0' },
   { k: 'price', icon: '💶', label: 'Precio y presupuesto', help: 'Para entrar a vivir frente a vuestro tope, y si lo que piden es razonable' },
@@ -105,8 +106,12 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
   // ⭐ Lo que valoráis
   const n = niceCount(h, cr)
   if (n.want.length) {
-    const s = 10 * (n.got.length + n.viaReform.length * 0.5) / n.want.length
-    const why = [`Tiene ${n.got.length} de ${n.want.length}${n.viaReform.length ? ` (+${n.viaReform.length} con reforma)` : ''}`]
+    // No hace falta tenerlo todo: con el «niceFull» % (60 % de serie) ya es un 10
+    const full = Math.max(10, Math.min(100, W.niceFull)) / 100
+    const have = n.got.length + n.viaReform.length * 0.5
+    const s = 10 * have / (n.want.length * full)
+    const why = [`Tiene ${n.got.length} de ${n.want.length}${n.viaReform.length ? ` (+${n.viaReform.length} con reforma)` : ''}`,
+      `Con ${Math.ceil(n.want.length * full)} de ${n.want.length} (${Math.round(full * 100)} %) ya sería un 10`]
     blocks.push({ ...meta('nice'), score: clamp(s), weight: W.nice, why })
   }
 

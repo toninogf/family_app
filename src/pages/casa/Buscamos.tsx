@@ -1945,10 +1945,10 @@ function WeightsEditor({ w, onChange }: { w: ScoreWeights; onChange: (w: ScoreWe
   const sum = base.reduce((a, b) => a + w[b.k], 0)
   const pct = (k: keyof ScoreWeights) => (sum ? Math.round(w[k] * 100 / sum) : 0)
   const changed = (Object.keys(DEFAULT_WEIGHTS) as (keyof ScoreWeights)[]).some(k => w[k] !== DEFAULT_WEIGHTS[k])
-  const slider = (k: keyof ScoreWeights, label: string, help: string, shown: string, max = 50) => (
+  const slider = (k: keyof ScoreWeights, label: string, help: string, shown: string, max = 50, min = 0) => (
     <label key={k} className="flex flex-col gap-0.5">
       <span className="flex justify-between text-[14px]"><span className="font-semibold">{label}</span><span className="font-bold">{shown}</span></span>
-      <input type="range" min={0} max={max} step={5} value={w[k]} onChange={e => onChange({ ...w, [k]: Number(e.target.value) })} className="w-full accent-[var(--app-accent)]" />
+      <input type="range" min={min} max={max} step={5} value={w[k]} onChange={e => onChange({ ...w, [k]: Number(e.target.value) })} className="w-full accent-[var(--app-accent)]" />
       <span className="text-[11px] text-muted">{help}</span>
     </label>
   )
@@ -1959,6 +1959,7 @@ function WeightsEditor({ w, onChange }: { w: ScoreWeights; onChange: (w: ScoreWe
       <div className="flex flex-col gap-3">
         {base.map(b => slider(b.k, `${b.icon} ${b.label}`, b.help, `${pct(b.k)} %`))}
         {slider('opinion', '👨‍👩‍👧‍👦 Vuestra opinión', 'Cuando habéis puntuado la casa con ⭐, pesa esto y lo demás se reparte el resto', `${w.opinion} %`)}
+        {slider('niceFull', '⭐ Lo que valoráis: cuánto hace falta para un 10', 'No hace falta tenerlo todo: con este % de lo que valoráis ese bloque ya saca un 10', `${w.niceFull} %`, 100, 30)}
         {slider('penalty', '❌ Penalización por imprescindible', 'Lo que se quita a la nota por cada imprescindible que no cumple ni con reforma. Si falla por poco (menos de un 10 % en metros o presupuesto), la mitad', `−${w.penalty} %`, 60)}
         {changed && <button type="button" onClick={() => onChange({ ...DEFAULT_WEIGHTS })} className="self-start min-h-9 px-3 rounded-xl border border-line text-sm font-semibold">Volver a los de serie</button>}
       </div>
