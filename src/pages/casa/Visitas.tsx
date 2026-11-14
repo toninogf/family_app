@@ -9,6 +9,7 @@ import { kEur, readyPrice } from '../../lib/reforma'
 import { OBJECTION_HELP } from '../../lib/venta'
 import { HomeVisitSheet } from './Buscamos'
 import { VisitBrief, briefCount } from './VisitBrief'
+import { Stars, rateHome, type Rate } from './HomeStars'
 import { VisitSheet } from './Vendemos'
 import { Sheet } from '../../components/Sheet'
 
@@ -47,8 +48,7 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
   // «¿Segunda visita?» que habéis dicho «ahora no» (se recuerda en este móvil)
   const [skip, setSkip] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('visitas.segunda.no') ?? '[]') } catch { return [] } })
   const skipHome = (id: string) => { const n = [...skip, id]; setSkip(n); try { localStorage.setItem('visitas.segunda.no', JSON.stringify(n)) } catch { /* nada */ } }
-  const rate = (homeId: string, memberId: string, score: number) =>
-    m.write('home_ratings', { home_id: homeId, member_id: memberId, household_id: householdId, score, updated_at: new Date().toISOString() }, undefined, 'home_id,member_id')
+  const rate = rateHome(m, householdId)
 
   const items: Item[] = useMemo(() => [
     ...m.homeVisits.map(v => ({ kind: 'compra' as const, id: v.id, date: v.visit_date, start: v.start_time, end: v.end_time, v, home: m.homes.find(h => h.id === v.home_id) })),
@@ -160,7 +160,6 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
 }
 
 /** Tarjeta de una visita: 🚗 franja azul (vamos) · 🏠 franja ámbar (vienen) */
-type Rate = (homeId: string, memberId: string, score: number) => Promise<unknown>
 
 function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
   it: Item; m: Mudanza; nameOf: (id: string | null) => string | null; onOpen: () => void; onHome: (id: string, grupo?: string) => void; past?: boolean
@@ -341,25 +340,6 @@ function NewVisitSheet({ m, onClose, onCompra, onVenta }: { m: Mudanza; onClose:
 }
 
 /** Nota rápida de cada uno (1–5) al cerrar la visita: la misma que usa la ficha y el comparador */
-function Stars({ h, m, adults, rate }: { h: Home; m: Mudanza; adults: Member[]; rate: Rate }) {
-  return (
-    <div className="flex flex-col gap-1">
-      {adults.map(a => {
-        const cur = m.ratings.find(r => r.home_id === h.id && r.member_id === a.id)?.score ?? 0
-        return (
-          <div key={a.id} className="flex items-center gap-1">
-            <span className="text-[12px] w-16 truncate" style={{ color: a.color }}>{a.display_name}</span>
-            {[1, 2, 3, 4, 5].map(n => (
-              <button key={n} onClick={() => void rate(h.id, a.id, n)} aria-label={`${a.display_name}: ${n} de 5`}
-                className={`w-9 h-9 text-[20px] leading-none ${n <= cur ? '' : 'opacity-25 grayscale'}`}>⭐</button>
-            ))}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 /** Visitas anteriores del mismo comprador (por teléfono o, si no hay, por nombre) */
 function previousOf(v: BuyerVisit, all: BuyerVisit[]) {
   const norm = (x: string | null) => (x ?? '').replace(/\s+/g, '').toLowerCase()

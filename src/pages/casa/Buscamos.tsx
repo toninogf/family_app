@@ -33,6 +33,7 @@ import { recommend } from '../../lib/pricing'
 import { HomeReforma, ReformaEditor } from './HomeReforma'
 import { AiHomeSearch } from './AiHomeSearch'
 import { VisitBrief, briefLists } from './VisitBrief'
+import { Stars, rateHome } from './HomeStars'
 import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreWeights } from '../../lib/score'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
@@ -285,6 +286,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
       `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
     visitas: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas',
+      (() => { const r = m.ratings.filter(x => x.home_id === h.id); return r.length ? `${(r.reduce((a, x) => a + x.score, 0) / r.length).toLocaleString('es-ES', { maximumFractionDigits: 1 })} ⭐` : null })(),
       brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, h.contact_phone && '📞'),
     brief: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas`),
     oferta: lastOffer ? join(`${price(lastOffer.amount_cents)}`, OFFER_STATUS[lastOffer.status]?.toLowerCase(), offers.length > 1 && `${offers.length} ofertas`) : join('sin oferta', rec && `recomendada ~${priceShort(rec.open)}`),
@@ -581,6 +583,8 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
   const [confirming, setConfirming] = useState(false)
   const adults = members.filter(x => x.kind === 'adult')
   const visits = m.homeVisits.filter(v => v.home_id === h.id)
+  const myRatings = m.ratings.filter(r => r.home_id === h.id)
+  const avg = myRatings.length ? myRatings.reduce((x, r) => x + r.score, 0) / myRatings.length : null
   const offers = m.homeOffers.filter(o => o.home_id === h.id)
   const maps = mapsHref({ location: [h.address, h.municipality].filter(Boolean).join(', ') || h.zone, maps_url: h.maps_url })
   const setStatus = (status: HomeStatus, extra: Record<string, unknown> = {}) => m.write('homes', { status, ...extra }, h.id)
@@ -693,6 +697,15 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
             </button>
           ))
         )}
+        {/* ⭐ Vuestra valoración: se puntúa aquí mismo (cuenta en la nota de la casa) */}
+        <div className="bg-card rounded-xl p-3 flex flex-col gap-1">
+          <span className="flex justify-between items-baseline gap-2">
+            <span className="font-bold text-[15px]">⭐ Vuestra valoración</span>
+            {avg != null && <span className="text-[13px] text-muted">media {avg.toLocaleString('es-ES', { maximumFractionDigits: 1 })} de 5</span>}
+          </span>
+          <Stars h={h} m={m} adults={adults} rate={rateHome(m, householdId)} />
+          {avg == null && <span className="text-[11px] text-muted">Puntuadla tras verla: entra en la nota de la casa («Vuestra opinión»).</span>}
+        </div>
         {/* Plegable: abierto si hay una visita prevista */}
         <details className="group mt-1" open={!!nextV}>
           <summary className="list-none cursor-pointer min-h-10 flex items-center justify-between gap-2">
