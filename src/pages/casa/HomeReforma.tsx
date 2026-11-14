@@ -17,28 +17,67 @@ export function HomeReforma({ h, onEdit }: { h: Home; onEdit: () => void }) {
   const total = reformTotal(r, h)
   const known = reformKnown(r)
   const ready = readyPrice(h)
+  const items = r.state === 'listo' ? [] : (r.items ?? [])
+  const integral = items.some(i => i.k === 'integral')
+  const name = (i: ReformItem) => (i.k === 'otros' ? i.label || 'Otra cosa' : PARTIDA[i.k]?.label ?? i.k)
 
   return (
     <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
-      <div className="flex justify-between items-center gap-2">
-        <span className="font-bold text-[15px]">🔨 Reforma</span>
-        <button onClick={onEdit} aria-label="Editar la reforma" className="min-h-9 px-2 text-sm">✏️</button>
-      </div>
       {!known ? (
         <button onClick={onEdit} className="text-left flex flex-col gap-1">
           <span className="text-[13px] text-muted">¿Cómo está para entrar a vivir? Indícalo y ajusta las partidas: el coste se suma al precio para comparar todas igual.</span>
           <span className="text-sm text-accent font-semibold min-h-10 flex items-center">+ Valorar la reforma</span>
         </button>
       ) : (
-        <button onClick={onEdit} className="text-left flex flex-col gap-1">
-          <span className="text-[14px] font-semibold">
-            {r.state ? `${REFORM_STATE[r.state].icon} ${REFORM_STATE[r.state].label}` : '🔨 Con reforma'}
-            {total ? <span className="text-muted font-normal"> · {total.count} partida{total.count === 1 ? '' : 's'}{total.quoted ? ` (${total.quoted} presupuestada${total.quoted === 1 ? '' : 's'})` : ''}</span> : null}
-          </span>
-          {total && <span className="text-[13px]">Coste estimado: <b>{rangeK(total.lo, total.hi)}</b></span>}
-          {total && r.state !== 'listo' && (
-            <span className="text-[12px] text-muted">{(r.items ?? []).map(i => (i.k === 'otros' ? i.label || 'Otra cosa' : PARTIDA[i.k]?.label ?? i.k)).slice(0, 6).join(' · ')}{(r.items?.length ?? 0) > 6 ? '…' : ''}</span>
+        <>
+          <div className="flex justify-between items-center gap-2">
+            <span className="text-[14px] font-semibold">
+              {r.state ? `${REFORM_STATE[r.state].icon} ${REFORM_STATE[r.state].label}` : '🔨 Con reforma'}
+              {total ? <span className="text-muted font-normal"> · {total.count} partida{total.count === 1 ? '' : 's'}{total.quoted ? ` (${total.quoted} presupuestada${total.quoted === 1 ? '' : 's'})` : ''}</span> : null}
+            </span>
+            <button onClick={onEdit} aria-label="Editar la reforma" className="min-h-9 px-2 text-sm shrink-0">✏️</button>
+          </div>
+
+          {/* Cada partida con su cantidad, de dónde sale y su coste (sin IVA) */}
+          {items.length > 0 && (
+            <div className="flex flex-col">
+              {items.map((it, n) => {
+                const p = PARTIDA[it.k]
+                const c = itemCost(it, h)
+                const inInt = integral && IN_INTEGRAL.includes(it.k)
+                const qty = c.q != null && p && p.unit !== 'global' ? `${Math.round(c.q).toLocaleString('es-ES')} ${UNIT_LABEL[p.unit]}` : null
+                const tags = [qty, it.tier && it.tier !== 'media' ? `gama ${TIER[it.tier].label.toLowerCase()}` : null, SRC_LABEL[it.src ?? 'manual'] || null].filter(Boolean)
+                return (
+                  <button key={n} onClick={onEdit} className="flex justify-between items-baseline gap-2 py-1.5 border-b border-line last:border-0 text-left">
+                    <span className="flex flex-col min-w-0">
+                      <span className={`text-[14px] ${inInt ? 'text-muted line-through' : ''}`}>{p?.icon ?? '➕'} {name(it)}</span>
+                      {tags.length > 0 && <span className="text-[11px] text-muted">{tags.join(' · ')}</span>}
+                      {it.n && <span className="text-[11px] text-muted">📝 {it.n}</span>}
+                    </span>
+                    <span className="text-[13px] font-semibold shrink-0 text-right">
+                      {inInt ? <span className="text-muted font-normal">en la integral</span>
+                        : it.quote_cents != null ? <>{price(it.quote_cents)}<span className="block text-[11px] text-accent font-normal">📄 presupuesto</span></>
+                          : it.own_cents != null ? <>{price(it.own_cents)}<span className="block text-[11px] text-muted font-normal">vuestro precio</span></>
+                            : c.q == null && it.k !== 'otros' ? <span className="text-[#C77A12] font-normal">falta dato</span>
+                              : rangeK(c.lo, c.hi)}
+                    </span>
+                  </button>
+                )
+              })}
+              {total && total.extras.map(x => (
+                <span key={x.label} className="flex justify-between gap-2 py-1 text-[12px] text-muted">
+                  <span>{x.label}</span><span className="shrink-0">{rangeK(x.lo, x.hi)}</span>
+                </span>
+              ))}
+              {total && (
+                <span className="flex justify-between gap-2 pt-1.5 border-t border-line text-[14px]">
+                  <b>Total reforma</b><b className="shrink-0">{rangeK(total.lo, total.hi)}</b>
+                </span>
+              )}
+            </div>
           )}
+          {r.state === 'listo' && <span className="text-[13px] text-muted">Para entrar a vivir tal cual: sin partidas.</span>}
+
           {ready != null && (
             <span className="text-[13px] rounded-xl bg-bg px-3 py-2 mt-1 flex justify-between gap-2">
               <span className="text-muted">Para entrar a vivir (con gastos de compra)</span>
@@ -46,9 +85,9 @@ export function HomeReforma({ h, onEdit }: { h: Home; onEdit: () => void }) {
             </span>
           )}
           {total?.pending.length ? <span className="text-[12px] text-[#C77A12]">Faltan metros u otros datos para calcular: {total.pending.join(', ')}</span> : null}
-          {(r.items ?? []).some(i => i.src === 'ia') && <span className="text-[12px] text-muted">✨ Hay partidas propuestas por la IA: revísalas tras la visita.</span>}
+          {items.some(i => i.src === 'ia') && <span className="text-[12px] text-muted">✨ Hay partidas propuestas por la IA: revísalas tras la visita.</span>}
           {r.note && <span className="text-[12px] text-muted">📝 {r.note}</span>}
-        </button>
+        </>
       )}
     </section>
   )
