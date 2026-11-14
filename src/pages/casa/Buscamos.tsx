@@ -243,10 +243,10 @@ function StatusBadge({ s }: { s: HomeStatus }) {
 // ---------- Ficha por grupos plegables ----------
 type GroupKey = 'resumen' | 'visitas' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'oferta' | 'enlaces' | 'fotos'
 const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
-  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'visitas', icon: '👀', title: 'Visitas' }, { k: 'casa', icon: '🏠', title: 'La casa' },
+  { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'casa', icon: '🏠', title: 'La casa' },
   { k: 'dinero', icon: '💶', title: 'Gastos e impuestos' }, { k: 'reforma', icon: '🔨', title: 'Reforma' },
   { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'estado', icon: '🔍', title: 'Estado de la vivienda' },
-  { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'oferta', icon: '💶', title: 'Oferta' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
+  { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'visitas', icon: '👀', title: 'Visitas' }, { k: 'oferta', icon: '💶', title: 'Oferta' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
   { k: 'fotos', icon: '📷', title: 'Fotos' }
 ]
 /** Grupos abiertos de la ficha (se recuerdan en este móvil); «go» abre uno y baja hasta él */
@@ -650,23 +650,6 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         <HomePrice h={h} m={m} />
       </Group>
 
-      <Group k="visitas" g={groups} line={sum.visitas}
-        extra={<button onClick={() => setVisitSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Visita</button>}>
-        {visits.length === 0 ? <p className="text-sm text-muted">Aún no hay visitas. Las visitas salen en la Agenda.</p> : (
-          visits.slice().sort((a, b) => b.visit_date.localeCompare(a.visit_date)).map(v => (
-            <button key={v.id} onClick={() => setVisitSheet({ open: true, visit: v })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
-              <span className="flex justify-between gap-2 text-[14px] font-semibold">
-                <span>👀 Visita · {longDate(v.visit_date)} · {hhmm(v.start_time)}</span>
-                <span className="text-[12px] text-muted shrink-0">{v.status === 'done' ? 'Hecha' : v.status === 'cancelled' ? 'Cancelada' : 'Prevista'}</span>
-              </span>
-              <VisitSummary v={v} members={members} />
-            </button>
-          ))
-        )}
-        <span className="font-bold text-[15px] mt-1">🎯 Para la visita</span>
-        <VisitBrief h={h} m={m} />
-        <ContactCard h={h} onEdit={() => onEdit('contacto')} />
-      </Group>
 
       <Group k="casa" g={groups} line={sum.casa}>
         <QuickFacts h={h} m={m} onEdit={onEdit} />
@@ -694,6 +677,24 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         {h.minutes_to_school != null && <span className="text-[14px]">🏫 {h.minutes_to_school} min al cole (vuestro cálculo)</span>}
         {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="self-start min-h-10 px-3 rounded-xl border border-line text-[13px] font-semibold text-accent flex items-center">📍 Cómo llegar ↗</a>}
         <HomeSchools h={h} m={m} />
+      </Group>
+
+      <Group k="visitas" g={groups} line={sum.visitas}
+        extra={<button onClick={() => setVisitSheet({ open: true })} className="min-h-9 px-2 text-sm font-semibold text-accent">+ Visita</button>}>
+        {visits.length === 0 ? <p className="text-sm text-muted">Aún no hay visitas. Las visitas salen en la Agenda.</p> : (
+          visits.slice().sort((a, b) => b.visit_date.localeCompare(a.visit_date)).map(v => (
+            <button key={v.id} onClick={() => setVisitSheet({ open: true, visit: v })} className="bg-card rounded-xl p-3 text-left flex flex-col gap-0.5">
+              <span className="flex justify-between gap-2 text-[14px] font-semibold">
+                <span>👀 Visita · {longDate(v.visit_date)} · {hhmm(v.start_time)}</span>
+                <span className="text-[12px] text-muted shrink-0">{v.status === 'done' ? 'Hecha' : v.status === 'cancelled' ? 'Cancelada' : 'Prevista'}</span>
+              </span>
+              <VisitSummary v={v} members={members} />
+            </button>
+          ))
+        )}
+        <span className="font-bold text-[15px] mt-1">🎯 Para la visita</span>
+        <VisitBrief h={h} m={m} />
+        <ContactCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
 
       <Group k="oferta" g={groups} line={sum.oferta}
