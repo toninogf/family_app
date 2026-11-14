@@ -54,7 +54,7 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
   const checks = mustHaveCheck(h, cr)
   const hardFail = checks.filter(x => x.ok === false && !x.reform)
   if (checks.length) {
-    const v = checks.map(x => (x.ok ? 10 : x.ok === false ? (x.reform ? 6 : 0) : 5))
+    const v: number[] = checks.map(x => (x.ok ? 10 : x.ok === false ? (x.reform ? 6 : 0) : 5))
     const why: string[] = []
     const ok = checks.filter(x => x.ok).length
     why.push(`Cumple ${ok} de ${checks.length}`)
