@@ -1919,7 +1919,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
         </details>
         <details className="rounded-2xl border border-line p-3" open={nice.length > 0}>
           <summary className="font-bold text-[15px] cursor-pointer">⭐ Valoramos{nice.length ? ` · ${nice.length}` : ''}</summary>
-          <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Puedes ordenar la lista por esto.</p>
+          <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Las opciones que se excluyen entre sí (aerotermia, geotermia o gas; piscina propia o comunitaria; garaje o garaje cerrado; sótano o sótano habitable; parcela llana o en pendiente) cuentan como una sola: basta con tener una.</p>
           <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} value={nice} onChange={setNice} />
         </details>
         <WeightsEditor w={weights} onChange={setWeights} />

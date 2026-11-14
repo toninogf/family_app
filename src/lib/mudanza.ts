@@ -222,6 +222,8 @@ export const FEATURES: Record<string, string> = {
   solar_termica: 'Solar térmica (agua)', suelo_radiante: 'Suelo radiante', chimenea: 'Chimenea o estufa', aislamiento: 'Buen aislamiento / doble cristal',
   cargador: 'Punto de carga (coche)',
   // La casa
+  // Accesibilidad
+  entrada_sin_escaleras: 'Entrada sin escaleras', acceso_llano: 'Acceso llano (sin cuestas)', una_planta: 'Todo en una planta',
   reformado: 'Reformado', sotano: 'Sótano', sotano_habitable: 'Sótano habitable', buhardilla: 'Buhardilla', dormitorio_pb: 'Dormitorio en planta baja',
   garaje: 'Garaje', garaje_cerrado: 'Garaje cerrado', trastero: 'Trastero', armarios: 'Armarios empotrados', ascensor: 'Ascensor', portero: 'Portero / conserje', balcon: 'Balcón',
   // Urbanización y servicios
@@ -232,19 +234,44 @@ export const FEATURES: Record<string, string> = {
 export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
   { title: '🏊 Piscina y exterior', keys: ['piscina', 'piscina_comunitaria', 'jardin', 'terraza', 'porche', 'barbacoa', 'riego', 'huerto', 'zona_juegos', 'parcela_llana', 'parcela_pendiente', 'orientacion_sur', 'vistas', 'exterior'] },
   { title: '⚡ Energía y confort', keys: ['calefaccion', 'aire', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
-  { title: '🏠 La casa', keys: ['reformado', 'sotano', 'sotano_habitable', 'buhardilla', 'dormitorio_pb', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'ascensor', 'portero', 'balcon'] },
+  { title: '🏠 La casa', keys: ['reformado', 'sotano', 'sotano_habitable', 'buhardilla', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'portero', 'balcon'] },
+  { title: '♿ Accesibilidad', keys: ['entrada_sin_escaleras', 'acceso_llano', 'una_planta', 'dormitorio_pb', 'ascensor'] },
   { title: '🏘️ Urbanización y servicios', keys: ['urb_cerrada', 'zonas_comunes', 'fibra', 'gas_natural', 'transporte', 'cerca_cole'] }
 ]
 /** Opciones extra solo para lo que buscamos (no se marcan en la ficha: se deducen) */
 export const CRITERIA_EXTRA: Record<string, string> = {
   piscina_cualquiera: 'Piscina (propia o comunitaria)', geotermia: 'Geotermia', aerotermia: 'Aerotermia'
 }
-export const criteriaLabel = (k: string) => CRITERIA_EXTRA[k] ?? FEATURES[k] ?? k
+const oneLabel = (k: string) => CRITERIA_EXTRA[k] ?? FEATURES[k] ?? k
+/** «aerotermia|geotermia» → «Aerotermia o Geotermia» */
+export const criteriaLabel = (k: string) => k.split('|').map(oneLabel).join(' o ')
+/** Opciones que se excluyen entre sí (no se puede tener todo): si se eligen varias, cuentan como una sola («una de ellas») */
+export const EXCLUSIVE: string[][] = [
+  ['aerotermia', 'geotermia', 'gas_natural'],
+  ['piscina', 'piscina_comunitaria', 'piscina_cualquiera'],
+  ['parcela_llana', 'parcela_pendiente'],
+  ['garaje', 'garaje_cerrado'],
+  ['sotano', 'sotano_habitable']
+]
+/** Lo elegido, juntando en una sola opción («a|b») las que se excluyen entre sí */
+export function critItems(keys: string[]) {
+  const out: string[] = []
+  const used = new Set<string>()
+  for (const k of keys) {
+    if (used.has(k)) continue
+    const g = EXCLUSIVE.find(x => x.includes(k))
+    const same = g ? keys.filter(x => g.includes(x)) : [k]
+    same.forEach(x => used.add(x))
+    out.push(same.join('|'))
+  }
+  return out
+}
 /** Grupos para elegir en lo que buscamos (con las opciones deducidas al principio de cada grupo) */
 export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map((g, i) =>
   i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: [...g.keys, 'aerotermia', 'geotermia'] } : g)
 /** ¿Cumple el piso esta característica de lo que buscamos? */
-export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string) {
+export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string): boolean {
+  if (k.includes('|')) return k.split('|').some(x => meets(h, x))
   if (k === 'calefaccion') return h.features.includes(k) || (!!h.heating_type && h.heating_type !== 'ninguna')
   if (k === 'aire') return h.features.includes(k) || (!!h.cooling && h.cooling !== 'no')
   if (k === 'piscina_cualquiera') return h.features.includes('piscina') || h.features.includes('piscina_comunitaria')
@@ -256,7 +283,7 @@ export function meets(h: { features: string[]; heating_type?: string | null; coo
 }
 /** Cuántos de los «Valoramos» tiene un piso */
 export function niceCount(h: { features: string[]; heating_type?: string | null; cooling?: string | null; reform?: Reform | null; size_m2?: number | string | null; plot_m2?: number | string | null; rooms?: number | null; baths?: number | null }, c: { nice_to_haves?: string[] } | null) {
-  const want = c?.nice_to_haves ?? []
+  const want = critItems(c?.nice_to_haves ?? [])
   const got = want.filter(k => meets(h, k))
   const viaReform = want.filter(k => !got.includes(k) && reformFor(h, k))
   return { got, want, viaReform }
@@ -268,6 +295,7 @@ const REFORM_FOR: Record<string, string[]> = {
   riego: ['riego'], armarios: ['armarios'], reformado: ['integral']
 }
 export function reformFor(h: { reform?: Reform | null }, k: string): ReformItem | null {
+  if (k.includes('|')) { for (const x of k.split('|')) { const r = reformFor(h, x); if (r) return r } return null }
   const keys = REFORM_FOR[k]
   if (!keys || h.reform?.state === 'listo') return null
   return h.reform?.items?.find(i => keys.includes(i.k)) ?? null
@@ -329,7 +357,7 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
   }
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
   if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2, near: h.size_m2 != null && Number(h.size_m2) < c.min_m2 && Number(h.size_m2) >= c.min_m2 * 0.9 })
-  for (const k of c.must_haves) {
+  for (const k of critItems(c.must_haves)) {
     const ok = meets(h, k)
     const it = ok ? null : reformFor(h, k)
     // Lo que se consigue con la reforma sigue sin cumplirse, pero se dice cuánto cuesta (ya sumado al precio para entrar a vivir)

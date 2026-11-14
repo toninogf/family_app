@@ -1,6 +1,6 @@
 // «Buscar casas con IA» (Buscamos): petición con vuestros criterios para ChatGPT/Claude/Gemini y lectura de su respuesta
 import {
-  DISCARD_CATS, FEATURES, REJECT_REASONS, criteriaLabel, price,
+  DISCARD_CATS, FEATURES, critItems, REJECT_REASONS, criteriaLabel, price,
   type Cooling, type Criteria, type HeatingType, type Home, type Rejection
 } from './mudanza'
 import { PARTIDA, type ReformState } from './reforma'
@@ -48,8 +48,8 @@ export function homeSearchPrompt(c: Criteria | null, homes: Home[], rejections: 
     c?.municipalities.length ? `- Localidades: ${c.municipalities.join(', ')}${c.zones.length ? ` (zonas: ${c.zones.join(', ')})` : ''}. Puedes incluir alguna de los alrededores si es muy buena, avisándolo en la nota.` : c?.zones.length ? `- Zonas: ${c.zones.join(', ')}` : null,
     c?.min_rooms ? `- Mínimo ${c.min_rooms} habitaciones` : null,
     c?.min_m2 ? `- Mínimo ${c.min_m2} m² construidos` : null,
-    c?.must_haves.length ? `- IMPRESCINDIBLE: ${c.must_haves.map(criteriaLabel).join(', ')}` : null,
-    c?.nice_to_haves.length ? `- Valoramos (suma, no obliga): ${c.nice_to_haves.map(criteriaLabel).join(', ')}` : null
+    c?.must_haves.length ? `- IMPRESCINDIBLE: ${critItems(c.must_haves).map(criteriaLabel).join(', ')}` : null,
+    c?.nice_to_haves.length ? `- Valoramos (suma, no obliga): ${critItems(c.nice_to_haves).map(criteriaLabel).join(', ')}` : null
   ].filter(Boolean)
   const learned = learnings(homes, rejections)
   // Lo que ya tenemos (para no repetirlo): enlaces y, si no hay, título y localidad

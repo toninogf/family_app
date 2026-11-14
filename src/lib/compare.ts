@@ -105,7 +105,7 @@ export function compareSummary(homes: Home[], criteria: Criteria | null, visits:
     if (all.length && all.length < homes.length) out.push(`✅ Cumple${all.length > 1 ? 'n' : ''} todos los imprescindibles: ${list(all.map(h => `**${n(h)}**`))}.`)
     if (criteria.nice_to_haves?.length) {
       const sc = homes.map(h => ({ h, k: niceCount(h, criteria).got.length })).sort((a, b) => b.k - a.k)
-      if (sc[0].k > sc[sc.length - 1].k) out.push(`⭐ Más de lo que valoramos: **${n(sc[0].h)}** (${sc[0].k} de ${criteria.nice_to_haves.length}).`)
+      if (sc[0].k > sc[sc.length - 1].k) out.push(`⭐ Más de lo que valoramos: **${n(sc[0].h)}** (${sc[0].k} de ${niceCount(sc[0].h, criteria).want.length}).`)
     }
   }
   // Certificado energético
