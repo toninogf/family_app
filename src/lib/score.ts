@@ -7,8 +7,9 @@ import { recommend } from './pricing'
 import { distLabel } from './colegios'
 
 export type ScoreKey = 'musts' | 'price' | 'nice' | 'estado' | 'ubicacion' | 'opinion'
-export type ScoreWeights = Record<ScoreKey, number>
-export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 30, price: 25, nice: 15, estado: 15, ubicacion: 15, opinion: 20 }
+/** penalty: % que se quita a la nota por cada imprescindible que no se cumple (la mitad si falla por poco) */
+export type ScoreWeights = Record<ScoreKey | 'penalty', number>
+export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 30, price: 25, nice: 15, estado: 15, ubicacion: 15, opinion: 20, penalty: 30 }
 export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: string }[] = [
   { k: 'musts', icon: '🎯', label: 'Imprescindibles', help: 'Cumple = 10, con reforma = 6, sin dato = 5, no cumple = 0' },
   { k: 'price', icon: '💶', label: 'Precio y presupuesto', help: 'Para entrar a vivir frente a vuestro tope, y si lo que piden es razonable' },
@@ -21,12 +22,13 @@ export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: str
 export function weightsOf(c: Criteria | null): ScoreWeights {
   const w = (c?.score_weights ?? {}) as Partial<ScoreWeights>
   const out = { ...DEFAULT_WEIGHTS }
-  for (const k of Object.keys(out) as ScoreKey[]) if (typeof w[k] === 'number' && w[k]! >= 0) out[k] = Math.min(100, w[k]!)
+  for (const k of Object.keys(out) as (keyof ScoreWeights)[]) if (typeof w[k] === 'number' && w[k]! >= 0) out[k] = Math.min(100, w[k]!)
   return out
 }
 
 export type ScoreBlock = { k: ScoreKey; icon: string; label: string; score: number; weight: number; why: string[]; missing?: boolean }
-export type HomeScore = { score: number; provisional: boolean; capped: boolean; blocks: ScoreBlock[] }
+/** penalty: lo que se ha quitado por imprescindibles que no se cumplen (pct total y cada uno) */
+export type HomeScore = { score: number; provisional: boolean; blocks: ScoreBlock[]; before: number; penalty: { pct: number; items: { label: string; pct: number; near: boolean }[] } | null }
 type ScoreCtx = { criteria: Criteria | null; ratings: Rating[]; homes: Home[] }
 
 const clamp = (x: number) => Math.max(0, Math.min(10, x))
@@ -54,13 +56,13 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
   const checks = mustHaveCheck(h, cr)
   const hardFail = checks.filter(x => x.ok === false && !x.reform)
   if (checks.length) {
-    const v: number[] = checks.map(x => (x.ok ? 10 : x.ok === false ? (x.reform ? 6 : 0) : 5))
+    const v: number[] = checks.map(x => (x.ok ? 10 : x.ok === false ? (x.reform ? 6 : x.near ? 3 : 0) : 5))
     const why: string[] = []
     const ok = checks.filter(x => x.ok).length
     why.push(`Cumple ${ok} de ${checks.length}`)
     const via = checks.filter(x => x.ok === false && x.reform)
     if (via.length) why.push(`🔨 Con reforma: ${via.map(x => x.label.toLowerCase()).join(', ')}`)
-    if (hardFail.length) why.push(`❌ No cumple: ${hardFail.map(x => x.label.toLowerCase()).join(', ')}`)
+    if (hardFail.length) why.push(`❌ No cumple: ${hardFail.map(x => `${x.label.toLowerCase()}${x.near ? ' (por poco)' : ''}`).join(', ')}`)
     const unk = checks.filter(x => x.ok === null)
     if (unk.length) { why.push(`❓ Sin dato: ${unk.map(x => x.label.toLowerCase()).join(', ')}`); provisional = true }
     blocks.push({ ...meta('musts'), score: v.reduce((a, b) => a + b, 0) / v.length, weight: W.musts, why })
@@ -163,11 +165,14 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
   }
 
   const total = blocks.reduce((a, b) => a + b.weight, 0)
-  let score = total ? blocks.reduce((a, b) => a + b.score * b.weight, 0) / total : 5
-  const capped = hardFail.length > 0 && score > 4
-  if (capped) score = 4
+  const before = total ? blocks.reduce((a, b) => a + b.score * b.weight, 0) / total : 5
+  // Cada imprescindible que no se cumple (ni con reforma) quita un % de la nota; si falla por poco, la mitad
+  const p = Math.min(90, W.penalty) / 100
+  const items = hardFail.map(x => ({ label: x.label, near: !!x.near, pct: Math.round((x.near ? p / 2 : p) * 100) }))
+  const factor = items.reduce((a, x) => a * (1 - x.pct / 100), 1)
+  const score = before * factor
   for (const b of blocks) { b.score = r1(b.score); b.weight = Math.round(b.weight) }
-  return { score: r1(score), provisional, capped, blocks }
+  return { score: r1(score), provisional, blocks, before: r1(before), penalty: items.length && p > 0 ? { pct: Math.round((1 - factor) * 100), items } : null }
 }
 
 /** Color de la nota */

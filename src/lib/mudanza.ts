@@ -271,7 +271,8 @@ export function reformFor(h: { reform?: Reform | null }, k: string): ReformItem 
   if (!keys || h.reform?.state === 'listo') return null
   return h.reform?.items?.find(i => keys.includes(i.k)) ?? null
 }
-export type Check = { label: string; ok: boolean | null; reform?: { label: string; cents: number } }
+/** near: no cumple pero por poco (menos de un 10 %, en lo que se mide con números) */
+export type Check = { label: string; ok: boolean | null; near?: boolean; reform?: { label: string; cents: number } }
 export const HOME_STATUS: Record<HomeStatus, string> = {
   propuesta: '🤖 Propuesta', interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',
   favorito: 'Favorito', descartado: 'Descartado', oferta: 'Oferta hecha'
@@ -308,10 +309,10 @@ export const perM2 = (h: Pick<Home, 'price_cents' | 'size_m2'>) =>
 export function mustHaveCheck(h: Home, c: Criteria | null) {
   if (!c) return [] as Check[]
   const out: Check[] = []
-  if (c.max_price_cents) { const r = readyPrice(h); out.push({ label: `≤ ${priceShort(c.max_price_cents)} para entrar`, ok: r == null ? null : r <= c.max_price_cents }) }
+  if (c.max_price_cents) { const r = readyPrice(h); out.push({ label: `≤ ${priceShort(c.max_price_cents)} para entrar`, ok: r == null ? null : r <= c.max_price_cents, near: r != null && r > c.max_price_cents && r <= c.max_price_cents * 1.1 }) }
   if (c.min_rooms) out.push({ label: `${c.min_rooms}+ hab.`, ok: h.rooms == null ? null : h.rooms >= c.min_rooms })
   if (c.municipalities?.length) out.push({ label: c.municipalities.length === 1 ? c.municipalities[0] : 'Localidad buscada', ok: h.municipality == null ? null : c.municipalities.includes(h.municipality) })
-  if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2 })
+  if (c.min_m2) out.push({ label: `${c.min_m2}+ m²`, ok: h.size_m2 == null ? null : Number(h.size_m2) >= c.min_m2, near: h.size_m2 != null && Number(h.size_m2) < c.min_m2 && Number(h.size_m2) >= c.min_m2 * 0.9 })
   for (const k of c.must_haves) {
     const ok = meets(h, k)
     const it = ok ? null : reformFor(h, k)

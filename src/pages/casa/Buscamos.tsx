@@ -33,7 +33,7 @@ import { recommend } from '../../lib/pricing'
 import { HomeReforma, ReformaEditor } from './HomeReforma'
 import { AiHomeSearch } from './AiHomeSearch'
 import { VisitBrief, briefLists } from './VisitBrief'
-import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreKey } from '../../lib/score'
+import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreWeights } from '../../lib/score'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
@@ -416,7 +416,7 @@ function ScoreCard({ h, m }: { h: Home; m: Mudanza }) {
         <span className="flex-1 min-w-0 flex flex-col">
           <span className="font-bold text-[15px]">Nota de la casa</span>
           <span className="text-[12px] text-muted">
-            {s.capped ? 'Máximo 4: falla un imprescindible que no se arregla con reforma' : s.provisional ? 'Provisional: faltan datos (*)' : 'Con vuestros criterios y pesos'}
+            {s.penalty ? `${fmtScore(s.before)} − ${s.penalty.pct} % por imprescindibles que no cumple` : s.provisional ? 'Provisional: faltan datos (*)' : 'Con vuestros criterios y pesos'}
           </span>
         </span>
         <span className="text-sm font-semibold text-accent">{open ? 'Ocultar' : 'Por qué'}</span>
@@ -432,6 +432,9 @@ function ScoreCard({ h, m }: { h: Home; m: Mudanza }) {
             </span>
             {open && b.why.map(w => <span key={w} className="text-[12px] text-muted pl-5">· {w}</span>)}
           </div>
+        ))}
+        {s.penalty && s.penalty.items.map(x => (
+          <span key={x.label} className="text-[13px] text-danger font-semibold">−{x.pct} % por no cumplir: {x.label.toLowerCase()}{x.near ? ' (por poco)' : ''}</span>
         ))}
       </div>
       {open && <p className="text-[11px] text-muted">Los pesos se cambian en «Qué buscamos». Vuestra opinión solo cuenta cuando habéis puntuado la casa con ⭐.</p>}
@@ -1908,25 +1911,26 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
 }
 
 /** Pesos de la nota 0–10 («Qué buscamos») */
-function WeightsEditor({ w, onChange }: { w: Record<ScoreKey, number>; onChange: (w: Record<ScoreKey, number>) => void }) {
+function WeightsEditor({ w, onChange }: { w: ScoreWeights; onChange: (w: ScoreWeights) => void }) {
   const base = SCORE_BLOCKS.filter(b => b.k !== 'opinion')
   const sum = base.reduce((a, b) => a + w[b.k], 0)
-  const pct = (k: ScoreKey) => (sum ? Math.round(w[k] * 100 / sum) : 0)
-  const changed = SCORE_BLOCKS.some(b => w[b.k] !== DEFAULT_WEIGHTS[b.k])
-  const slider = (k: ScoreKey, label: string, help: string, shown: string) => (
+  const pct = (k: keyof ScoreWeights) => (sum ? Math.round(w[k] * 100 / sum) : 0)
+  const changed = (Object.keys(DEFAULT_WEIGHTS) as (keyof ScoreWeights)[]).some(k => w[k] !== DEFAULT_WEIGHTS[k])
+  const slider = (k: keyof ScoreWeights, label: string, help: string, shown: string, max = 50) => (
     <label key={k} className="flex flex-col gap-0.5">
       <span className="flex justify-between text-[14px]"><span className="font-semibold">{label}</span><span className="font-bold">{shown}</span></span>
-      <input type="range" min={0} max={50} step={5} value={w[k]} onChange={e => onChange({ ...w, [k]: Number(e.target.value) })} className="w-full accent-[var(--app-accent)]" />
+      <input type="range" min={0} max={max} step={5} value={w[k]} onChange={e => onChange({ ...w, [k]: Number(e.target.value) })} className="w-full accent-[var(--app-accent)]" />
       <span className="text-[11px] text-muted">{help}</span>
     </label>
   )
   return (
     <details className="rounded-2xl border border-line p-3">
       <summary className="font-bold text-[15px] cursor-pointer">⚖️ Cómo se calcula la nota 0–10</summary>
-      <p className="text-[12px] text-muted mt-1 mb-3">Cuánto pesa cada cosa. Se reparte en proporción, así que no hace falta que sume 100. Si falla un imprescindible que no se arregla con reforma, la nota no pasa de 4.</p>
+      <p className="text-[12px] text-muted mt-1 mb-3">Cuánto pesa cada cosa. Se reparte en proporción, así que no hace falta que sume 100.</p>
       <div className="flex flex-col gap-3">
         {base.map(b => slider(b.k, `${b.icon} ${b.label}`, b.help, `${pct(b.k)} %`))}
         {slider('opinion', '👨‍👩‍👧‍👦 Vuestra opinión', 'Cuando habéis puntuado la casa con ⭐, pesa esto y lo demás se reparte el resto', `${w.opinion} %`)}
+        {slider('penalty', '❌ Penalización por imprescindible', 'Lo que se quita a la nota por cada imprescindible que no cumple ni con reforma. Si falla por poco (menos de un 10 % en metros o presupuesto), la mitad', `−${w.penalty} %`, 60)}
         {changed && <button type="button" onClick={() => onChange({ ...DEFAULT_WEIGHTS })} className="self-start min-h-9 px-3 rounded-xl border border-line text-sm font-semibold">Volver a los de serie</button>}
       </div>
     </details>
