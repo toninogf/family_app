@@ -273,7 +273,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const nLinks = (h.links?.length ?? 0) + (h.url ? 1 : 0)
   const join = (...x: (string | number | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
   return {
-    resumen: join(`nota ${fmtScore(homeScore(h, m, school?.dist ?? null).score)}`, rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
+    resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
     visita: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas para negociar`),
     dinero: join(monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`,
@@ -634,8 +634,10 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
         onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
+      {/* La nota, siempre a la vista (fuera de los grupos plegables) */}
+      <ScoreCard h={h} m={m} />
+
       <Group k="resumen" g={groups} line={sum.resumen}>
-        <ScoreCard h={h} m={m} />
         <Verdict h={h} m={m} onGo={groups.go} />
         <HomePrice h={h} m={m} />
       </Group>
