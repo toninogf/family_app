@@ -218,7 +218,7 @@ export const FEATURES: Record<string, string> = {
   barbacoa: 'Barbacoa', riego: 'Riego automático', huerto: 'Huerto', zona_juegos: 'Zona de juegos',
   parcela_llana: 'Parcela llana', parcela_pendiente: 'Parcela en pendiente', orientacion_sur: 'Orientación sur', vistas: 'Vistas', exterior: 'Exterior',
   // Energía y confort
-  calefaccion: 'Calefacción', aire: 'Aire acondicionado', placas_solares: 'Placas solares', bateria: 'Batería (placas)',
+  calefaccion: 'Calefacción', aire: 'Aire acondicionado', aerotermia: 'Aerotermia', geotermia: 'Geotermia', placas_solares: 'Placas solares', bateria: 'Batería (placas)',
   solar_termica: 'Solar térmica (agua)', suelo_radiante: 'Suelo radiante', chimenea: 'Chimenea o estufa', aislamiento: 'Buen aislamiento / doble cristal',
   cargador: 'Punto de carga (coche)',
   // La casa
@@ -233,14 +233,14 @@ export const FEATURES: Record<string, string> = {
 /** Los extras agrupados, para elegirlos sin una lista enorme */
 export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
   { title: '🏊 Piscina y exterior', keys: ['piscina', 'piscina_comunitaria', 'jardin', 'terraza', 'porche', 'barbacoa', 'riego', 'huerto', 'zona_juegos', 'parcela_llana', 'parcela_pendiente', 'orientacion_sur', 'vistas', 'exterior'] },
-  { title: '⚡ Energía y confort', keys: ['calefaccion', 'aire', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador', 'gas_natural'] },
+  { title: '⚡ Energía y confort', keys: ['calefaccion', 'aire', 'aerotermia', 'geotermia', 'gas_natural', 'placas_solares', 'bateria', 'solar_termica', 'suelo_radiante', 'chimenea', 'aislamiento', 'cargador'] },
   { title: '🏠 La casa', keys: ['reformado', 'sotano', 'sotano_habitable', 'buhardilla', 'garaje', 'garaje_cerrado', 'trastero', 'armarios', 'portero', 'balcon'] },
   { title: '♿ Accesibilidad', keys: ['entrada_sin_escaleras', 'acceso_llano', 'una_planta', 'dormitorio_pb', 'ascensor'] },
   { title: '🏘️ Urbanización y servicios', keys: ['urb_cerrada', 'zonas_comunes', 'fibra', 'transporte', 'cerca_cole'] }
 ]
 /** Opciones extra solo para lo que buscamos (no se marcan en la ficha: se deducen) */
 export const CRITERIA_EXTRA: Record<string, string> = {
-  piscina_cualquiera: 'Piscina (propia o comunitaria)', geotermia: 'Geotermia', aerotermia: 'Aerotermia'
+  piscina_cualquiera: 'Piscina (propia o comunitaria)'
 }
 const oneLabel = (k: string) => CRITERIA_EXTRA[k] ?? FEATURES[k] ?? k
 /** «aerotermia|geotermia» → «Aerotermia o Geotermia» */
@@ -266,7 +266,7 @@ export function shownFeatures(h: Pick<Home, 'features' | 'heating_type' | 'cooli
   const f = h.features
   return f.filter(k => !(k === 'calefaccion' && h.heating_type) && !(k === 'aire' && h.cooling)
     && !(k === 'garaje' && f.includes('garaje_cerrado')) && !(k === 'sotano' && f.includes('sotano_habitable'))
-    && !(k === 'gas_natural' && h.heating_type === 'gas_natural'))
+    && !((k === 'gas_natural' || k === 'aerotermia' || k === 'geotermia') && h.heating_type === k))
     .sort((a, b) => (FEATURE_ORDER.indexOf(a) + 1 || 999) - (FEATURE_ORDER.indexOf(b) + 1 || 999))
 }
 /** Lo elegido, juntando en una sola opción («a|b») las que se excluyen entre sí */
@@ -284,14 +284,17 @@ export function critItems(keys: string[]) {
 }
 /** Grupos para elegir en lo que buscamos (con las opciones deducidas al principio de cada grupo) */
 export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map((g, i) =>
-  i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : i === 1 ? { ...g, keys: [...g.keys, 'aerotermia', 'geotermia'] } : g)
+  i === 0 ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : g)
 /** ¿Cumple el piso esta característica de lo que buscamos? */
 export function meets(h: { features: string[]; heating_type?: string | null; cooling?: string | null }, k: string): boolean {
   if (k.includes('|')) return k.split('|').some(x => meets(h, x))
   if (k === 'calefaccion') return h.features.includes(k) || (!!h.heating_type && h.heating_type !== 'ninguna')
   if (k === 'aire') return h.features.includes(k) || (!!h.cooling && h.cooling !== 'no')
   if (k === 'piscina_cualquiera') return h.features.includes('piscina') || h.features.includes('piscina_comunitaria')
-  if (k === 'geotermia' || k === 'aerotermia') return h.heating_type === k
+  // Aerotermia y geotermia: como sistema de calefacción, como aire (aerotermia) o marcadas como extra (p. ej. solo para el agua)
+  if (k === 'gas_natural') return h.heating_type === k || h.features.includes(k)
+  if (k === 'geotermia') return h.heating_type === k || h.features.includes(k)
+  if (k === 'aerotermia') return h.heating_type === k || h.cooling === 'aerotermia' || h.features.includes(k)
   if (k === 'sotano') return h.features.includes('sotano') || h.features.includes('sotano_habitable')
   if (k === 'garaje') return h.features.includes('garaje') || h.features.includes('garaje_cerrado')
   if (k === 'placas_solares') return h.features.includes('placas_solares') || h.features.includes('bateria')
