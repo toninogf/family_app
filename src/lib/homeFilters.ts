@@ -4,6 +4,7 @@ import { readyPrice, reformKnown, reformTotal } from './reforma'
 import { healthCounts } from './health'
 import { recommend } from './pricing'
 import type { schoolSummary } from './colegios'
+import { homeScore } from './score'
 
 export type QuickKey = 'cumple' | 'falla1' | 'presupuesto' | 'piscina' | 'sinreforma' | 'nuevos' | 'bajadas' | 'visita'
 export const QUICK: { k: QuickKey; label: string }[] = [
@@ -32,8 +33,9 @@ export const EMPTY: Filters = {
   minM2: null, minPlot: null, minRooms: null, minBaths: null, musts: 'da_igual', reformCounts: false, minNice: null,
   features: [], reform: [], reformMax: null, risk: 'da_igual', schoolKm: null, schoolBilingual: false, heating: [], energyMin: null, origin: 'da_igual'
 }
-export type SortKey = 'encaje' | 'listo' | 'precio' | 'margen' | 'm2listo' | 'parcela' | 'nota' | 'cole' | 'visita' | 'bajada' | 'nuevos' | 'estado'
+export type SortKey = 'puntos' | 'encaje' | 'listo' | 'precio' | 'margen' | 'm2listo' | 'parcela' | 'nota' | 'cole' | 'visita' | 'bajada' | 'nuevos' | 'estado'
 export const SORTS: { k: SortKey; label: string }[] = [
+  { k: 'puntos', label: 'Nota 0–10, de mayor a menor' },
   { k: 'encaje', label: 'Mejor encaje (criterios, valoramos y presupuesto)' }, { k: 'listo', label: 'Para entrar a vivir, de menor a mayor' },
   { k: 'precio', label: 'Lo que piden, de menor a mayor' }, { k: 'margen', label: 'Más margen para negociar' },
   { k: 'm2listo', label: '€/m² para entrar a vivir' }, { k: 'parcela', label: 'Parcela más grande' }, { k: 'nota', label: 'Nota de la familia' },
@@ -132,11 +134,15 @@ export function applyFilters(homes: Home[], f: Filters, ctx: Ctx) {
   })
 }
 
+/** Nota 0–10 con el colegio que ya se ha buscado para la lista */
+export const scoreOf = (h: Home, ctx: Ctx) => { const s = ctx.schools[h.id]; return homeScore(h, ctx, s ? (s.pubPri ?? s.closest)?.dist ?? null : null) }
+
 export function sortHomes(list: Home[], sort: SortKey, ctx: Ctx) {
   const last = (x: number | null | undefined) => (x == null || Number.isNaN(x) ? Number.MAX_SAFE_INTEGER : x)
   const status = (a: Home, b: Home) => HOME_STATUS_ORDER.indexOf(a.status) - HOME_STATUS_ORDER.indexOf(b.status)
   const key = (h: Home): number | null => {
     switch (sort) {
+      case 'puntos': return -scoreOf(h, ctx).score
       case 'encaje': return -fitScore(h, ctx)
       case 'listo': return readyPrice(h)
       case 'precio': return h.price_cents

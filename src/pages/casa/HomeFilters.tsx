@@ -13,7 +13,7 @@ const save = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.str
 
 /** Filtros, orden y vistas guardadas (se recuerdan en este móvil) */
 export function useHomeFilters() {
-  const saved = load<{ f: Filters; sort: SortKey }>(STORE, { f: EMPTY, sort: 'encaje' })
+  const saved = load<{ f: Filters; sort: SortKey }>(STORE, { f: EMPTY, sort: 'puntos' })
   const [f, setF] = useState<Filters>({ ...EMPTY, ...saved.f })
   const [sort, setSort] = useState<SortKey>(saved.sort)
   const [views, setViews] = useState<View[]>(() => loadArr<View>(VIEWS))
@@ -222,7 +222,7 @@ export function FilterSheet({ s, towns, ours, countFor, onClose }: {
         </Block>
 
         <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-1 bg-bg border-t border-line flex gap-2">
-          <button type="button" onClick={() => { setD(EMPTY); setSort('encaje') }} className="min-h-12 px-4 rounded-xl border border-line text-sm font-semibold">Limpiar</button>
+          <button type="button" onClick={() => { setD(EMPTY); setSort('puntos') }} className="min-h-12 px-4 rounded-xl border border-line text-sm font-semibold">Limpiar</button>
           <button type="button" onClick={apply} className="flex-1 min-h-12 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Ver {n} piso{n === 1 ? '' : 's'}</button>
         </div>
       </div>

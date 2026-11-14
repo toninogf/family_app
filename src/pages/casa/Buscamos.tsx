@@ -33,6 +33,7 @@ import { recommend } from '../../lib/pricing'
 import { HomeReforma, ReformaEditor } from './HomeReforma'
 import { AiHomeSearch } from './AiHomeSearch'
 import { VisitBrief, briefLists } from './VisitBrief'
+import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreKey } from '../../lib/score'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
@@ -272,7 +273,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
   const nLinks = (h.links?.length ?? 0) + (h.url ? 1 : 0)
   const join = (...x: (string | number | false | null | undefined)[]) => x.filter(Boolean).join(' · ')
   return {
-    resumen: join(rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
+    resumen: join(`nota ${fmtScore(homeScore(h, m, school?.dist ?? null).score)}`, rec && `oferta ~${priceShort(rec.open)}`, checks.length > 0 && `cumple ${checks.filter(c => c.ok).length} de ${checks.length}`),
     casa: join(h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, h.rooms != null && `${h.rooms} hab.`, h.baths != null && `${h.baths} baños`),
     visita: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas para negociar`),
     dinero: join(monthlyCost(h) != null && `${price(monthlyCost(h))}/mes`,
@@ -393,6 +394,51 @@ function useNearestSchool(h: Home) {
   return s
 }
 
+/** Nota 0–10 (tarjeta y comparador) */
+function ScoreBadge({ s, big }: { s: HomeScore; big?: boolean }) {
+  return (
+    <span title={s.provisional ? 'Provisional: faltan datos' : 'Nota de 0 a 10'}
+      className={`inline-flex items-baseline gap-0.5 rounded-full font-bold ${scoreTone(s.score)} ${big ? 'px-3 py-1 text-[22px]' : 'px-2 py-0.5 text-[14px]'}`}>
+      {fmtScore(s.score)}{s.provisional && <span className={big ? 'text-[14px]' : 'text-[11px]'}>*</span>}
+    </span>
+  )
+}
+
+/** En el Resumen de la ficha: la nota y de dónde sale */
+function ScoreCard({ h, m }: { h: Home; m: Mudanza }) {
+  const school = useNearestSchool(h)
+  const s = homeScore(h, m, school?.dist ?? null)
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="bg-card rounded-2xl p-4 flex flex-col gap-2">
+      <button type="button" onClick={() => setOpen(o => !o)} className="flex items-center gap-3 text-left">
+        <ScoreBadge s={s} big />
+        <span className="flex-1 min-w-0 flex flex-col">
+          <span className="font-bold text-[15px]">Nota de la casa</span>
+          <span className="text-[12px] text-muted">
+            {s.capped ? 'Máximo 4: falla un imprescindible que no se arregla con reforma' : s.provisional ? 'Provisional: faltan datos (*)' : 'Con vuestros criterios y pesos'}
+          </span>
+        </span>
+        <span className="text-sm font-semibold text-accent">{open ? 'Ocultar' : 'Por qué'}</span>
+      </button>
+      <div className="flex flex-col gap-1">
+        {s.blocks.map(b => (
+          <div key={b.k} className="flex flex-col gap-0.5">
+            <span className="flex items-center gap-2 text-[13px]">
+              <span className="w-40 shrink-0 truncate">{b.icon} {b.label}</span>
+              <span className="flex-1 h-2 rounded-full bg-bg overflow-hidden"><span className={`block h-full ${scoreTone(b.score).split(' ')[0]} ${b.missing ? 'opacity-40' : ''}`} style={{ width: `${b.score * 10}%` }} /></span>
+              <span className="w-8 text-right font-semibold">{fmtScore(b.score)}</span>
+              <span className="w-9 text-right text-[11px] text-muted">{b.weight} %</span>
+            </span>
+            {open && b.why.map(w => <span key={w} className="text-[12px] text-muted pl-5">· {w}</span>)}
+          </div>
+        ))}
+      </div>
+      {open && <p className="text-[11px] text-muted">Los pesos se cambian en «Qué buscamos». Vuestra opinión solo cuenta cuando habéis puntuado la casa con ⭐.</p>}
+    </div>
+  )
+}
+
 function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   h: Home; m: Mudanza; cover: { url?: string; ad: boolean } | null; onOpen: () => void; picked: boolean; onPick: () => void
   onReject: (r: RejectReason | null) => void
@@ -410,6 +456,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   const budget = m.criteria?.max_price_cents ?? null
   const over = budget != null && ready != null && ready > budget
   const title = shortTitle(h)
+  const sc = homeScore(h, m, school?.dist ?? null)
 
   const fails = checks.filter(c => c.ok === false)
   const viaReform = fails.filter(c => c.reform).length
@@ -436,7 +483,10 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
             📍 {h.zone ? <span className="font-normal text-muted">{h.zone} · </span> : null}{h.municipality ?? 'Sin localidad'}
           </span>
         </span>
-        <StatusBadge s={h.status} />
+        <span className="flex flex-col items-end gap-1 shrink-0">
+          <ScoreBadge s={sc} />
+          <StatusBadge s={h.status} />
+        </span>
       </span>
       <span className="flex flex-col gap-0.5">
         <span className="flex justify-between items-baseline gap-2">
@@ -585,6 +635,7 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
       <Group k="resumen" g={groups} line={sum.resumen}>
+        <ScoreCard h={h} m={m} />
         <Verdict h={h} m={m} onGo={groups.go} />
         <HomePrice h={h} m={m} />
       </Group>
@@ -1798,6 +1849,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   const [pick, setPick] = useState(0)
   const [must, setMust] = useState<string[]>(c?.must_haves ?? [])
   const [nice, setNice] = useState<string[]>(c?.nice_to_haves ?? [])
+  const [weights, setWeights] = useState(weightsOf(c))
   const [error, setError] = useState('')
 
   async function submit(e: FormEvent) {
@@ -1807,7 +1859,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
     const err = await m.write('search_criteria', {
       household_id: householdId, max_price_cents: maxCents,
       min_rooms: rooms.trim() ? parseInt(rooms, 10) : null, min_m2: m2.trim() ? parseInt(m2, 10) : null,
-      zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k)).slice(0, 40)
+      zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k)).slice(0, 40), score_weights: weights
     }, undefined, 'household_id')
     if (err) setError(err); else onClose()
   }
@@ -1845,10 +1897,37 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
           <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Puedes ordenar la lista por esto.</p>
           <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} value={nice} onChange={setNice} />
         </details>
+        <WeightsEditor w={weights} onChange={setWeights} />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <button type="submit" className="py-3.5 rounded-xl bg-accent text-white dark:text-bg font-bold text-[16px]">Guardar</button>
       </form>
     </Sheet>
+  )
+}
+
+/** Pesos de la nota 0–10 («Qué buscamos») */
+function WeightsEditor({ w, onChange }: { w: Record<ScoreKey, number>; onChange: (w: Record<ScoreKey, number>) => void }) {
+  const base = SCORE_BLOCKS.filter(b => b.k !== 'opinion')
+  const sum = base.reduce((a, b) => a + w[b.k], 0)
+  const pct = (k: ScoreKey) => (sum ? Math.round(w[k] * 100 / sum) : 0)
+  const changed = SCORE_BLOCKS.some(b => w[b.k] !== DEFAULT_WEIGHTS[b.k])
+  const slider = (k: ScoreKey, label: string, help: string, shown: string) => (
+    <label key={k} className="flex flex-col gap-0.5">
+      <span className="flex justify-between text-[14px]"><span className="font-semibold">{label}</span><span className="font-bold">{shown}</span></span>
+      <input type="range" min={0} max={50} step={5} value={w[k]} onChange={e => onChange({ ...w, [k]: Number(e.target.value) })} className="w-full accent-[var(--app-accent)]" />
+      <span className="text-[11px] text-muted">{help}</span>
+    </label>
+  )
+  return (
+    <details className="rounded-2xl border border-line p-3">
+      <summary className="font-bold text-[15px] cursor-pointer">⚖️ Cómo se calcula la nota 0–10</summary>
+      <p className="text-[12px] text-muted mt-1 mb-3">Cuánto pesa cada cosa. Se reparte en proporción, así que no hace falta que sume 100. Si falla un imprescindible que no se arregla con reforma, la nota no pasa de 4.</p>
+      <div className="flex flex-col gap-3">
+        {base.map(b => slider(b.k, `${b.icon} ${b.label}`, b.help, `${pct(b.k)} %`))}
+        {slider('opinion', '👨‍👩‍👧‍👦 Vuestra opinión', 'Cuando habéis puntuado la casa con ⭐, pesa esto y lo demás se reparte el resto', `${w.opinion} %`)}
+        {changed && <button type="button" onClick={() => onChange({ ...DEFAULT_WEIGHTS })} className="self-start min-h-9 px-3 rounded-xl border border-line text-sm font-semibold">Volver a los de serie</button>}
+      </div>
+    </details>
   )
 }
 
@@ -1866,6 +1945,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
   // Cada fila: cómo se muestra y, si tiene sentido, qué valor es mejor (para resaltarlo)
   type Row = { label: string; show: (h: Home) => ReactNode; value?: (h: Home) => number | null; better?: 'low' | 'high' }
   const rows: Row[] = [
+    { label: 'Nota', show: h => { const s = schools[h.id]; return <ScoreBadge s={homeScore(h, m, s ? (s.pubPri ?? s.closest)?.dist ?? null : null)} /> }, value: h => { const s = schools[h.id]; return homeScore(h, m, s ? (s.pubPri ?? s.closest)?.dist ?? null : null).score }, better: 'high' },
     { label: 'Precio', show: h => price(h.price_cents), value: h => h.price_cents, better: 'low' },
     { label: 'Reforma', show: h => { const t = reformTotal(h.reform, h); return t ? rangeK(t.lo, t.hi) : h.reform?.state === 'listo' ? 'No necesita' : '¿?' }, value: h => (h.reform?.state || h.reform?.items?.length ? reformTotal(h.reform, h)?.mid ?? 0 : null), better: 'low' },
     { label: 'Gastos de compra', show: h => (h.price_cents != null ? price(buyingCosts(h)) : '—'), value: h => (h.price_cents != null ? buyingCosts(h) : null), better: 'low' },
