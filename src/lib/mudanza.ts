@@ -242,7 +242,9 @@ export const FEATURE_GROUPS: { title: string; keys: string[] }[] = [
 export const CRITERIA_EXTRA: Record<string, string> = {
   piscina_cualquiera: 'Piscina (propia o comunitaria)', calefaccion_cualquiera: 'Calefacción (cualquiera)'
 }
-const oneLabel = (k: string) => CRITERIA_EXTRA[k] ?? FEATURES[k] ?? k
+/** En lo que buscamos, nombre que deja claro que vale cualquier variante */
+const CRITERIA_RENAME: Record<string, string> = { garaje: 'Garaje (cualquiera)', sotano: 'Sótano (cualquiera)' }
+const oneLabel = (k: string) => CRITERIA_EXTRA[k] ?? CRITERIA_RENAME[k] ?? FEATURES[k] ?? k
 /** «aerotermia|geotermia» → «Aerotermia o Geotermia» */
 export const criteriaLabel = (k: string) => k.split('|').map(oneLabel).join(' o ')
 /** Opciones que se excluyen entre sí (no se puede tener todo): si se eligen varias, cuentan como una sola («una de ellas») */
