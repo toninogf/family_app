@@ -39,7 +39,7 @@ import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsO
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
-import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES } from '../../data/places'
+import { MADRID_DISTRICTS, MUNICIPALITIES, PROVINCES, fold } from '../../data/places'
 
 const PROVINCE_NAMES = PROVINCES.map(p => p.name)
 const municipalitiesOf = (province: string | null) => {
@@ -382,10 +382,18 @@ function CheckChip({ c }: { c: Check }) {
 
 /** Título sin repetir la zona ni la localidad (ya salen en la línea 📍) */
 function shortTitle(h: Home) {
-  const drop = [h.zone, h.municipality].filter(Boolean).map(x => x!.trim().toLowerCase())
+  // Fuera lo que ya sale debajo: zona y localidad (aunque vengan partidas), habitaciones y metros
+  const where = [h.zone, h.municipality].filter(Boolean).map(x => fold(x!))
   const parts = h.title.split(/\s+·\s+|\s+-\s+|,\s+/)
-  const kept = parts.filter((p, i) => i === 0 || !drop.includes(p.trim().toLowerCase()))
-  return kept.join(' · ').replace(/\s+(en|·)\s*$/i, '') || h.title
+  const kept = parts.filter((p, i) => {
+    if (i === 0) return true
+    const f = fold(p.trim())
+    if (!f) return false
+    if (where.some(w => w === f || w.includes(f) || f.includes(w))) return false
+    return !/^\d+\s*(hab|dorm|habitaciones|m2|m²|metros)/i.test(p.trim())
+  })
+  const first = kept[0].replace(/\s+\d+\s*(hab\.?|habitaciones|dormitorios)(\s|$)/i, ' ').replace(/\s+\d+\s*m²/i, '').trim()
+  return [first, ...kept.slice(1)].join(' · ').replace(/\s+(en|·)\s*$/i, '') || h.title
 }
 
 /** Colegio más cercano (primaria) para la tarjeta, cuando hay ubicación */
@@ -471,11 +479,12 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   const viaReform = fails.filter(c => c.reform).length
   const unknown = checks.filter(c => c.ok == null).length
   const nice = niceCount(h, m.criteria)
-  const facts = [h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, roomsLabel(h), h.baths != null && `${h.baths} baños`, pm2 && `${price(pm2)}/m²`].filter(Boolean)
-  const extra = [
-    school && `🏫 ${school.type_abbr === 'CP INF-PRI' ? 'CEIP' : school.ownership === 'publico' ? 'Público' : OWN_LABEL[school.ownership]} a ${distLabel(school.dist)}`,
-    next && `📅 Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`,
-  ].filter(Boolean)
+  const facts = [h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, roomsLabel(h), h.baths != null && `${h.baths} baños`, pm2 && `${price(pm2)}/m²`,
+    school && `🏫 ${school.type_abbr === 'CP INF-PRI' ? 'CEIP' : school.ownership === 'publico' ? 'Público' : OWN_LABEL[school.ownership]} a ${distLabel(school.dist)}`].filter(Boolean)
+  const extra = [next && `📅 Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`].filter(Boolean)
+  // Otros portales: solo se enseñan si alguno la tiene más barata; si no, «+N portales»
+  const others = (h.links ?? []).filter(l => l.url !== h.url)
+  const cheaper = others.filter(l => l.price_cents != null && h.price_cents != null && l.price_cents < h.price_cents)
 
   return (
     <div className="bg-card rounded-2xl flex flex-col overflow-hidden">
@@ -497,6 +506,13 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
           <StatusBadge s={h.status} />
         </span>
       </span>
+      {(checks.length > 0 || nice.want.length > 0) && (
+        <span className="text-[13px]">
+          {checks.length > 0 && <span className={fails.length ? '' : 'text-accent font-semibold'}>🎯 Cumple {checks.length - fails.length - unknown} de {checks.length}{unknown ? ` (${unknown} sin dato)` : ''}{viaReform ? <span className="text-[#C77A12]"> · 🔨 {viaReform} con reforma</span> : null}</span>}
+          {checks.length > 0 && nice.want.length > 0 && <span className="text-muted"> · </span>}
+          {nice.want.length > 0 && <span>⭐ {nice.got.length} de {nice.want.length} que valoramos{nice.viaReform.length ? <span className="text-[#C77A12]"> (+🔨{nice.viaReform.length})</span> : null}</span>}
+        </span>
+      )}
       <span className="flex flex-col gap-0.5">
         <span className="flex justify-between items-baseline gap-2">
           <span className="text-[13px] text-muted">Piden</span>
@@ -510,16 +526,9 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
             <span className={`text-[17px] font-bold shrink-0 ${over ? 'text-danger' : budget != null ? 'text-accent' : ''}`}>{price(ready)}</span>
           </span>
         )}
-        <OfferLine h={h} m={m} compact />
+        {over && budget != null && ready != null && <span className="text-[12px] text-danger text-right">se pasa {kShort(ready - budget)} del presupuesto</span>}
       </span>
       {facts.length > 0 && <span className="text-[13px] text-muted">{facts.join(' · ')}</span>}
-      {(checks.length > 0 || nice.want.length > 0) && (
-        <span className="text-[13px]">
-          {checks.length > 0 && <span className={fails.length ? '' : 'text-accent font-semibold'}>🎯 Cumple {checks.length - fails.length - unknown} de {checks.length}{unknown ? ` (${unknown} sin dato)` : ''}{viaReform ? <span className="text-[#C77A12]"> · 🔨 {viaReform} con reforma</span> : null}</span>}
-          {checks.length > 0 && nice.want.length > 0 && <span className="text-muted"> · </span>}
-          {nice.want.length > 0 && <span>⭐ {nice.got.length} de {nice.want.length} que valoramos{nice.viaReform.length ? <span className="text-[#C77A12]"> (+🔨{nice.viaReform.length})</span> : null}</span>}
-        </span>
-      )}
       {fails.length > 0 && (
         <span className="flex gap-1 flex-wrap">
           {fails.map(c => <CheckChip key={c.label} c={c} />)}
@@ -528,7 +537,8 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
       {extra.length > 0 && <span className="text-[13px] text-muted">{extra.join(' · ')}</span>}
       {h.status === 'descartado' && discardLabel(h) && <span className="text-[13px] text-muted">Descartado: {discardLabel(h)}</span>}
     </button>
-    {h.links?.length > 0 && <div className="px-4 pb-3 -mt-1"><LinkChips links={h.links} ourPrice={h.price_cents} /></div>}
+    {cheaper.length > 0 ? <div className="px-4 pb-3 -mt-1"><LinkChips links={cheaper} ourPrice={h.price_cents} /></div>
+      : others.length > 0 ? <span className="px-4 pb-3 -mt-1 text-[12px] text-muted">+{others.length} portal{others.length > 1 ? 'es' : ''} con el mismo precio</span> : null}
     {h.status === 'propuesta' && (
       <div className="flex border-t border-line">
         <button type="button" onClick={() => void m.write('homes', { status: 'interesa' }, h.id)} className="flex-1 min-h-11 text-[14px] font-bold text-accent">👍 Me interesa</button>
@@ -550,17 +560,16 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
         className={`min-h-11 px-3 flex items-center gap-1.5 text-[13px] font-semibold shrink-0 ${picked ? 'text-accent bg-accent-soft' : 'text-muted'}`}>
         {picked ? '☑' : '☐'} Comparar
       </button>
+      <span className="flex-1" />
       {h.url && (
-        <a href={h.url} target="_blank" rel="noopener noreferrer" className="flex-1 min-h-11 px-3 flex items-center gap-1.5 text-accent text-[13px] font-semibold border-l border-line min-w-0">
-          🔗 <span className="truncate">{portalName(h.url) ?? 'Anuncio'}</span> ↗
-        </a>
+        <a href={h.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver el anuncio en ${portalName(h.url) ?? 'el portal'}`} title={portalName(h.url) ?? 'Anuncio'}
+          className="min-h-11 w-14 flex items-center justify-center text-[17px] border-l border-line">🔗</a>
       )}
       {maps && (
-        <a href={maps} target="_blank" rel="noopener noreferrer" className="flex-1 min-h-11 px-3 flex items-center gap-1.5 text-accent text-[13px] font-semibold border-l border-line min-w-0">
-          📍 <span className="truncate">Cómo llegar</span> ↗
-        </a>
+        <a href={maps} target="_blank" rel="noopener noreferrer" aria-label="Cómo llegar (Maps)" title="Cómo llegar"
+          className="min-h-11 w-14 flex items-center justify-center text-[17px] border-l border-line">📍</a>
       )}
-      <button type="button" onClick={() => setAskDelete(true)} aria-label="Borrar la ficha" className="min-h-11 px-4 text-[15px] text-muted border-l border-line shrink-0">🗑️</button>
+      <button type="button" onClick={() => setAskDelete(true)} aria-label="Borrar la ficha" className="min-h-11 w-14 text-[16px] text-muted border-l border-line shrink-0">🗑️</button>
     </div>
     </div>
   )
