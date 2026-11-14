@@ -16,7 +16,7 @@ export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: str
   { k: 'nice', icon: '⭐', label: 'Lo que valoráis', help: 'Cuántos de los «Valoramos» tiene (con reforma cuenta la mitad)' },
   { k: 'estado', icon: '🔍', label: 'Estado, riesgos y reforma', help: 'Resta por cada ⛔ y ⚠️ de Documentos y Estado, y por la reforma que necesita' },
   { k: 'ubicacion', icon: '📍', label: 'Ubicación', help: 'Si está donde buscáis y lo cerca que queda el colegio' },
-  { k: 'opinion', icon: '👨‍👩‍👧‍👦', label: 'Vuestra opinión', help: 'Las estrellas tras la visita. Solo cuenta cuando la habéis puntuado' }
+  { k: 'opinion', icon: '👨‍👩‍👧‍👦', label: 'Vuestra opinión', help: 'Vuestra nota del 1 al 10 tras la visita. Solo cuenta cuando la habéis puntuado' }
 ]
 
 export function weightsOf(c: Criteria | null): ScoreWeights {
@@ -154,14 +154,14 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
     else blocks.push({ ...meta('ubicacion'), score: 5, weight: W.ubicacion, why: ['Sin ubicación ni colegios: nota neutra'], missing: true })
   }
 
-  // 👨‍👩‍👧‍👦 Vuestra opinión (estrellas 1–5 → 0–10). Si hay, pesa lo suyo y el resto se reparte lo demás
+  // 👨‍👩‍👧‍👦 Vuestra opinión (1–10). Si hay, pesa lo suyo y el resto se reparte lo demás
   const rs = c.ratings.filter(x => x.home_id === h.id)
   const opW = rs.length ? Math.min(W.opinion, 90) : 0
   const rest = blocks.reduce((a, b) => a + b.weight, 0)
   for (const b of blocks) b.weight = rest ? b.weight * (100 - opW) / rest : 0
   if (rs.length) {
     const avg = rs.reduce((a, x) => a + x.score, 0) / rs.length
-    blocks.push({ ...meta('opinion'), score: clamp((avg - 1) * 2.5), weight: opW, why: [`${avg.toLocaleString('es-ES', { maximumFractionDigits: 1 })} ⭐ de media (${rs.length} voto${rs.length > 1 ? 's' : ''})`] })
+    blocks.push({ ...meta('opinion'), score: clamp(avg), weight: opW, why: [`${avg.toLocaleString('es-ES', { maximumFractionDigits: 1 })} de 10 de media (${rs.length} voto${rs.length > 1 ? 's' : ''})`] })
   }
 
   const total = blocks.reduce((a, b) => a + b.weight, 0)

@@ -286,7 +286,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
       `nota simple ${checksAll.find(c => c.key === 'nota_simple')?.item.s === 'unknown' ? 'pendiente' : statusIcon(checksAll.find(c => c.key === 'nota_simple')?.item.s)}`),
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
     visitas: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas',
-      (() => { const r = m.ratings.filter(x => x.home_id === h.id); return r.length ? `${(r.reduce((a, x) => a + x.score, 0) / r.length).toLocaleString('es-ES', { maximumFractionDigits: 1 })} ⭐` : null })(),
+      (() => { const r = m.ratings.filter(x => x.home_id === h.id); return r.length ? `${(r.reduce((a, x) => a + x.score, 0) / r.length).toLocaleString('es-ES', { maximumFractionDigits: 1 })}/10 ⭐` : null })(),
       brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, h.contact_phone && '📞'),
     brief: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas`),
     oferta: lastOffer ? join(`${price(lastOffer.amount_cents)}`, OFFER_STATUS[lastOffer.status]?.toLowerCase(), offers.length > 1 && `${offers.length} ofertas`) : join('sin oferta', rec && `recomendada ~${priceShort(rec.open)}`),
@@ -701,10 +701,10 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         <div className="bg-card rounded-xl p-3 flex flex-col gap-1">
           <span className="flex justify-between items-baseline gap-2">
             <span className="font-bold text-[15px]">⭐ Vuestra valoración</span>
-            {avg != null && <span className="text-[13px] text-muted">media {avg.toLocaleString('es-ES', { maximumFractionDigits: 1 })} de 5</span>}
+            {avg != null && <span className="text-[13px] text-muted">media {avg.toLocaleString('es-ES', { maximumFractionDigits: 1 })} de 10</span>}
           </span>
           <Stars h={h} m={m} adults={adults} rate={rateHome(m, householdId)} />
-          {avg == null && <span className="text-[11px] text-muted">Puntuadla tras verla: entra en la nota de la casa («Vuestra opinión»).</span>}
+          {avg == null && <span className="text-[11px] text-muted">Del 1 al 10, tras verla: entra en la nota de la casa («Vuestra opinión»).</span>}
         </div>
         {/* Plegable: abierto si hay una visita prevista */}
         <details className="group mt-1" open={!!nextV}>

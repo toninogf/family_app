@@ -73,7 +73,7 @@ export default function Visitas({ m, members, householdId }: { m: Mudanza; membe
     if (!vs.some(v => v.status === 'done') || vs.some(v => v.status === 'scheduled')) return false
     const rs = m.ratings.filter(r => r.home_id === h.id)
     const avg = rs.length ? rs.reduce((a, r) => a + r.score, 0) / rs.length : null
-    return h.status === 'favorito' || h.status === 'oferta' ? false : (h.status === 'interesa' || (avg != null && avg >= 4))
+    return h.status === 'favorito' || h.status === 'oferta' ? false : (h.status === 'interesa' || (avg != null && avg >= 7))
   })
   const counts = { compra: m.homeVisits.filter(v => v.status === 'scheduled' && v.visit_date >= t).length, venta: m.visits.filter(v => v.status === 'scheduled' && v.visit_date >= t).length }
 
@@ -197,7 +197,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate }: {
         {past && h && (
           <div className="flex gap-1.5 flex-wrap items-center">
             <span className="text-[12px] font-semibold">{HOME_STATUS[h.status]}</span>
-            {score != null && <span className="text-[12px] text-muted">· ⭐ {score.toLocaleString('es-ES', { maximumFractionDigits: 1 })}</span>}
+            {score != null && <span className="text-[12px] text-muted">· ⭐ {score.toLocaleString('es-ES', { maximumFractionDigits: 1 })}/10</span>}
             {ad && <a href={ad} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 {portalName(ad) ?? 'Anuncio'} ↗</a>}
             <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>
           </div>
@@ -339,7 +339,7 @@ function NewVisitSheet({ m, onClose, onCompra, onVenta }: { m: Mudanza; onClose:
   )
 }
 
-/** Nota rápida de cada uno (1–5) al cerrar la visita: la misma que usa la ficha y el comparador */
+/** Nota rápida de cada uno (1–10) al cerrar la visita: la misma que usa la ficha y el comparador */
 /** Visitas anteriores del mismo comprador (por teléfono o, si no hay, por nombre) */
 function previousOf(v: BuyerVisit, all: BuyerVisit[]) {
   const norm = (x: string | null) => (x ?? '').replace(/\s+/g, '').toLowerCase()
