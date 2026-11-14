@@ -46,7 +46,7 @@ export function homeSearchPrompt(c: Criteria | null, homes: Home[], rejections: 
   const crit = [
     c?.max_price_cents ? `- Presupuesto PARA ENTRAR A VIVIR (precio + reforma + impuestos y gastos de compra ≈ 6,5 % + honorarios si los hay): hasta ${price(c.max_price_cents)}. El precio del anuncio tiene que dejar margen para eso.` : null,
     c?.municipalities.length ? `- Localidades: ${c.municipalities.join(', ')}${c.zones.length ? ` (zonas: ${c.zones.join(', ')})` : ''}. Puedes incluir alguna de los alrededores si es muy buena, avisándolo en la nota.` : c?.zones.length ? `- Zonas: ${c.zones.join(', ')}` : null,
-    c?.min_rooms ? `- Mínimo ${c.min_rooms} habitaciones` : null,
+    c?.min_rooms ? `- Mínimo ${c.min_rooms} habitaciones (la buhardilla y el sótano habitable cuentan como una más cada uno)` : null,
     c?.min_m2 ? `- Mínimo ${c.min_m2} m² construidos` : null,
     c?.must_haves.length ? `- IMPRESCINDIBLE: ${critItems(c.must_haves).map(criteriaLabel).join(', ')}` : null,
     c?.nice_to_haves.length ? `- Valoramos (suma, no obliga): ${critItems(c.nice_to_haves).map(criteriaLabel).join(', ')}` : null
@@ -64,7 +64,7 @@ export function homeSearchPrompt(c: Criteria | null, homes: Home[], rejections: 
     learned.length ? 'No nos ha gustado (evita casas parecidas):\n' + learned.join('\n') : '',
     have.length ? `Ya las tenemos o rechazadas, NO las propongas (portal y referencia): ${have.join('; ')}` : '',
     'Reglas: solo anuncios que sigan publicados (abre el enlace para comprobarlo); prioriza los recientes y las bajadas de precio; máximo 10, los mejores primero; no inventes datos: lo que el anuncio no diga, null. Fuera: ocupadas, nuda propiedad, subastas.',
-    `Extras posibles (solo estas claves): ${Object.keys(FEATURES).join(', ')}.`,
+    `Extras posibles (solo estas claves): ${Object.keys(FEATURES).filter(k => k !== 'calefaccion').join(', ')}. «X o Y» en lo que buscamos = basta con una.`,
     `Reforma: estado para entrar a vivir mirando texto y fotos (listo | lavado | parcial | integral) y SOLO las partidas que se vean claramente (si dudas, no la pongas): ${Object.keys(PARTIDA).join(', ')}.`,
     'RESPONDE SOLO con este JSON (sin texto antes ni después):',
     `{"casas": [{"titulo": "", "url": "https://…", "precio": 0, "m2": 0, "m2_utiles": null, "parcela": null, "habitaciones": 0, "banos": 0, "ano": null, "localidad": "", "zona": "", "direccion": null, "planta": null, "extras": [], "calefaccion": "${HEAT.join('|')}", "aire": "${COOL.join('|')}", "certificado": null, "anunciante": "agencia|particular", "agencia": null, "referencia": null, "telefono": null, "estado_reforma": "listo|lavado|parcial|integral", "partidas": [], "fecha_anuncio": "AAAA-MM-DD", "nota": "1–3 frases: por qué encaja, qué le falta y precio para entrar a vivir estimado"}]}`,
