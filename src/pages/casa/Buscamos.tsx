@@ -601,7 +601,6 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
       {/* 1. Cabecera visual */}
       <div className="-mt-3 flex flex-col gap-2">
         <Gallery h={h} m={m} onAdd={() => onEdit('fotos')} />
-        <TwoPrices h={h} m={m} budget={m.criteria?.max_price_cents ?? null} />
         <div className="flex justify-between items-center gap-2">
           <span className="text-[13px] text-muted truncate min-w-0">{[pm2 && `${price(pm2)}/m²`, place].filter(Boolean).join(' · ')}</span>
           <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
@@ -639,8 +638,11 @@ function HomeSheet({ h, m, members, householdId, onEdit, onClose, onReject, star
         onVisit={() => setVisitSheet({ open: true })} onOffer={o => setOfferSheet({ open: true, offer: o })}
         onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
 
-      {/* La nota, siempre a la vista (fuera de los grupos plegables) */}
-      <ScoreCard h={h} m={m} />
+      {/* 3. El dinero y la nota, seguidos y siempre a la vista (fuera de los grupos plegables) */}
+      <div className="flex flex-col gap-2">
+        <TwoPrices h={h} m={m} budget={m.criteria?.max_price_cents ?? null} />
+        <ScoreCard h={h} m={m} />
+      </div>
 
       <Group k="resumen" g={groups} line={sum.resumen}>
         <Verdict h={h} m={m} onGo={groups.go} />
