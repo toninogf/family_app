@@ -36,7 +36,7 @@ import { VisitBrief, briefLists } from './VisitBrief'
 import { Stars, rateHome } from './HomeStars'
 import { EquipChips } from './EquipChips'
 import { DeepAnalysisPanel, VerdictChip, deepLine } from './DeepAnalysis'
-import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreWeights } from '../../lib/score'
+import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreKey, type ScoreWeights } from '../../lib/score'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
 import { AdPhotoFetch, AiChanges, AiSources, ImportDiffs, knownForAi, importMessage, merger, sourcesToLinks, type ImportDiff } from '../../components/ListingImport'
 import type { AiSource } from '../../lib/listingParse'
@@ -453,7 +453,7 @@ function ScoreCard({ h, m }: { h: Home; m: Mudanza }) {
           <span key={x.label} className="text-[13px] text-danger font-semibold">−{x.pct} % por no cumplir: {x.label.toLowerCase()}{x.near ? ' (por poco)' : ''}</span>
         ))}
       </div>
-      {open && <p className="text-[11px] text-muted">Los pesos se cambian en «Qué buscamos». Vuestra opinión solo cuenta cuando habéis puntuado la casa con ⭐.</p>}
+      {open && <p className="text-[11px] text-muted">Los pesos se cambian en «Qué buscamos». Vuestra opinión solo cuenta cuando habéis puntuado la casa (1 a 10).</p>}
     </div>
   )
 }
@@ -1973,24 +1973,55 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
 function WeightsEditor({ w, onChange }: { w: ScoreWeights; onChange: (w: ScoreWeights) => void }) {
   const base = SCORE_BLOCKS.filter(b => b.k !== 'opinion')
   const sum = base.reduce((a, b) => a + w[b.k], 0)
-  const pct = (k: keyof ScoreWeights) => (sum ? Math.round(w[k] * 100 / sum) : 0)
+  const share = (k: ScoreKey, withOp: boolean) => (sum ? w[k] / sum * (withOp ? 100 - w.opinion : 100) : 0)
   const changed = (Object.keys(DEFAULT_WEIGHTS) as (keyof ScoreWeights)[]).some(k => w[k] !== DEFAULT_WEIGHTS[k])
-  const slider = (k: keyof ScoreWeights, label: string, help: string, shown: string, max = 50, min = 0) => (
+  const COLORS = ['#3D6FD8', '#1F8A4C', '#E0A21B', '#8E5BD6', '#D9662B', '#2BA3B8']
+  const IMP = ['No cuenta', 'Muy poco', 'Poco', 'Normal', 'Bastante', 'Mucho']
+  const rule = (k: 'niceFull' | 'penalty' | 'opinion', label: string, help: string, shown: string, max: number, min = 0) => (
     <label key={k} className="flex flex-col gap-0.5">
       <span className="flex justify-between text-[14px]"><span className="font-semibold">{label}</span><span className="font-bold">{shown}</span></span>
       <input type="range" min={min} max={max} step={5} value={w[k]} onChange={e => onChange({ ...w, [k]: Number(e.target.value) })} className="w-full accent-[var(--app-accent)]" />
       <span className="text-[11px] text-muted">{help}</span>
     </label>
   )
+  const bar = (withOp: boolean) => (
+    <div className="flex flex-col gap-1">
+      <span className="text-[12px] text-muted">{withOp ? `Con vuestra nota (pesa ${w.opinion} %)` : 'Sin vuestra nota (casas aún no puntuadas)'}</span>
+      <div className="flex h-5 rounded-full overflow-hidden bg-bg text-[10px] font-bold text-white">
+        {base.map((b, i) => { const p = share(b.k, withOp); return p > 0 ? <span key={b.k} title={`${b.label} ${Math.round(p)} %`} style={{ width: `${p}%`, background: COLORS[i] }} className="flex items-center justify-center overflow-hidden">{p >= 9 ? `${Math.round(p)}%` : ''}</span> : null })}
+        {withOp && w.opinion > 0 && <span style={{ width: `${w.opinion}%` }} className="bg-ink text-bg flex items-center justify-center">{w.opinion >= 9 ? `${w.opinion}%` : ''}</span>}
+      </div>
+    </div>
+  )
   return (
     <details className="rounded-2xl border border-line p-3">
       <summary className="font-bold text-[15px] cursor-pointer">⚖️ Cómo se calcula la nota 0–10</summary>
-      <p className="text-[12px] text-muted mt-1 mb-3">Cuánto pesa cada cosa. Se reparte en proporción, así que no hace falta que sume 100.</p>
+      <p className="text-[12px] text-muted mt-1 mb-3">Dale a cada parte su importancia (0 a 5). Abajo ves cuánto pesa de verdad en la nota: siempre suma 100 %.</p>
       <div className="flex flex-col gap-3">
-        {base.map(b => slider(b.k, `${b.icon} ${b.label}`, b.help, `${pct(b.k)} %`))}
-        {slider('opinion', '👨‍👩‍👧‍👦 Vuestra opinión', 'Cuando habéis puntuado la casa con ⭐, pesa esto y lo demás se reparte el resto', `${w.opinion} %`)}
-        {slider('niceFull', '⭐ Lo que valoráis: cuánto hace falta para un 10', 'No hace falta tenerlo todo: con este % de lo que valoráis ese bloque ya saca un 10', `${w.niceFull} %`, 100, 30)}
-        {slider('penalty', '❌ Penalización por imprescindible', 'Lo que se quita a la nota por cada imprescindible que no cumple ni con reforma. Si falla por poco (menos de un 10 % en metros o presupuesto), la mitad', `−${w.penalty} %`, 60)}
+        {base.map((b, i) => (
+          <div key={b.k} className="flex flex-col gap-1">
+            <span className="flex justify-between items-baseline gap-2 text-[14px]">
+              <span className="font-semibold flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COLORS[i] }} />{b.icon} {b.label}</span>
+              <span className="text-[12px] text-muted shrink-0">{IMP[w[b.k]]} · <b className="text-ink">{Math.round(share(b.k, false))} %</b></span>
+            </span>
+            <div className="grid grid-cols-6 gap-1" role="radiogroup" aria-label={`Importancia de ${b.label}`}>
+              {[0, 1, 2, 3, 4, 5].map(n => (
+                <button key={n} type="button" role="radio" aria-checked={w[b.k] === n} onClick={() => onChange({ ...w, [b.k]: n })}
+                  className={`h-9 rounded-lg text-[13px] font-bold ${w[b.k] === n ? 'bg-ink text-bg' : n <= w[b.k] ? 'bg-accent-soft' : 'bg-bg text-muted'}`}>{n}</button>
+              ))}
+            </div>
+            <span className="text-[11px] text-muted">{b.help}</span>
+          </div>
+        ))}
+        {rule('opinion', '👨‍👩‍👧‍👦 Vuestra opinión', 'Cuando habéis puntuado la casa (1 a 10), pesa este % fijo y lo demás se reparte el resto', `${w.opinion} %`, 60)}
+        <div className="rounded-xl bg-bg p-2 flex flex-col gap-2">
+          <span className="text-[13px] font-semibold">Reparto real de la nota</span>
+          {bar(false)}
+          {bar(true)}
+        </div>
+        <span className="text-[13px] font-bold mt-1">📏 Reglas</span>
+        {rule('niceFull', '⭐ Lo que valoráis: cuánto hace falta para un 10', 'No hace falta tenerlo todo: con este % de lo que valoráis ese bloque ya saca un 10', `${w.niceFull} %`, 100, 30)}
+        {rule('penalty', '❌ Penalización por imprescindible', 'Lo que se quita a la nota por cada imprescindible que no cumple ni con reforma. Si falla por poco (menos de un 10 %), la mitad', `−${w.penalty} %`, 60)}
         {changed && <button type="button" onClick={() => onChange({ ...DEFAULT_WEIGHTS })} className="self-start min-h-9 px-3 rounded-xl border border-line text-sm font-semibold">Volver a los de serie</button>}
       </div>
     </details>

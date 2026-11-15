@@ -10,7 +10,7 @@ export type ScoreKey = 'musts' | 'price' | 'nice' | 'estado' | 'ubicacion' | 'es
 /** penalty: % que se quita a la nota por cada imprescindible que no se cumple (la mitad si falla por poco) */
 /** niceFull: % de lo que valoráis con el que ya se saca un 10 en ese bloque */
 export type ScoreWeights = Record<ScoreKey | 'penalty' | 'niceFull', number>
-export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 30, price: 25, nice: 15, estado: 15, ubicacion: 15, espacio: 15, opinion: 20, penalty: 30, niceFull: 60 }
+export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 5, price: 4, nice: 3, estado: 3, ubicacion: 3, espacio: 3, opinion: 20, penalty: 30, niceFull: 60 }
 export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: string }[] = [
   { k: 'musts', icon: '🎯', label: 'Imprescindibles', help: 'Cumple = 10, con reforma = 6, sin dato = 5, no cumple = 0' },
   { k: 'price', icon: '💶', label: 'Precio y presupuesto', help: 'Para entrar a vivir frente a vuestro tope, y si lo que piden es razonable' },
@@ -21,10 +21,15 @@ export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: str
   { k: 'opinion', icon: '👨‍👩‍👧‍👦', label: 'Vuestra opinión', help: 'Vuestra nota del 1 al 10 tras la visita. Solo cuenta cuando la habéis puntuado' }
 ]
 
+/** Bloques que se reparten la nota por importancia (0–5); «Vuestra opinión» va aparte, como % fijo */
+export const BASE_KEYS: ScoreKey[] = ['musts', 'price', 'nice', 'estado', 'ubicacion', 'espacio']
+
 export function weightsOf(c: Criteria | null): ScoreWeights {
   const w = (c?.score_weights ?? {}) as Partial<ScoreWeights>
   const out = { ...DEFAULT_WEIGHTS }
   for (const k of Object.keys(out) as (keyof ScoreWeights)[]) if (typeof w[k] === 'number' && w[k]! >= 0) out[k] = Math.min(100, w[k]!)
+  // Los bloques van por importancia 0–5; si vienen pesos antiguos (hasta 50), se pasan a esa escala
+  if (BASE_KEYS.some(k => out[k] > 5)) for (const k of BASE_KEYS) out[k] = Math.max(0, Math.min(5, Math.round(out[k] / 6)))
   return out
 }
 
