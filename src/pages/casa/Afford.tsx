@@ -4,6 +4,16 @@ import { supabase } from '../../lib/supabase'
 import { parsePrice, price, priceInput, type Mudanza } from '../../lib/mudanza'
 import { AFFORD_ICON, DEF_TIN, DEF_YEARS, RATIO, affordAt, affordBase, affordHome, maxPrice, saleNetAt, type Finance } from '../../lib/afford'
 import { recommend } from '../../lib/pricing'
+import { reformMid } from '../../lib/reforma'
+import type { Home } from '../../lib/mudanza'
+
+/** «Chalet pareado · Los Linares · Moralzarzal» (sin habitaciones ni metros, para distinguirlas) */
+const shortName = (h: Home) => {
+  const parts = h.title.split(' · ').map(x => x.replace(/\s+\d+\s*(hab\.?|m²).*$/i, '').trim()).filter(Boolean)
+  const kind = parts[0] ?? h.title
+  const where = parts.slice(1).find(x => x !== h.municipality && !/^\d/.test(x))
+  return [kind, where, h.municipality].filter(Boolean).join(' · ')
+}
 import { TextField } from '../../components/Sheet'
 
 const k = (c: number | null | undefined) => (c == null ? '—' : `${Math.round(c / 100000).toLocaleString('es-ES')} k€`)
@@ -59,13 +69,7 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
   const sim = buy ? affordAt(b, buy, reform) : null
   const homes = m.homes.filter(h => h.status !== 'descartado' && h.price_cents)
   const tone = (st: 'ok' | 'justo' | 'no') => (st === 'no' ? 'text-danger' : st === 'justo' ? 'text-[#C77A12]' : 'text-accent')
-  const cell = (st: 'ok' | 'justo' | 'no', slack: number, cuota: number | null) => (
-    <span className={`flex flex-col items-end ${tone(st)}`}>
-      <b>{AFFORD_ICON[st]} {slack >= 0 ? `+${k(slack)}` : `−${k(-slack)}`}</b>
-      <span className="text-[11px] text-muted">{cuota ? `${Math.round(cuota / 100).toLocaleString('es-ES')} €/mes` : 'sin hipoteca'}</span>
-    </span>
-  )
-
+  
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-xl border border-accent p-3 flex flex-col gap-2">
@@ -85,22 +89,37 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
       <Story m={m} fin={fin} b={b} sim={sim} buy={buy} reform={reform} top={top} />
 
       {homes.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[13px] font-semibold">🏠 Vuestras casas{saleOv ? ' (con la venta puesta a mano)' : ''}</span>
-          <span className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-[11px] text-muted"><span /><span className="text-right">a lo que piden</span><span className="text-right">con la oferta</span></span>
+        <div className="flex flex-col gap-2">
+          <span className="flex flex-col">
+            <span className="text-[13px] font-semibold">🏠 Vuestras casas{saleOv ? ' (con la venta puesta a mano)' : ''}</span>
+            <span className="text-[11px] text-muted">Cada una con su propia reforma estimada (no la del simulador), impuestos y honorarios.</span>
+          </span>
           {homes.map(h => {
             const rec = recommend(h, m.homes)
             const a1 = affordHome(b, h, h.price_cents!)
             const a2 = rec ? affordHome(b, h, rec.open) : null
-            return (
-              <span key={h.id} className="grid grid-cols-[1fr_auto_auto] gap-x-3 items-center border-b border-line last:border-0 py-1.5 text-[13px]">
-                <span className="flex flex-col min-w-0"><span className="truncate font-semibold">{h.title.split(' · ')[0]}</span><span className="text-[11px] text-muted truncate">{[h.municipality, k(h.price_cents), rec && `oferta ${k(rec.open)}`].filter(Boolean).join(' · ')}</span></span>
-                {a1 ? cell(a1.status, a1.slack, a1.cuota) : <span />}
-                {a2 ? cell(a2.status, a2.slack, a2.cuota) : <span className="text-muted text-right">—</span>}
+            const rf = reformMid(h)
+            const col = (label: string, buyAt: number, a: NonNullable<ReturnType<typeof affordHome>>) => (
+              <span className="rounded-lg bg-bg p-2 flex flex-col gap-0.5 min-w-0">
+                <span className="text-[11px] text-muted">{label} {k(buyAt)}</span>
+                <span className="text-[13px]">entrar a vivir <b>{k(a.need)}</b></span>
+                <b className={`text-[13px] ${tone(a.status)}`}>{AFFORD_ICON[a.status]} {a.slack >= 0 ? `sobran ${k(a.slack)}` : `faltan ${k(-a.slack)}`}</b>
+                <span className="text-[11px] text-muted">{a.cuota ? `cuota ${Math.round(a.cuota / 100).toLocaleString('es-ES')} €/mes` : 'sin hipoteca'}</span>
               </span>
             )
+            return (
+              <div key={h.id} className="flex flex-col gap-1.5 border-b border-line last:border-0 pb-2">
+                <span className="flex justify-between items-baseline gap-2 text-[13px]">
+                  <span className="font-semibold truncate min-w-0">{shortName(h)}</span>
+                  <span className="text-[11px] text-muted shrink-0">{rf ? `reforma ~${k(rf)}` : 'sin reforma'}</span>
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {a1 && col('Piden', h.price_cents!, a1)}
+                  {a2 ? col('Con la oferta', rec!.open, a2) : <span className="rounded-lg bg-bg p-2 text-[12px] text-muted">Sin oferta calculada</span>}
+                </div>
+              </div>
+            )
           })}
-          <span className="text-[11px] text-muted">+ = os sobra margen; − = falta. Incluye impuestos, reforma estimada y honorarios de cada casa.</span>
         </div>
       )}
 
