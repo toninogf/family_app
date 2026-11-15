@@ -62,9 +62,13 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
       <div className="rounded-xl border border-accent p-3 flex flex-col gap-2">
         <span className="text-[14px] font-bold">🎛️ Simular</span>
         <div className="grid grid-cols-3 gap-2">
-          <TextField label="Vendemos a" inputMode="decimal" value={saleTxt} onChange={e => setSaleTxt(e.target.value)} placeholder={k(saleNetAt(m)?.sale ?? null)} />
-          <TextField label="Compramos a" inputMode="decimal" value={buyTxt} onChange={e => setBuyTxt(e.target.value)} placeholder="€" />
-          <TextField label="Reforma" inputMode="decimal" value={reformTxt} onChange={e => setReformTxt(e.target.value)} placeholder="0" />
+          {([['Vendemos a', saleTxt, setSaleTxt, k(saleNetAt(m)?.sale ?? null)], ['Compramos a', buyTxt, setBuyTxt, '€'], ['Reforma', reformTxt, setReformTxt, '0']] as const).map(([lb, v, set, ph]) => (
+            <label key={lb} className="flex flex-col gap-1 min-w-0">
+              <span className="text-[12px] font-semibold text-muted">{lb}</span>
+              <input inputMode="decimal" value={v} onChange={e => set(e.target.value)} placeholder={ph}
+                className="w-full min-w-0 min-h-10 px-2 rounded-lg border border-line bg-bg text-[14px]" />
+            </label>
+          ))}
         </div>
         <span className="text-[11px] text-muted">Vacío = lo de la app (precio de Vendemos). No se guarda: es para probar.</span>
         {sim && (
