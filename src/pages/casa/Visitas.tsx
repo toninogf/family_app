@@ -8,7 +8,8 @@ import { HOME_STATUS, INTEREST, PREP_ITEMS, portalName, price, type BuyerVisit, 
 import { kEur, readyPrice } from '../../lib/reforma'
 import { OBJECTION_HELP } from '../../lib/venta'
 import { HomeVisitSheet } from './Buscamos'
-import { VisitBrief, briefCount } from './VisitBrief'
+import { VisitQA } from './VisitQA'
+import { qaProgress } from '../../lib/visitQA'
 import { Stars, rateHome, type Rate } from './HomeStars'
 import { VisitSheet } from './Vendemos'
 import { Sheet } from '../../components/Sheet'
@@ -104,11 +105,11 @@ export default function Visitas({ m, members, householdId, meId }: { m: Mudanza;
           <h2 className="text-base font-bold">🔁 ¿Segunda visita? <span className="text-muted font-normal text-sm">· os gustaron al verlas</span></h2>
           {second.map(h => {
             const last = m.homeVisits.filter(v => v.home_id === h.id && v.status === 'done').sort((a, b) => b.visit_date.localeCompare(a.visit_date))[0]
-            const pend = briefCount(h, m)
+            const pend = qaProgress(h, m.criteria).pending
             return (
               <div key={h.id} className="rounded-2xl bg-card p-3 flex flex-col gap-1.5 border-l-4 border-accent">
                 <span className="font-bold text-[15px] break-words">{h.title}</span>
-                <span className="text-[12px] text-muted">{[last && `vista ${relativeDay(last.visit_date).toLowerCase()}`, pend ? `${pend} cosa${pend > 1 ? 's' : ''} por mirar o preguntar` : 'nada pendiente'].filter(Boolean).join(' · ')}</span>
+                <span className="text-[12px] text-muted">{[last && `vista ${relativeDay(last.visit_date).toLowerCase()}`, pend ? `📋 ${pend} pregunta${pend > 1 ? 's' : ''} sin responder` : '📋 cuestionario completo'].filter(Boolean).join(' · ')}</span>
                 <div className="flex gap-1.5 flex-wrap">
                   <button onClick={() => setHomeVisit({ home: h })} className="min-h-10 px-3 rounded-lg bg-accent text-white dark:text-bg text-[13px] font-semibold">📅 Apuntar 2ª visita</button>
                   <button onClick={() => openHome(h.id, 'visitas')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold">Qué falta ›</button>
@@ -190,7 +191,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate, meId }: 
             {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">🗺️ Cómo llegar</a>}
             {ad && <a href={ad} target="_blank" rel="noopener noreferrer" className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 {portalName(ad) ?? 'Anuncio'} ↗</a>}
             {h?.contact_phone && <a href={`tel:${h.contact_phone.replace(/\s+/g, '')}`} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold flex items-center">📞 {h.agency ?? h.contact ?? 'Llamar'}</a>}
-            {h && <button onClick={() => setPrepOpen(!prepOpen)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">🎯 Para la visita {prepOpen ? '▾' : '▸'}</button>}
+            {h && <button onClick={() => setPrepOpen(!prepOpen)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">📋 Cuestionario {prepOpen ? '▾' : '▸'}</button>}
             {h && <button onClick={() => onHome(h.id)} className="min-h-9 px-3 rounded-lg border border-line text-[12px] font-semibold">Ficha ›</button>}
           </div>
         )}
@@ -203,7 +204,7 @@ function VisitCard({ it, m, nameOf, onOpen, onHome, past, adults, rate, meId }: 
           </div>
         )}
         {past && h && adults && rate && meId && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} meId={meId} />}
-        {prepOpen && h && <VisitBrief h={h} m={m} compact />}
+        {prepOpen && h && <VisitQA h={h} m={m} />}
       </div>
     )
   }
@@ -252,7 +253,7 @@ function CloseCard({ it, m, adults, rate, meId, onOpen, onHome }: { it: Item; m:
         {h && it.v.status === 'done' && <Stars h={h} m={m} adults={adults} rate={rate} meId={meId} />}
         {h && (
           <div className="flex gap-1.5 flex-wrap">
-            <button onClick={() => onHome(h.id, 'estado')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">🔍 Apuntar lo visto</button>
+            {(() => { const p = qaProgress(h, m.criteria); return <button onClick={() => onHome(h.id, 'visitas')} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">📋 {p.pending ? `Quedan ${p.pending} sin responder` : 'Cuestionario completo'}</button> })()}
             <button onClick={() => onHome(h.id)} className="min-h-10 px-3 rounded-lg border border-line text-[13px] font-semibold bg-card">👍 / 🙅 Decidir en la ficha</button>
           </div>
         )}

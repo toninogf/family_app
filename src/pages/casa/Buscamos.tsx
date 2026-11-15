@@ -32,7 +32,9 @@ import { OWN_LABEL, distLabel, nearbySchools, schoolSummary, type NearSchool } f
 import { recommend } from '../../lib/pricing'
 import { HomeReforma, ReformaEditor } from './HomeReforma'
 import { AiHomeSearch } from './AiHomeSearch'
-import { VisitBrief, briefLists } from './VisitBrief'
+import { briefLists } from './VisitBrief'
+import { VisitQA } from './VisitQA'
+import { qaProgress } from '../../lib/visitQA'
 import { Stars, rateHome } from './HomeStars'
 import { EquipChips } from './EquipChips'
 import { DeepAnalysisPanel, VerdictChip, deepLine } from './DeepAnalysis'
@@ -291,7 +293,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     visitas: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas',
       (() => { const r = m.ratings.filter(x => x.home_id === h.id); return r.length ? `${(r.reduce((a, x) => a + x.score, 0) / r.length).toLocaleString('es-ES', { maximumFractionDigits: 1 })}/10 ⭐` : null })(),
       brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, h.contact_phone && '📞'),
-    brief: join(brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, `${brief.deal.length} ideas`),
+    brief: (() => { const p = qaProgress(h, m.criteria); return join(`📋 ${p.done}/${p.total}`, p.later > 0 && `🕓 ${p.later}`, brief.deal.length > 0 && `${brief.deal.length} ideas`) })(),
     oferta: lastOffer ? join(`${price(lastOffer.amount_cents)}`, OFFER_STATUS[lastOffer.status]?.toLowerCase(), offers.length > 1 && `${offers.length} ofertas`) : join('sin oferta', rec && `recomendada ~${priceShort(rec.open)}`),
     enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
     fotos: nPhotos ? `${nPhotos} foto${nPhotos > 1 ? 's' : ''}` : 'sin fotos'
@@ -408,6 +410,18 @@ function useNearestSchool(h: Home) {
     return () => { alive = false }
   }, [h.lat, h.lng])
   return s
+}
+
+/** 💬 Ideas para negociar (salen de la ficha) */
+function DealIdeas({ h, m }: { h: Home; m: Mudanza }) {
+  const deal = briefLists(h, m).deal
+  if (!deal.length) return null
+  return (
+    <details className="rounded-xl bg-card p-3">
+      <summary className="font-semibold text-[14px] cursor-pointer">💬 Ideas para negociar ({deal.length})</summary>
+      <div className="flex flex-col gap-0.5 mt-1">{deal.map(x => <span key={x} className="text-[13px] text-muted">· {x}</span>)}</div>
+    </details>
+  )
 }
 
 /** Nota 0–10 (tarjeta y comparador) */
@@ -727,12 +741,15 @@ function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, onReject
         {/* Plegable: abierto si hay una visita prevista */}
         <details className="group mt-1" open={!!nextV}>
           <summary className="list-none cursor-pointer min-h-10 flex items-center justify-between gap-2">
-            <span className="font-bold text-[15px]">🎯 Para la visita</span>
+            <span className="font-bold text-[15px]">📋 Cuestionario de la visita</span>
             <span className="text-[13px] text-muted flex items-center gap-1">
               {sum.brief}<span className="transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
             </span>
           </summary>
-          <div className="mt-1"><VisitBrief h={h} m={m} /></div>
+          <div className="mt-1 flex flex-col gap-2">
+            <VisitQA h={h} m={m} />
+            <DealIdeas h={h} m={m} />
+          </div>
         </details>
         <ContactCard h={h} onEdit={() => onEdit('contacto')} />
       </Group>
