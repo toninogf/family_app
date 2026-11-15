@@ -14,14 +14,12 @@ const shortName = (h: Home) => {
   const where = parts.slice(1).find(x => x !== h.municipality && !/^\d/.test(x))
   return [kind, where, h.municipality].filter(Boolean).join(' · ')
 }
-import { TextField } from '../../components/Sheet'
 
 const k = (c: number | null | undefined) => (c == null ? '—' : `${Math.round(c / 100000).toLocaleString('es-ES')} k€`)
 
 export function AffordCard({ m, householdId }: { m: Mudanza; householdId: string }) {
   const fin = (m.criteria?.finance ?? null) as Finance | null
   const [open, setOpen] = useState(false)
-  const [edit, setEdit] = useState(!fin?.income_cents)
   const b = affordBase(m, fin)
   const top = b.ready ? maxPrice(b, 0) : null
   const budget = m.criteria?.max_price_cents ?? null
@@ -40,12 +38,41 @@ export function AffordCard({ m, householdId }: { m: Mudanza; householdId: string
       {top && budget != null && budget > top.ready && (
         <span className="text-[12px] text-[#C77A12]">⚠️ El presupuesto de «Qué buscamos» ({k(budget)}) pasa de este límite.</span>
       )}
-      {open && (edit || !b.ready ? <FinanceForm m={m} householdId={householdId} fin={fin} onDone={() => setEdit(false)} /> : <Result m={m} fin={fin} onEdit={() => setEdit(true)} />)}
+      {open && <Result m={m} householdId={householdId} fin={fin} />}
     </section>
   )
 }
 
-function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: () => void }) {
+function Result({ m, householdId, fin: saved }: { m: Mudanza; householdId: string; fin: Finance | null }) {
+  // Vuestros datos: se escriben una vez, el cálculo se actualiza al teclear y se guardan al salir de cada campo
+  const [d, setD] = useState({
+    income: priceInput(saved?.income_cents), debts: priceInput(saved?.debts_cents), savings: priceInput(saved?.savings_cents),
+    cushion: priceInput(saved?.cushion_cents), tin: saved?.tin != null ? String(saved.tin).replace('.', ',') : '', years: saved?.years != null ? String(saved.years) : ''
+  })
+  const num = (x: string) => { const n = Number(x.replace(',', '.')); return x.trim() && Number.isFinite(n) ? n : null }
+  const tinN = num(d.tin), yearsN = num(d.years)
+  const fin: Finance = {
+    ...(saved ?? {}),
+    income_cents: d.income.trim() ? parsePrice(d.income) : null, debts_cents: d.debts.trim() ? parsePrice(d.debts) : null,
+    savings_cents: d.savings.trim() ? parsePrice(d.savings) : null, cushion_cents: d.cushion.trim() ? parsePrice(d.cushion) : null,
+    tin: tinN != null && tinN >= 0 && tinN <= 15 ? tinN : null, years: yearsN != null && yearsN >= 5 && yearsN <= 40 ? Math.round(yearsN) : null
+  }
+  async function saveData() {
+    const keys = ['income_cents', 'debts_cents', 'savings_cents', 'cushion_cents', 'tin', 'years'] as const
+    if (saved && keys.every(k => (fin[k] ?? null) === (saved[k] ?? null))) return
+    const q = m.criteria
+      ? supabase.from('search_criteria').update({ finance: fin }).eq('household_id', householdId)
+      : supabase.from('search_criteria').insert({ household_id: householdId, finance: fin })
+    await q
+    await m.reload()
+  }
+  const field = (key: keyof typeof d, label: string, ph: string, mode: 'decimal' | 'numeric' = 'decimal') => (
+    <label key={key} className="flex flex-col gap-1 min-w-0">
+      <span className="text-[12px] font-semibold text-muted truncate">{label}</span>
+      <input inputMode={mode} value={d[key]} onChange={e => setD(x => ({ ...x, [key]: e.target.value }))} onBlur={() => void saveData()} placeholder={ph}
+        className="w-full min-w-0 min-h-10 px-2 rounded-lg border border-line bg-bg text-[14px]" />
+    </label>
+  )
   // Simulación a mano (no se guarda): precio de venta, de compra y reforma
   const [saleTxt, setSaleTxt] = useState(fin?.sim?.sale ?? '')
   const [buyTxt, setBuyTxt] = useState(fin?.sim?.buy ?? '')
@@ -72,6 +99,19 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
   
   return (
     <div className="flex flex-col gap-3">
+      <details className="rounded-xl bg-bg p-3" open={!saved?.income_cents}>
+        <summary className="cursor-pointer text-[14px] font-bold">👛 Vuestros datos <span className="text-[11px] text-muted font-normal">· se guardan solos · solo los veis vosotros</span></summary>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          {field('income', 'Ingresos netos/mes (los dos)', '€')}
+          {field('debts', 'Otras cuotas/mes', 'coche, préstamos…')}
+          {field('savings', 'Ahorros que ponéis', '€')}
+          {field('cushion', 'Colchón que no se toca', '€')}
+          {field('tin', 'Tipo hipoteca (%)', String(DEF_TIN).replace('.', ','))}
+          {field('years', 'Plazo (años)', String(DEF_YEARS), 'numeric')}
+        </div>
+        <span className="block text-[11px] text-muted mt-1.5">Lo que deja la venta sale de Vendemos (o de «Vendemos a» en Simular). Tipo y plazo vacíos = {String(DEF_TIN).replace('.', ',')} % y {DEF_YEARS} años.</span>
+      </details>
+      {!fin.income_cents ? <p className="text-[13px] text-[#C77A12]">Pon los ingresos netos al mes para calcular la cuota y la hipoteca.</p> : <>
       <div className="rounded-xl border border-accent p-3 flex flex-col gap-2">
         <span className="text-[14px] font-bold">🎛️ Simular</span>
         <div className="grid grid-cols-3 gap-2">
@@ -144,7 +184,7 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
         </div>
       )}
       <p className="text-[11px] text-muted">Estimación orientativa: el banco decide con su estudio (edad, contrato, vinculaciones).</p>
-      <button onClick={onEdit} className="self-start min-h-9 px-3 rounded-xl border border-line text-sm font-semibold">✏️ Cambiar los datos</button>
+      </>}
     </div>
   )
 }
@@ -196,45 +236,6 @@ function Story({ m, fin, b, sim, buy, reform, top }: {
       ))}
       {verdict && <p className={`rounded-xl p-3 text-[14px] font-semibold ${verdict.tone}`}>{verdict.text}</p>}
       {!buy && <p className="text-[11px] text-muted mt-1">Pon un precio en «Compramos a» para ver qué hipoteca necesitáis y qué cuota queda.</p>}
-    </div>
-  )
-}
-
-function FinanceForm({ m, householdId, fin, onDone }: { m: Mudanza; householdId: string; fin: Finance | null; onDone: () => void }) {
-  const [income, setIncome] = useState(priceInput(fin?.income_cents))
-  const [debts, setDebts] = useState(priceInput(fin?.debts_cents))
-  const [savings, setSavings] = useState(priceInput(fin?.savings_cents))
-  const [cushion, setCushion] = useState(priceInput(fin?.cushion_cents))
-  const [tin, setTin] = useState(fin?.tin != null ? String(fin.tin).replace('.', ',') : '')
-  const [years, setYears] = useState(fin?.years != null ? String(fin.years) : '')
-  const [error, setError] = useState('')
-  async function save() {
-    const t = tin.trim() ? Number(tin.replace(',', '.')) : null
-    const y = years.trim() ? parseInt(years, 10) : null
-    if (!income.trim()) { setError('Pon los ingresos netos al mes: sin ellos no se puede calcular la cuota.'); return }
-    if (t != null && (!Number.isFinite(t) || t < 0 || t > 15)) { setError('El tipo tiene que ser un % entre 0 y 15.'); return }
-    if (y != null && (!Number.isFinite(y) || y < 5 || y > 40)) { setError('El plazo tiene que estar entre 5 y 40 años.'); return }
-    const finance: Finance = { income_cents: parsePrice(income), debts_cents: parsePrice(debts), savings_cents: parsePrice(savings), cushion_cents: parsePrice(cushion), tin: t, years: y, sim: fin?.sim ?? null }
-    const q = m.criteria
-      ? supabase.from('search_criteria').update({ finance }).eq('household_id', householdId)
-      : supabase.from('search_criteria').insert({ household_id: householdId, finance })
-    const { error: err } = await q
-    if (err) { setError('No se ha podido guardar. Inténtalo de nuevo.'); return }
-    await m.reload(); onDone()
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-[12px] text-muted">Lo que deja la venta sale solo de Vendemos. Estos datos solo los veis vosotros.</p>
-      <div className="grid grid-cols-2 gap-3">
-        <TextField label="Ingresos netos al mes (los dos)" inputMode="decimal" value={income} onChange={e => setIncome(e.target.value)} placeholder="€" />
-        <TextField label="Otras cuotas al mes" inputMode="decimal" value={debts} onChange={e => setDebts(e.target.value)} placeholder="coche, préstamos…" />
-        <TextField label="Ahorros que ponéis" inputMode="decimal" value={savings} onChange={e => setSavings(e.target.value)} placeholder="€" />
-        <TextField label="Colchón que no se toca" inputMode="decimal" value={cushion} onChange={e => setCushion(e.target.value)} placeholder="€" />
-        <TextField label="Tipo de la hipoteca (%)" inputMode="decimal" value={tin} onChange={e => setTin(e.target.value)} placeholder={`${String(DEF_TIN).replace('.', ',')} (si lo dejas vacío)`} />
-        <TextField label="Plazo (años)" inputMode="numeric" value={years} onChange={e => setYears(e.target.value)} placeholder={`${DEF_YEARS} (si lo dejas vacío)`} />
-      </div>
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <button onClick={() => void save()} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg font-semibold">Calcular</button>
     </div>
   )
 }
