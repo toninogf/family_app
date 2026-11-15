@@ -149,7 +149,7 @@ export function FilterSheet({ s, towns, ours, countFor, onClose }: {
         </Block>
 
         <Block title="Extras que tiene que tener">
-          {FEATURE_GROUPS.map(g => (
+          {FEATURE_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => k !== 'ascensor') })).map(g => (
             <div key={g.title} className="flex flex-col gap-1.5">
               <span className="text-[13px] font-semibold">{g.title}</span>
               <Chips>{(g.title.startsWith('🏊') ? ['piscina_cualquiera', ...g.keys] : g.keys).map(k => <button key={k} type="button" onClick={() => tog('features', k)} aria-pressed={d.features.includes(k)} className={chip(d.features.includes(k))}>{featureLabel(k)}</button>)}</Chips>

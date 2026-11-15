@@ -325,6 +325,8 @@ export function critItems(keys: string[]) {
 }
 /** Grupos para elegir en lo que buscamos (con las opciones deducidas al principio de cada grupo) */
 export const CRITERIA_GROUPS: { title: string; keys: string[] }[] = FEATURE_GROUPS.map(g =>
+  // En lo que buscamos (casas) no se pide ascensor: solo lo tienen pisos, fuera de lo que buscáis
+  g.title.includes('Accesibilidad') ? { ...g, keys: g.keys.filter(k => k !== 'ascensor') } :
   g.title.includes('Piscina') ? { ...g, keys: ['piscina_cualquiera', ...g.keys] } : g.title.includes('Calefacción') ? { ...g, keys: ['calefaccion_cualquiera', ...HEAT_SYSTEMS, ...g.keys] }
     : g.title.includes('Climatización') ? { ...g, keys: ['aire', 'aire_splits', 'aire_conductos', ...g.keys.filter(k => k !== 'aire')] } : g)
 /** ¿Cumple el piso esta característica de lo que buscamos? */

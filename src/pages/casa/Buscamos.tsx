@@ -1821,7 +1821,7 @@ function HomeEditSheet({ home, initial, m, householdId, onClose, onCreated, focu
           </div>
           <SubHead id="casa-equip">Equipamiento</SubHead>
           <EquipChips label={`Tiene${fl('características') || fl('tipo de calefacción') || fl('aire') ? ' ✨' : ''}`} features={features} setFeatures={setFeatures}
-            heat={heatType} setHeat={setHeatType} cool={cooling} setCool={setCooling} />
+            heat={heatType} setHeat={setHeatType} cool={cooling} setCool={setCooling} exclude={features.includes('ascensor') ? [] : ['ascensor']} />
           <SelectField<string> label="Certificado energético" value={energy} onChange={setEnergy} flash={fl('certificado')}
             options={'ABCDEFG'.split('').map(x => ({ value: x, label: x }))} />
         </EditSection>
