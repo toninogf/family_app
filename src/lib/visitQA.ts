@@ -24,11 +24,16 @@ type Bind =
   | { kind: 'answer' }
 export type Q = {
   id: string; section: Section; label: string; hint?: string; type: QType
-  options?: { v: string; label: string }[]; unit?: string; quick?: string[]; bind: Bind; custom?: 'casa' | 'todas'
+  /** s: en preguntas de documentos, a qué estado (✅ ⚠️ ⛔) equivale cada respuesta */
+  options?: { v: string; label: string; s?: HealthStatus }[]; unit?: string; quick?: string[]; bind: Bind; custom?: 'casa' | 'todas'
 }
 
 const TITLE: Record<string, { title: string; hint: string }> = Object.fromEntries([...AI_CHECKS, ...MANUAL_CHECKS, ...VISIT_CHECKS].map(c => [c.key, { title: c.title, hint: c.hint }]))
 const hq = (key: string, section: Section): Q => ({ id: `h:${key}`, section, label: TITLE[key]?.title ?? key, hint: TITLE[key]?.hint, type: 'estado', bind: { kind: 'health', key } })
+/** Pregunta de documentos con respuestas concretas que equivalen a ✅ ⚠️ ⛔ en «Documentos» */
+const dq = (key: string, label: string, opts: [string, string, HealthStatus][]): Q => ({
+  id: `h:${key}`, section: 'preguntar', label, hint: TITLE[key]?.hint, type: 'choice', options: opts.map(([v, l, s]) => ({ v, label: l, s })), bind: { kind: 'health', key }
+})
 const fq = (key: string, label: string): Q => ({ id: `f:${key}`, section: 'acceso', label, type: 'yesno', bind: { kind: 'feature', key } })
 
 const BASE: Q[] = [
@@ -40,7 +45,12 @@ const BASE: Q[] = [
   { id: 'x:comunidad', section: 'preguntar', label: 'Gastos de comunidad o urbanización', type: 'number', unit: '€/mes', bind: { kind: 'field', key: 'community_fee_cents' } },
   { id: 'x:ibi', section: 'preguntar', label: 'Último recibo del IBI', type: 'number', unit: '€/año', bind: { kind: 'field', key: 'ibi_cents' } },
   { id: 'x:energy', section: 'preguntar', label: 'Certificado energético', type: 'choice', options: 'ABCDEFG'.split('').map(x => ({ v: x, label: x })), bind: { kind: 'field', key: 'energy' } },
-  ...['ocupacion', 'ite', 'urbanizacion', 'vpo', 'nota_simple', 'comunidad'].map(k => hq(k, 'preguntar')),
+  dq('ocupacion', '¿Se entrega libre?', [['libre', 'Libre', 'ok'], ['alquilada', 'Alquilada', 'warn'], ['ocupada', 'Ocupada', 'bad']]),
+  dq('vpo', '¿Es vivienda protegida (VPO)?', [['no', 'No', 'ok'], ['si', 'Sí', 'bad']]),
+  dq('urbanizacion', '¿La urbanización está recepcionada por el ayuntamiento?', [['si', 'Sí', 'ok'], ['no', 'No', 'warn'], ['nose', 'No lo saben', 'warn']]),
+  dq('ite', '¿Licencias y obras en regla?', [['ok', 'Todo en regla', 'ok'], ['falta', 'Falta algo', 'warn'], ['sin', 'Obras sin licencia', 'bad']]),
+  dq('comunidad', '¿Deudas o derramas de comunidad?', [['no', 'Ninguna', 'ok'], ['prevista', 'Hay una prevista', 'warn'], ['deuda', 'Hay deudas', 'bad']]),
+  dq('nota_simple', 'Nota simple: ¿cargas?', [['libre', 'Sin cargas', 'ok'], ['hipoteca', 'Solo su hipoteca', 'ok'], ['otras', 'Otras cargas', 'bad']]),
   ...['humedad', 'instalaciones', 'ventanas', 'luz', 'ruido', 'saneamiento', 'zona_visita'].map(k => hq(k, 'mirar')),
   fq('entrada_sin_escaleras', '¿Se entra sin escaleras?'),
   fq('acceso_llano', '¿La calle es llana (sin cuestas para llegar)?'),
@@ -65,7 +75,12 @@ export function valueOf(q: Q, h: Home): string | number | boolean | undefined {
   if (b.kind === 'health') {
     const it = (h.health ?? {})[b.key]
     if (b.text) return it?.n ? it.n : undefined
-    return it && it.s !== 'unknown' ? it.s : undefined
+    if (!it || it.s === 'unknown') return undefined
+    if (q.type === 'choice') {
+      const a = qa.answers?.[q.id]?.v
+      return q.options!.some(o => o.v === a && o.s === it.s) ? String(a) : q.options!.find(o => o.s === it.s)?.v
+    }
+    return it.s
   }
   if (b.kind === 'feature') return h.features.includes(b.key) || (b.key === 'dormitorio_pb' && h.features.includes('una_planta')) ? true : qa.answers?.[q.id]?.v === false ? false : undefined
   if (b.kind === 'parcela') return h.features.includes('parcela_llana') ? 'parcela_llana' : h.features.includes('parcela_pendiente') ? 'parcela_pendiente' : undefined
@@ -89,6 +104,11 @@ export function patchFor(q: Q, h: Home, v: string | number | boolean | null, not
     const health: Health = { ...(h.health ?? {}) }
     const cur = health[b.key]
     if (b.text) health[b.key] = { ...(cur ?? {}), s: v ? 'ok' : 'unknown', n: v ? String(v).slice(0, 500) : undefined, src: 'manual' }
+    else if (q.type === 'choice') {
+      const o = q.options!.find(x => x.v === v)
+      health[b.key] = { ...(cur ?? {}), s: o?.s ?? 'unknown', n: note !== undefined ? note.slice(0, 500) || undefined : o ? `${o.label} (en la visita)` : undefined, src: 'manual' }
+      return { health, visit_qa: withAnswer(o ? { v: o.v } : null) }
+    }
     else health[b.key] = { ...(cur ?? {}), s: (v ?? 'unknown') as HealthStatus, n: note !== undefined ? note.slice(0, 500) || undefined : cur?.n, src: 'manual' }
     return { health, visit_qa: withAnswer(null) }
   }
@@ -125,7 +145,7 @@ export function qaProgress(h: Home, c: Criteria | null) {
 /** Texto de una respuesta (para listas y resúmenes) */
 export function answerText(q: Q, v: string | number | boolean | undefined) {
   if (v === undefined) return ''
-  if (q.type === 'estado') return ({ ok: '✅ Bien', warn: '⚠️ Revisar', bad: '⛔ Problema' } as Record<string, string>)[String(v)] ?? String(v)
+  if (q.type === 'estado') return ({ ok: '✅ Bien', warn: '⚠️ Regular', bad: '⛔ Mal' } as Record<string, string>)[String(v)] ?? String(v)
   if (q.type === 'yesno') return v ? 'Sí' : 'No'
   if (q.type === 'choice') return q.options?.find(o => o.v === v)?.label ?? String(v)
   if (q.type === 'number') return `${Number(v).toLocaleString('es-ES')} ${q.unit ?? ''}`.trim()

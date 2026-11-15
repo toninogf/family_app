@@ -140,16 +140,22 @@ function QRow({ q, h, onAnswer, onLater, removing, onRemove, onRemoveScope }: {
   const lt = v === undefined && isLater(q, h)
   const [txt, setTxt] = useState(q.type === 'text' || q.type === 'number' ? (v === undefined ? '' : String(v)) : '')
   const [note, setNote] = useState(noteOf(q, h))
+  const [info, setInfo] = useState(false)
   useEffect(() => { if (q.type === 'text' || q.type === 'number') setTxt(v === undefined ? '' : String(v)) }, [v, q.type])
-  const btn = (on: boolean, extra = '') => `min-h-10 px-3 rounded-lg text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-bg border-line'} ${extra}`
+  const btn = (on: boolean, extra = '') => `min-h-9 px-2.5 rounded-lg text-[13px] font-semibold border whitespace-nowrap ${on ? 'bg-ink text-bg border-ink' : 'bg-bg border-line'} ${extra}`
   const toggle = (val: string | boolean) => onAnswer(q, v === val ? null : val)
+  const bad = v === 'warn' || v === 'bad' || (q.type === 'choice' && q.options!.find(o => o.v === v)?.s && q.options!.find(o => o.v === v)!.s !== 'ok')
+  const ico = 'w-8 h-8 shrink-0 rounded-full text-[14px] flex items-center justify-center'
 
   return (
-    <div className={`flex flex-col gap-1.5 py-2.5 border-t border-line first:border-0 ${lt ? 'bg-accent-soft -mx-3 px-3' : ''}`}>
-      <span className="flex justify-between gap-2">
-        <span className="text-[14px] font-semibold">{v !== undefined ? '✓ ' : lt ? '🕓 ' : ''}{q.label}</span>
-        <button onClick={onRemove} aria-label={`Quitar «${q.label}»`} className="w-8 h-8 shrink-0 text-muted">✕</button>
+    <div className={`flex flex-col gap-1.5 py-2 border-t border-line first:border-0 ${lt ? 'bg-accent-soft -mx-3 px-3' : ''}`}>
+      <span className="flex items-center gap-1">
+        <span className="flex-1 text-[14px] font-semibold leading-snug">{v !== undefined ? <span className="text-accent">✓ </span> : lt ? '🕓 ' : ''}{q.label}</span>
+        {q.hint && <button onClick={() => setInfo(!info)} aria-label="Más información" aria-expanded={info} className={`${ico} text-muted ${info ? 'bg-bg' : ''}`}>ⓘ</button>}
+        {v === undefined && <button onClick={() => onLater(q)} aria-label={lt ? 'Quitar «para luego»' : 'No lo sé, preguntar luego'} title="Preguntar luego" className={`${ico} ${lt ? 'bg-card' : 'text-muted'}`}>🕓</button>}
+        <button onClick={onRemove} aria-label={`Quitar «${q.label}»`} className={`${ico} text-muted`}>✕</button>
       </span>
+      {info && q.hint && <span className="text-[12px] text-muted -mt-1">{q.hint}</span>}
       {removing && (
         <span className="flex gap-1.5 flex-wrap items-center text-[12px]">
           <span className="text-muted">Quitar:</span>
@@ -157,20 +163,13 @@ function QRow({ q, h, onAnswer, onLater, removing, onRemove, onRemoveScope }: {
           {q.custom !== 'casa' && <button onClick={() => onRemoveScope('todas')} className="min-h-9 px-3 rounded-lg border border-danger text-danger font-semibold">en todas las casas</button>}
         </span>
       )}
-      {q.hint && <span className="text-[11px] text-muted -mt-1">{q.hint}</span>}
 
       {q.type === 'estado' && (
-        <>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button onClick={() => toggle('ok')} className={btn(v === 'ok')}>✅ Bien</button>
-            <button onClick={() => toggle('warn')} className={btn(v === 'warn')}>⚠️ Revisar</button>
-            <button onClick={() => toggle('bad')} className={btn(v === 'bad')}>⛔ Problema</button>
-          </div>
-          {(v === 'warn' || v === 'bad' || (q.bind.kind === 'health' && note)) && (
-            <input value={note} onChange={e => setNote(e.target.value)} onBlur={() => note !== noteOf(q, h) && onAnswer(q, (v ?? 'unknown') as string, note)}
-              placeholder="¿Qué habéis visto?" className="w-full min-h-10 px-3 rounded-lg border border-line bg-bg text-[13px]" />
-          )}
-        </>
+        <div className="grid grid-cols-3 gap-1.5">
+          <button onClick={() => toggle('ok')} className={btn(v === 'ok')}>✅ Bien</button>
+          <button onClick={() => toggle('warn')} className={btn(v === 'warn')}>⚠️ Regular</button>
+          <button onClick={() => toggle('bad')} className={btn(v === 'bad')}>⛔ Mal</button>
+        </div>
       )}
       {q.type === 'yesno' && (
         <div className="grid grid-cols-2 gap-1.5">
@@ -180,14 +179,18 @@ function QRow({ q, h, onAnswer, onLater, removing, onRemove, onRemoveScope }: {
       )}
       {q.type === 'choice' && (
         <div className="flex gap-1.5 flex-wrap">
-          {q.options!.map(o => <button key={o.v} onClick={() => toggle(o.v)} className={btn(v === o.v, q.options!.length > 4 ? 'w-10 px-0' : '')}>{o.label}</button>)}
+          {q.options!.map(o => <button key={o.v} onClick={() => toggle(o.v)} className={btn(v === o.v, q.options!.length > 4 ? 'w-9 px-0' : '')}>{o.label}</button>)}
         </div>
+      )}
+      {bad && q.bind.kind === 'health' && (
+        <input value={note} onChange={e => setNote(e.target.value)} onBlur={() => note !== noteOf(q, h) && onAnswer(q, v as string, note)}
+          placeholder="¿Qué habéis visto o qué os han dicho?" className="w-full min-h-9 px-3 rounded-lg border border-line bg-bg text-[13px]" />
       )}
       {q.type === 'number' && (
         <span className="flex items-center gap-2">
           <input inputMode="decimal" value={txt} onChange={e => setTxt(e.target.value)}
             onBlur={() => { const n = txt.trim() ? Number(txt.replace(/\./g, '').replace(',', '.')) : null; if (n === null || Number.isFinite(n)) { if (String(n ?? '') !== String(v ?? '')) onAnswer(q, n) } }}
-            className="w-32 min-h-10 px-3 rounded-lg border border-line bg-bg text-[14px]" />
+            className="w-28 min-h-9 px-3 rounded-lg border border-line bg-bg text-[14px]" />
           <span className="text-[13px] text-muted">{q.unit}</span>
         </span>
       )}
@@ -195,15 +198,12 @@ function QRow({ q, h, onAnswer, onLater, removing, onRemove, onRemoveScope }: {
         <>
           {q.quick && (
             <div className="flex gap-1.5 flex-wrap">
-              {q.quick.map(x => <button key={x} onClick={() => { setTxt(x); onAnswer(q, v === x ? null : x) }} className={btn(v === x, 'min-h-9 text-[12px]')}>{x}</button>)}
+              {q.quick.map(x => <button key={x} onClick={() => { setTxt(x); onAnswer(q, v === x ? null : x) }} className={btn(v === x, 'text-[12px] min-h-8')}>{x}</button>)}
             </div>
           )}
           <input value={txt} onChange={e => setTxt(e.target.value)} onBlur={() => txt.trim() !== String(v ?? '') && onAnswer(q, txt.trim() || null)}
-            placeholder="Escribe la respuesta…" className="w-full min-h-10 px-3 rounded-lg border border-line bg-bg text-[13px]" />
+            placeholder="…o escribe la respuesta" className="w-full min-h-9 px-3 rounded-lg border border-line bg-bg text-[13px]" />
         </>
-      )}
-      {v === undefined && (
-        <button onClick={() => onLater(q)} className="self-start text-[12px] text-muted min-h-8">{lt ? '↩️ Quitar «para luego»' : '🕓 No lo sé, preguntar luego'}</button>
       )}
       {v !== undefined && q.type !== 'text' && q.type !== 'number' && <span className="sr-only">{answerText(q, v)}</span>}
     </div>
