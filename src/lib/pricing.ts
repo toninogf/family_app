@@ -38,6 +38,10 @@ export type Recommendation = {
   /** Reforma estimada (céntimos) y lo que valdría ya reformado */
   reform: number; fee: number; costs: number; fairReady: number | null; reformKnown: boolean
   confidence: 'alta' | 'media' | 'baja'; reasons: string[]; warnings: string[]
+  /** Por qué esa fiabilidad (una línea cada cosa) */
+  confidenceWhy: string[]
+  /** Lo que dice el análisis a fondo con IA, si lo hay (céntimos) */
+  ai: { open: number | null; max: number | null; fair: number | null; gap: number | null } | null
 }
 
 /** Oferta inicial y tope razonable (en céntimos), con el porqué */
@@ -144,7 +148,23 @@ export function recommend(h: Home, homes: Home[]): Recommendation | null {
   if (h.advertiser !== 'particular' && !h.buyer_fee_kind) warnings.push('Pregunta a la inmobiliaria si cobra honorarios al comprador: se suman al coste.')
   if (!known) warnings.push('Valora la reforma (aunque sea «para entrar a vivir»): así todos los pisos se comparan con el mismo baremo.')
 
-  const sources = refs.length + (h.cadastre ? 1 : 0)
-  const confidence = clamped ? 'baja' : refs.length >= 2 && comps.length >= 2 ? 'alta' : sources >= 2 ? 'media' : 'baja'
-  return { asking, open, max, fair, fairReady, reform, fee: buyerFee(h) ?? 0, costs: purchaseMid(h), reformKnown: known, confidence, reasons, warnings }
+  // Fiabilidad: no basta con tener datos, tienen que coincidir
+  const why: string[] = []
+  const vals = refs.map(r => r.v)
+  const agree = vals.length >= 2 && Math.max(...vals) / Math.min(...vals) <= 1.2
+  why.push(refs.length ? `${refs.length} referencia${refs.length > 1 ? 's' : ''} de €/m²${refs.length >= 2 ? (agree ? ' que coinciden (±10 %)' : ' que NO coinciden entre sí') : ''}` : 'sin referencias de la zona')
+  why.push(`${comps.length} casa${comps.length === 1 ? '' : 's'} parecida${comps.length === 1 ? '' : 's'} guardada${comps.length === 1 ? '' : 's'}${comps.length < 3 ? ' (mejor 3 o más)' : ''}`)
+  const verified = !!cad?.built_m2
+  why.push(verified ? 'metros comprobados en el Catastro' : 'metros sin comprobar en el Catastro')
+  // El análisis a fondo con IA (si lo hay) como segunda opinión
+  const d = h.deep_analysis?.data?.precio
+  const aiFair = d?.justo ? Math.round(d.justo * 100) : null
+  const gap = aiFair && fair ? aiFair / fair - 1 : null
+  if (gap != null) why.push(`el análisis con IA ${Math.abs(gap) <= 0.1 ? 'coincide' : `se separa un ${Math.round(Math.abs(gap) * 100)} %`} (${eur(aiFair! / 100)} frente a ${eur(fair! / 100)})`)
+  if (clamped) why.push('el cálculo sale muy lejos de lo que piden')
+  const confidence: Recommendation['confidence'] = clamped || (gap != null && Math.abs(gap) > 0.1) ? 'baja'
+    : refs.length >= 2 && agree && comps.length >= 3 && verified ? 'alta'
+      : refs.length + (verified ? 1 : 0) >= 2 ? 'media' : 'baja'
+  const ai = d && (d.oferta || d.tope || d.justo) ? { open: d.oferta ? Math.round(d.oferta * 100) : null, max: d.tope ? Math.round(d.tope * 100) : null, fair: aiFair, gap } : null
+  return { asking, open, max, fair, fairReady, reform, fee: buyerFee(h) ?? 0, costs: purchaseMid(h), reformKnown: known, confidence, confidenceWhy: why, ai, reasons, warnings }
 }

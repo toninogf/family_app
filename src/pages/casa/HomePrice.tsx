@@ -5,6 +5,7 @@ import { comparables, recommend, zoneLine } from '../../lib/pricing'
 /** «Precio recomendado»: oferta inicial y tope razonable, con el porqué, la zona y los pisos parecidos */
 export function HomePrice({ h, m, compact }: { h: Home; m: Mudanza; compact?: boolean }) {
   const [open, setOpen] = useState(false)
+  const [why, setWhy] = useState(false)
   const r = recommend(h, m.homes)
   if (!r) return null
   const zone = zoneLine(h)
@@ -23,16 +24,19 @@ export function HomePrice({ h, m, compact }: { h: Home; m: Mudanza; compact?: bo
     <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
       <div className="flex justify-between items-baseline gap-2">
         <span className="font-bold text-[15px]">💡 Precio recomendado</span>
-        <span className={`text-[12px] font-semibold ${conf}`}>Fiabilidad {r.confidence}</span>
+        <button onClick={() => setWhy(!why)} aria-expanded={why} className={`text-[12px] font-semibold ${conf} min-h-8`}>Fiabilidad {r.confidence} ⓘ</button>
       </div>
+      {why && <ul className="text-[12px] text-muted flex flex-col gap-0.5 -mt-1">{r.confidenceWhy.map(x => <li key={x}>· {x}</li>)}</ul>}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-xl bg-bg p-2 flex flex-col">
           <span className="text-[11px] text-muted">Oferta inicial</span>
           <span className="text-[16px] font-bold text-accent">{price(r.open)}</span>
+          {r.ai?.open != null && <span className={`text-[11px] ${Math.abs(r.ai.open / r.open - 1) > 0.05 ? 'text-[#C77A12] font-semibold' : 'text-muted'}`}>🔬 IA {price(r.ai.open)}</span>}
         </div>
         <div className="rounded-xl bg-bg p-2 flex flex-col">
           <span className="text-[11px] text-muted">Tope razonable</span>
           <span className="text-[16px] font-bold">{price(r.max)}</span>
+          {r.ai?.max != null && <span className={`text-[11px] ${Math.abs(r.ai.max / r.max - 1) > 0.05 ? 'text-[#C77A12] font-semibold' : 'text-muted'}`}>🔬 IA {price(r.ai.max)}</span>}
         </div>
         <div className="rounded-xl bg-bg p-2 flex flex-col">
           <span className="text-[11px] text-muted">Piden</span>
@@ -46,6 +50,12 @@ export function HomePrice({ h, m, compact }: { h: Home; m: Mudanza; compact?: bo
         </p>
       )}
       {r.fair != null && <p className="text-[13px]">Valor de referencia estimado: <b>{price(r.fair)}</b>{r.reform > 0 && r.fairReady != null ? <span className="text-muted"> (reformado ~{price(r.fairReady)})</span> : null}</p>}
+      {r.ai?.fair != null && (
+        <p className={`text-[13px] ${r.ai.gap != null && Math.abs(r.ai.gap) > 0.1 ? 'text-[#C77A12]' : ''}`}>
+          🔬 Precio justo según el análisis con IA: <b>{price(r.ai.fair)}</b>
+          {r.ai.gap != null && <> · {Math.abs(r.ai.gap) <= 0.1 ? 'coincide con el cálculo' : `un ${Math.round(Math.abs(r.ai.gap) * 100)} % ${r.ai.gap < 0 ? 'por debajo' : 'por encima'} del cálculo: para ofertar, fiaos más del más bajo y revisad los datos que más difieren (metros, reforma, comparables)`}</>}
+        </p>
+      )}
       {zone && <p className="text-[13px] text-muted">📍 {zone}</p>}
       {r.warnings.map((w, i) => <p key={i} className="text-[13px] text-danger">⚠️ {w}</p>)}
       <button onClick={() => setOpen(!open)} aria-expanded={open} className="self-start min-h-10 text-sm font-semibold text-accent">{open ? 'Ocultar el porqué' : '¿Por qué este precio?'}</button>

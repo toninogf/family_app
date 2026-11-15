@@ -959,16 +959,31 @@ function OfferLine({ h, m, compact }: { h: Home; m: Mudanza; compact?: boolean }
           <span className="rounded-xl bg-accent-soft p-2.5 flex flex-col">
             <span className="text-[12px] text-muted">💡 Oferta inicial</span>
             <span className="text-[19px] font-bold text-accent leading-tight">~{price(rec!.open)}</span>
+            <AiPrice app={rec!.open} ai={rec!.ai?.open ?? null} />
           </span>
           <span className="rounded-xl bg-bg p-2.5 flex flex-col">
             <span className="text-[12px] text-muted">🎯 Precio razonable (tope)</span>
             <span className="text-[19px] font-bold leading-tight">{price(rec!.max)}</span>
+            <AiPrice app={rec!.max} ai={rec!.ai?.max ?? null} />
           </span>
         </div>
+      )}
+      {!last && rec && (
+        <span className="text-[11px] text-muted">
+          Calculado con vuestros datos · fiabilidad <b className={rec.confidence === 'alta' ? 'text-accent' : rec.confidence === 'media' ? 'text-[#C77A12]' : 'text-danger'}>{rec.confidence}</b>
+          {rec.ai ? (rec.ai.gap != null && Math.abs(rec.ai.gap) > 0.1 ? <span className="text-[#C77A12]"> · la IA no coincide: mira el porqué en «Precio recomendado»</span> : ' · 🔬 = análisis a fondo con IA') : ' · haz el análisis a fondo para tener la opinión de la IA'}
+        </span>
       )}
       <span className="text-[12px] text-muted text-right">si os la aceptan: entrar a vivir {price(ready)}{fit ? <> · {fit}</> : null}</span>
     </div>
   )
+}
+
+/** Lo que dice el análisis con IA debajo de lo calculado (en ámbar si se separa más de un 5 %) */
+function AiPrice({ app, ai }: { app: number; ai: number | null }) {
+  if (ai == null) return null
+  const off = Math.abs(ai / app - 1) > 0.05
+  return <span className={`text-[12px] ${off ? 'text-[#C77A12] font-semibold' : 'text-muted'}`}>🔬 IA: {price(ai)}</span>
 }
 
 /** «41,5 k€» */
