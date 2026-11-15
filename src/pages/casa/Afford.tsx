@@ -37,9 +37,18 @@ export function AffordCard({ m, householdId }: { m: Mudanza; householdId: string
 
 function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: () => void }) {
   // Simulación a mano (no se guarda): precio de venta, de compra y reforma
-  const [saleTxt, setSaleTxt] = useState('')
-  const [buyTxt, setBuyTxt] = useState('')
-  const [reformTxt, setReformTxt] = useState('')
+  const [saleTxt, setSaleTxt] = useState(fin?.sim?.sale ?? '')
+  const [buyTxt, setBuyTxt] = useState(fin?.sim?.buy ?? '')
+  const [reformTxt, setReformTxt] = useState(fin?.sim?.reform ?? '')
+  // Se guarda al salir de cada campo (lo ven los dos y se recupera la próxima vez)
+  async function saveSim() {
+    const sim = { sale: saleTxt.trim(), buy: buyTxt.trim(), reform: reformTxt.trim() }
+    const old = fin?.sim ?? {}
+    if (sim.sale === (old.sale ?? '') && sim.buy === (old.buy ?? '') && sim.reform === (old.reform ?? '')) return
+    if (!m.criteria) return
+    await supabase.from('search_criteria').update({ finance: { ...(fin ?? {}), sim } }).eq('household_id', m.criteria.household_id)
+    await m.reload()
+  }
   const saleOv = saleTxt.trim() ? parsePrice(saleTxt) : null
   const buy = buyTxt.trim() ? parsePrice(buyTxt) : null
   const reform = reformTxt.trim() ? parsePrice(reformTxt) ?? 0 : 0
@@ -65,12 +74,12 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
           {([['Vendemos a', saleTxt, setSaleTxt, k(saleNetAt(m)?.sale ?? null)], ['Compramos a', buyTxt, setBuyTxt, '€'], ['Reforma', reformTxt, setReformTxt, '0']] as const).map(([lb, v, set, ph]) => (
             <label key={lb} className="flex flex-col gap-1 min-w-0">
               <span className="text-[12px] font-semibold text-muted">{lb}</span>
-              <input inputMode="decimal" value={v} onChange={e => set(e.target.value)} placeholder={ph}
+              <input inputMode="decimal" value={v} onChange={e => set(e.target.value)} onBlur={() => void saveSim()} placeholder={ph}
                 className="w-full min-w-0 min-h-10 px-2 rounded-lg border border-line bg-bg text-[14px]" />
             </label>
           ))}
         </div>
-        <span className="text-[11px] text-muted">Vacío = lo de la app (precio de Vendemos). No se guarda: es para probar.</span>
+        <span className="flex justify-between gap-2 text-[11px] text-muted"><span>Vacío = lo de la app (precio de Vendemos). Se guarda lo último que pongáis.</span>{(saleTxt || buyTxt || reformTxt) && <button type="button" onClick={() => { setSaleTxt(''); setBuyTxt(''); setReformTxt(''); if (m.criteria) void supabase.from('search_criteria').update({ finance: { ...(fin ?? {}), sim: null } }).eq('household_id', m.criteria.household_id).then(() => m.reload()) }} className="font-semibold text-accent shrink-0">Vaciar</button>}</span>
         {sim && (
           <div className={`rounded-lg bg-bg p-2.5 flex flex-col gap-0.5 text-[13px]`}>
             <b className={tone(sim.status)}>{AFFORD_ICON[sim.status]} {sim.status === 'no' ? 'No llega' : sim.status === 'justo' ? 'Muy justo' : 'Entra'}: {sim.slack >= 0 ? `os sobran ~${k(sim.slack)}` : `faltan ~${k(-sim.slack)}`}{sim.why ? ` (${sim.why})` : ''}</b>

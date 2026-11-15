@@ -13,6 +13,8 @@ export type Finance = {
   cushion_cents?: number | null  // colchón que no se toca
   tin?: number | null            // tipo de la hipoteca (%)
   years?: number | null          // plazo (años)
+  /** Lo último puesto a mano en «Simular» (texto tal cual) */
+  sim?: { sale?: string; buy?: string; reform?: string } | null
 }
 export const RATIO = 0.30        // cuota máxima: 30 % de los ingresos
 export const LTV = 0.80          // el banco presta como mucho el 80 % del precio
