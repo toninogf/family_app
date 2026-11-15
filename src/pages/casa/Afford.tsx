@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { parsePrice, price, priceInput, type Mudanza } from '../../lib/mudanza'
 import { DEF_TIN, DEF_YEARS, RATIO, affordBase, maxPrice, type Finance } from '../../lib/afford'
-import { TextField } from '../../components/FormKit'
+import { TextField } from '../../components/Sheet'
 
 const k = (c: number | null | undefined) => (c == null ? '—' : `${Math.round(c / 100000).toLocaleString('es-ES')} k€`)
 
