@@ -12,7 +12,7 @@ import { addDays, hhmm, longDate, relativeDay, shortDate, today } from '../../li
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS,
-  CRITERIA_GROUPS, CRITERIA_BOXES, shownFeatures, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
+  CRITERIA_GROUPS, CRITERIA_BOXES, ACCESS_KEYS, shownFeatures, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
   equivRooms, roomsLabel, type Check, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
@@ -1903,6 +1903,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   const [pick, setPick] = useState(0)
   const [must, setMust] = useState<string[]>(c?.must_haves ?? [])
   const [nice, setNice] = useState<string[]>(c?.nice_to_haves ?? [])
+  const [access, setAccess] = useState<string[]>(c?.access_items ?? [])
   const [weights, setWeights] = useState(weightsOf(c))
   const [error, setError] = useState('')
 
@@ -1917,7 +1918,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
       work_address: work.trim().slice(0, 200) || null,
       ideal_m2: m2Ideal.trim() ? parseInt(m2Ideal.replace(/\./g, ''), 10) || null : null,
       ideal_plot_m2: plotIdeal.trim() ? parseInt(plotIdeal.replace(/\./g, ''), 10) || null : null,
-      zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k)).slice(0, 40), score_weights: weights
+      zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k) && !ACCESS_KEYS.includes(k)).slice(0, 40), access_items: access.filter(k => !must.includes(k)).slice(0, 20), score_weights: weights
     }, undefined, 'household_id')
     if (err) setError(err); else onClose()
   }
@@ -1959,7 +1960,12 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
         <details className="rounded-2xl border border-line p-3" open={nice.length > 0}>
           <summary className="font-bold text-[15px] cursor-pointer">⭐ Valoramos{nice.length ? ` · ${nice.length}` : ''}</summary>
           <p className="text-[12px] text-muted mt-1 mb-2">Suma puntos pero no descarta. Las opciones en un recuadro discontinuo se excluyen entre sí: cuentan como una sola.</p>
-          <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} sets={CRITERIA_BOXES} value={nice} onChange={setNice} />
+          <GroupedChips label="" groups={CRITERIA_GROUPS.map(g => ({ ...g, keys: g.keys.filter(k => !must.includes(k) && !ACCESS_KEYS.includes(k)) })).filter(g => g.keys.length)} labels={criteriaLabel} sets={CRITERIA_BOXES} value={nice} onChange={setNice} />
+        </details>
+        <details className="rounded-2xl border border-line p-3" open={access.length > 0}>
+          <summary className="font-bold text-[15px] cursor-pointer">♿ Accesibilidad{access.length ? ` · ${access.length}` : ''}</summary>
+          <p className="text-[12px] text-muted mt-1 mb-2">Puntúa en su propio bloque de la nota (con su importancia en los pesos). «Todo en una planta» cumple también «dormitorio en planta baja». Si alguna es eliminatoria, márcala en Imprescindibles.</p>
+          <GroupedChips label="" groups={[{ title: '', keys: ACCESS_KEYS.filter(k => !must.includes(k)) }]} labels={criteriaLabel} value={access} onChange={setAccess} counts={false} />
         </details>
         <WeightsEditor w={weights} onChange={setWeights} />
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
@@ -1975,7 +1981,7 @@ function WeightsEditor({ w, onChange }: { w: ScoreWeights; onChange: (w: ScoreWe
   const sum = base.reduce((a, b) => a + w[b.k], 0)
   const share = (k: ScoreKey, withOp: boolean) => (sum ? w[k] / sum * (withOp ? 100 - w.opinion : 100) : 0)
   const changed = (Object.keys(DEFAULT_WEIGHTS) as (keyof ScoreWeights)[]).some(k => w[k] !== DEFAULT_WEIGHTS[k])
-  const COLORS = ['#3D6FD8', '#1F8A4C', '#E0A21B', '#8E5BD6', '#D9662B', '#2BA3B8']
+  const COLORS = ['#3D6FD8', '#1F8A4C', '#E0A21B', '#8E5BD6', '#D9662B', '#2BA3B8', '#C2457A']
   const IMP = ['No cuenta', 'Muy poco', 'Poco', 'Normal', 'Bastante', 'Mucho']
   const rule = (k: 'niceFull' | 'penalty' | 'opinion', label: string, help: string, shown: string, max: number, min = 0) => (
     <label key={k} className="flex flex-col gap-0.5">

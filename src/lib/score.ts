@@ -1,28 +1,29 @@
 // Nota 0–10 de cada casa de Buscamos: 6 bloques con pesos ajustables («Qué buscamos»)
 import { fold } from '../data/places'
-import { mustHaveCheck, niceCount, type Criteria, type Home, type Rating } from './mudanza'
+import { criteriaLabel, mustHaveCheck, niceCount, type Criteria, type Home, type Rating } from './mudanza'
 import { readyPrice } from './reforma'
 import { healthCounts } from './health'
 import { recommend } from './pricing'
 import { distLabel } from './colegios'
 
-export type ScoreKey = 'musts' | 'price' | 'nice' | 'estado' | 'ubicacion' | 'espacio' | 'opinion'
+export type ScoreKey = 'musts' | 'price' | 'nice' | 'estado' | 'ubicacion' | 'espacio' | 'accesibilidad' | 'opinion'
 /** penalty: % que se quita a la nota por cada imprescindible que no se cumple (la mitad si falla por poco) */
 /** niceFull: % de lo que valoráis con el que ya se saca un 10 en ese bloque */
 export type ScoreWeights = Record<ScoreKey | 'penalty' | 'niceFull', number>
-export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 5, price: 4, nice: 3, estado: 3, ubicacion: 3, espacio: 3, opinion: 20, penalty: 30, niceFull: 60 }
+export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 5, price: 4, nice: 3, estado: 3, ubicacion: 3, espacio: 3, accesibilidad: 3, opinion: 20, penalty: 30, niceFull: 60 }
 export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: string }[] = [
   { k: 'musts', icon: '🎯', label: 'Imprescindibles', help: 'Cumple = 10, con reforma = 6, sin dato = 5, no cumple = 0' },
   { k: 'price', icon: '💶', label: 'Precio y presupuesto', help: 'Para entrar a vivir frente a vuestro tope, y si lo que piden es razonable' },
   { k: 'nice', icon: '⭐', label: 'Lo que valoráis', help: 'Cuántos de los «Valoramos» tiene (con reforma cuenta la mitad)' },
   { k: 'estado', icon: '🔍', label: 'Estado, riesgos y reforma', help: 'Resta por cada ⛔ y ⚠️ de Documentos y Estado, y por la reforma que necesita' },
   { k: 'ubicacion', icon: '📍', label: 'Ubicación', help: 'Si está donde buscáis y lo cerca que queda el colegio' },
+  { k: 'accesibilidad', icon: '♿', label: 'Accesibilidad', help: 'Lo que marcáis en «♿ Accesibilidad»: cada cosa que tiene suma; sin dato cuenta a medias' },
   { k: 'espacio', icon: '📐', label: 'Espacio', help: 'Metros de casa y de parcela: el mínimo es un 5 y lo ideal un 10 (más no suma)' },
   { k: 'opinion', icon: '👨‍👩‍👧‍👦', label: 'Vuestra opinión', help: 'Vuestra nota del 1 al 10 tras la visita. Solo cuenta cuando la habéis puntuado' }
 ]
 
 /** Bloques que se reparten la nota por importancia (0–5); «Vuestra opinión» va aparte, como % fijo */
-export const BASE_KEYS: ScoreKey[] = ['musts', 'price', 'nice', 'estado', 'ubicacion', 'espacio']
+export const BASE_KEYS: ScoreKey[] = ['musts', 'price', 'nice', 'estado', 'ubicacion', 'espacio', 'accesibilidad']
 
 export function weightsOf(c: Criteria | null): ScoreWeights {
   const w = (c?.score_weights ?? {}) as Partial<ScoreWeights>
@@ -158,6 +159,25 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
     else if (cr?.ideal_plot_m2 && plot == null) { why.push('Falta la parcela'); provisional = true }
     if (parts.length) blocks.push({ ...meta('espacio'), score: parts.reduce((a, b) => a + b, 0) / parts.length, weight: W.espacio, why })
     else if (cr?.ideal_m2 || cr?.ideal_plot_m2) blocks.push({ ...meta('espacio'), score: 5, weight: W.espacio, why: why.length ? why : ['Sin metros: nota neutra'], missing: true })
+  }
+
+  // ♿ Accesibilidad: cada cosa marcada vale lo mismo; la tiene = 10, consta que no = 0, sin dato = 5
+  // («Todo en una planta» cumple también «dormitorio en planta baja»)
+  {
+    const items = cr?.access_items ?? []
+    if (items.length) {
+      const f = h.features ?? []
+      const has = (k: string) => f.includes(k) || (k === 'dormitorio_pb' && f.includes('una_planta')) || (k === 'ascensor' && f.includes('una_planta'))
+      const no = (k: string) => (k === 'parcela_llana' && f.includes('parcela_pendiente'))
+      const got = items.filter(has), bad = items.filter(k => !has(k) && no(k)), unk = items.filter(k => !has(k) && !no(k))
+      const s = (got.length * 10 + unk.length * 5) / items.length
+      const why: string[] = []
+      if (got.length) why.push(`✅ ${got.map(criteriaLabel).join(', ')}`)
+      if (bad.length) why.push(`❌ ${bad.map(criteriaLabel).join(', ')}`)
+      if (unk.length) why.push(`❓ Sin dato: ${unk.map(criteriaLabel).join(', ')}`)
+      if (unk.length === items.length) provisional = true
+      blocks.push({ ...meta('accesibilidad'), score: s, weight: W.accesibilidad, why })
+    }
   }
 
   // 📍 Ubicación
