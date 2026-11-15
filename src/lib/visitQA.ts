@@ -28,6 +28,18 @@ export type Q = {
   options?: { v: string; label: string; s?: HealthStatus }[]; unit?: string; quick?: string[]; bind: Bind; custom?: 'casa' | 'todas'
 }
 
+/** Documentos con respuestas concretas (cuestionario y ficha): cada una equivale a ✅ ⚠️ ⛔ */
+export const DOC_CHOICES: Record<string, { q: string; opts: [string, string, HealthStatus][] }> = {
+  ocupacion: { q: '¿Se entrega libre?', opts: [['libre', 'Libre', 'ok'], ['alquilada', 'Alquilada', 'warn'], ['ocupada', 'Ocupada', 'bad']] },
+  vpo: { q: '¿Es vivienda protegida (VPO)?', opts: [['no', 'No', 'ok'], ['si', 'Sí', 'bad']] },
+  urbanizacion: { q: '¿La urbanización está recepcionada por el ayuntamiento?', opts: [['si', 'Sí', 'ok'], ['no', 'No', 'warn'], ['nose', 'No lo saben', 'warn']] },
+  ite: { q: '¿Licencias y obras en regla?', opts: [['ok', 'Todo en regla', 'ok'], ['falta', 'Falta algo', 'warn'], ['sin', 'Obras sin licencia', 'bad']] },
+  comunidad: { q: '¿Deudas o derramas de comunidad?', opts: [['no', 'Ninguna', 'ok'], ['prevista', 'Hay una prevista', 'warn'], ['deuda', 'Hay deudas', 'bad']] },
+  nota_simple: { q: 'Nota simple: ¿cargas?', opts: [['libre', 'Sin cargas', 'ok'], ['hipoteca', 'Solo su hipoteca', 'ok'], ['otras', 'Otras cargas', 'bad']] }
+}
+/** Etiquetas de ✅ ⚠️ ⛔ para lo que se mira en persona */
+export const LOOK_LABEL: Record<HealthStatus, string> = { ok: 'Bien', warn: 'Regular', bad: 'Mal', unknown: 'Sin mirar' }
+
 const TITLE: Record<string, { title: string; hint: string }> = Object.fromEntries([...AI_CHECKS, ...MANUAL_CHECKS, ...VISIT_CHECKS].map(c => [c.key, { title: c.title, hint: c.hint }]))
 const hq = (key: string, section: Section): Q => ({ id: `h:${key}`, section, label: TITLE[key]?.title ?? key, hint: TITLE[key]?.hint, type: 'estado', bind: { kind: 'health', key } })
 /** Pregunta de documentos con respuestas concretas que equivalen a ✅ ⚠️ ⛔ en «Documentos» */
@@ -45,12 +57,7 @@ const BASE: Q[] = [
   { id: 'x:comunidad', section: 'preguntar', label: 'Gastos de comunidad o urbanización', type: 'number', unit: '€/mes', bind: { kind: 'field', key: 'community_fee_cents' } },
   { id: 'x:ibi', section: 'preguntar', label: 'Último recibo del IBI', type: 'number', unit: '€/año', bind: { kind: 'field', key: 'ibi_cents' } },
   { id: 'x:energy', section: 'preguntar', label: 'Certificado energético', type: 'choice', options: 'ABCDEFG'.split('').map(x => ({ v: x, label: x })), bind: { kind: 'field', key: 'energy' } },
-  dq('ocupacion', '¿Se entrega libre?', [['libre', 'Libre', 'ok'], ['alquilada', 'Alquilada', 'warn'], ['ocupada', 'Ocupada', 'bad']]),
-  dq('vpo', '¿Es vivienda protegida (VPO)?', [['no', 'No', 'ok'], ['si', 'Sí', 'bad']]),
-  dq('urbanizacion', '¿La urbanización está recepcionada por el ayuntamiento?', [['si', 'Sí', 'ok'], ['no', 'No', 'warn'], ['nose', 'No lo saben', 'warn']]),
-  dq('ite', '¿Licencias y obras en regla?', [['ok', 'Todo en regla', 'ok'], ['falta', 'Falta algo', 'warn'], ['sin', 'Obras sin licencia', 'bad']]),
-  dq('comunidad', '¿Deudas o derramas de comunidad?', [['no', 'Ninguna', 'ok'], ['prevista', 'Hay una prevista', 'warn'], ['deuda', 'Hay deudas', 'bad']]),
-  dq('nota_simple', 'Nota simple: ¿cargas?', [['libre', 'Sin cargas', 'ok'], ['hipoteca', 'Solo su hipoteca', 'ok'], ['otras', 'Otras cargas', 'bad']]),
+  ...Object.entries(DOC_CHOICES).map(([k, d]) => dq(k, d.q, d.opts)),
   ...['humedad', 'instalaciones', 'ventanas', 'luz', 'ruido', 'saneamiento', 'zona_visita'].map(k => hq(k, 'mirar')),
   fq('entrada_sin_escaleras', '¿Se entra sin escaleras?'),
   fq('acceso_llano', '¿La calle es llana (sin cuestas para llegar)?'),

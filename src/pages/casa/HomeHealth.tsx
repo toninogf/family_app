@@ -8,6 +8,7 @@ import {
 } from '../../lib/health'
 import { Choice, Sheet, TextArea, TextField } from '../../components/Sheet'
 import DocFiles from '../../components/DocFiles'
+import { DOC_CHOICES, LOOK_LABEL, type VisitQA as VisitQAData } from '../../lib/visitQA'
 
 type Candidate = { rc: string; address: string; dis?: number }
 type Unit = { rc: string; address: string; use: string | null; built_m2: number | null; year: number | null }
@@ -160,6 +161,12 @@ function HealthSheet({ h, m, householdId, check, onClose }: {
   const current: HealthItem = ((h.health ?? {}) as Health)[check.key] ?? { s: 'unknown' }
   const [s, setS] = useState<HealthStatus>(current.s)
   const [n, setN] = useState(current.n ?? '')
+  // Documentos con respuestas concretas (igual que en el cuestionario de la visita)
+  const doc = DOC_CHOICES[check.key]
+  const qa = (h.visit_qa ?? {}) as VisitQAData
+  const prevChoice = qa.answers?.[`h:${check.key}`]?.v
+  const [choice, setChoice] = useState<string>(doc ? (doc.opts.some(o => o[0] === prevChoice && o[2] === current.s) ? String(prevChoice) : doc.opts.find(o => o[2] === current.s)?.[0] ?? 'unknown') : '')
+  const look = ESTADO_KEYS.includes(check.key)
   const [error, setError] = useState('')
   // Archivos: siempre la versión al día del piso
   const live = (m.homes.find(x => x.id === h.id)?.health ?? {}) as Health
@@ -168,7 +175,16 @@ function HealthSheet({ h, m, householdId, check, onClose }: {
   const put = (item: HealthItem) => m.write('homes', { health: { ...((m.homes.find(x => x.id === h.id)?.health ?? {}) as Health), [check.key]: item } }, h.id)
 
   async function save() {
-    const err = await put({ ...current, files, s, n: n.trim() || undefined, src: 'manual' })
+    let err: string | undefined
+    if (doc) {
+      const o = doc.opts.find(x => x[0] === choice)
+      const answers = { ...(qa.answers ?? {}) }
+      if (o) answers[`h:${check.key}`] = { v: o[0] }; else delete answers[`h:${check.key}`]
+      err = await m.write('homes', {
+        health: { ...((m.homes.find(x => x.id === h.id)?.health ?? {}) as Health), [check.key]: { ...current, files, s: o ? o[2] : 'unknown', n: (!n.trim() || doc.opts.some(x => n.trim() === x[1] || n.trim() === `${x[1]} (en la visita)`)) ? o?.[1] : n.trim(), src: 'manual' } },
+        visit_qa: { ...qa, answers }
+      }, h.id)
+    } else err = await put({ ...current, files, s, n: n.trim() || undefined, src: 'manual' })
     if (err) setError(err); else onClose()
   }
 
@@ -178,8 +194,11 @@ function HealthSheet({ h, m, householdId, check, onClose }: {
         <p className="text-sm text-muted -mt-2">{check.hint}</p>
         {check.link && <a href={check.link.url} target="_blank" rel="noopener noreferrer" className="self-start min-h-10 px-3 rounded-xl border border-line text-sm font-semibold text-accent flex items-center">{check.link.label} ↗</a>}
         {current.src === 'ia' && <p className="text-xs text-[#C77A12] -mt-2">Esto lo ha dicho la IA: confírmalo antes de fiarte.</p>}
-        <Choice<HealthStatus> label="Estado" value={s} onChange={setS}
-          options={(['ok', 'warn', 'bad', 'unknown'] as HealthStatus[]).map(x => ({ value: x, label: `${STATUS_ICON[x]} ${STATUS_LABEL[x]}` }))} />
+        {doc
+          ? <Choice<string> label={doc.q} value={choice} onChange={setChoice}
+              options={[...doc.opts.map(([v, l, st]) => ({ value: v, label: `${STATUS_ICON[st]} ${l}` })), { value: 'unknown', label: `${STATUS_ICON.unknown} Sin saber` }]} />
+          : <Choice<HealthStatus> label="Estado" value={s} onChange={setS}
+              options={(['ok', 'warn', 'bad', 'unknown'] as HealthStatus[]).map(x => ({ value: x, label: `${STATUS_ICON[x]} ${look ? LOOK_LABEL[x] : STATUS_LABEL[x]}` }))} />}
         <TextArea label="Notas" value={n} onChange={e => setN(e.target.value)} maxLength={500} />
         {check.key === 'nota_simple' && <NotaReader h={h} m={m} files={files} onDone={onClose} />}
         <DocFiles files={files}
