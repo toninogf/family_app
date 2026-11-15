@@ -246,13 +246,13 @@ function StatusBadge({ s }: { s: HomeStatus }) {
 }
 
 // ---------- Ficha por grupos plegables ----------
-type GroupKey = 'resumen' | 'analisis' | 'visitas' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'oferta' | 'enlaces' | 'fotos'
+type GroupKey = 'resumen' | 'analisis' | 'visitas' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'oferta' | 'enlaces' | 'fotos' | 'notas'
 const GROUPS: { k: GroupKey; icon: string; title: string }[] = [
   { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'analisis', icon: '🔬', title: 'Análisis a fondo (IA)' }, { k: 'casa', icon: '🏠', title: 'La casa' },
   { k: 'dinero', icon: '💶', title: 'Gastos e impuestos' }, { k: 'reforma', icon: '🔨', title: 'Reforma' },
   { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'estado', icon: '🔍', title: 'Estado de la vivienda' },
   { k: 'zona', icon: '📍', title: 'La zona' }, { k: 'visitas', icon: '👀', title: 'Visitas' }, { k: 'oferta', icon: '💶', title: 'Oferta' }, { k: 'enlaces', icon: '🔗', title: 'Enlaces' },
-  { k: 'fotos', icon: '📷', title: 'Fotos' }
+  { k: 'fotos', icon: '📷', title: 'Fotos' }, { k: 'notas', icon: '📝', title: 'Notas y comentarios' }
 ]
 /** Grupos abiertos de la ficha (se recuerdan en este móvil); «go» abre uno y baja hasta él */
 const useGroups = (initial: GroupKey[]) => useOpenGroups<GroupKey>('ficha.grupos', initial.filter(k => k !== 'visitas'), initial.filter(k => k === 'visitas'))
@@ -296,7 +296,8 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     brief: (() => { const p = qaProgress(h, m.criteria); return join(`📋 ${p.done}/${p.total}`, p.later > 0 && `🕓 ${p.later}`, brief.deal.length > 0 && `${brief.deal.length} ideas`) })(),
     oferta: lastOffer ? join(`${price(lastOffer.amount_cents)}`, OFFER_STATUS[lastOffer.status]?.toLowerCase(), offers.length > 1 && `${offers.length} ofertas`) : join('sin oferta', rec && `recomendada ~${priceShort(rec.open)}`),
     enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
-    fotos: nPhotos ? `${nPhotos} foto${nPhotos > 1 ? 's' : ''}` : 'sin fotos'
+    fotos: nPhotos ? `${nPhotos} foto${nPhotos > 1 ? 's' : ''}` : 'sin fotos',
+    notas: h.notes ? h.notes.replace(/\s+/g, ' ').slice(0, 60) + (h.notes.length > 60 ? '…' : '') : 'sin notas'
   }
 }
 const statusIcon = (st?: string) => (st === 'ok' ? '✅' : st === 'warn' ? '⚠️' : st === 'bad' ? '❌' : '¿?')
@@ -788,7 +789,9 @@ function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, onReject
       </Group>
 
       {/* Notas generales del piso, abajo y a mano (se guardan solas) */}
-      <NotesBox h={h} m={m} />
+      <Group k="notas" g={groups} line={sum.notas}>
+        <NotesBox h={h} m={m} />
+      </Group>
 
       <button onClick={() => onEdit()} className="self-start min-h-11 px-4 rounded-xl border border-line text-sm font-semibold">✏️ Editar todos los datos</button>
       {/* Borrar, siempre a mano al final de la ficha */}
@@ -1220,8 +1223,8 @@ function NotesBox({ h, m }: { h: Home; m: Mudanza }) {
     setTimeout(() => setSaved(false), 1500)
   }
   return (
-    <section className="flex flex-col gap-2 bg-card rounded-2xl p-4 mt-2">
-      <TextArea label="📝 Notas y comentarios" value={text} onChange={e => setText(e.target.value)} onBlur={save} maxLength={1000}
+    <section className="flex flex-col gap-2 bg-card rounded-2xl p-4">
+      <TextArea label="Notas y comentarios" value={text} onChange={e => setText(e.target.value)} onBlur={save} maxLength={1000}
         placeholder="Lo que os ha gustado, lo que no, dudas para la próxima visita…" />
       {saved && <p role="status" className="text-xs text-accent">Guardado</p>}
     </section>
