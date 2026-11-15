@@ -37,6 +37,8 @@ import { VisitQA } from './VisitQA'
 import { qaProgress } from '../../lib/visitQA'
 import { Stars, rateHome } from './HomeStars'
 import { EquipChips } from './EquipChips'
+import { AffordCard } from './Afford'
+import { AFFORD_ICON, affordBase, affordHome } from '../../lib/afford'
 import { DeepAnalysisPanel, VerdictChip, deepLine } from './DeepAnalysis'
 import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreKey, type ScoreWeights } from '../../lib/score'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
@@ -113,7 +115,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
   const t = today()
   const towns = [...new Set(m.homes.map(h => h.municipality).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, 'es'))
 
-  const ctx: Ctx = { criteria: m.criteria, visits: m.homeVisits, ratings: m.ratings, homes: m.homes, today: t, schools }
+  const ctx: Ctx = { criteria: m.criteria, visits: m.homeVisits, ratings: m.ratings, homes: m.homes, today: t, schools, offers: m.offers, listing: m.listing }
   const visibleHomes = m.homes.filter(h => h.id !== pending?.id)
   const list = useMemo(() => sortHomes(applyFilters(visibleHomes, fs.f, ctx), fs.sort, ctx),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,6 +140,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
   return (
     <div className="flex flex-col gap-5">
       {/* Qué buscamos: plegado por defecto (presupuesto y localidades + cuántos imprescindibles y valoramos) */}
+      <AffordCard m={m} householdId={householdId} />
       <CriteriaCard c={m.criteria} onEdit={() => setCriteriaOpen(true)} />
 
       {/* Visitas: una línea que lleva a la pestaña Visitas (allí está todo) */}
@@ -546,6 +549,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
           </span>
         )}
         {over && budget != null && ready != null && <span className="text-[12px] text-danger text-right">se pasa {kShort(ready - budget)} del presupuesto</span>}
+        {h.price_cents != null && <AffordLine h={h} m={m} at={recommend(h, m.homes)?.open ?? h.price_cents} />}
       </span>
       {facts.length > 0 && <span className="text-[13px] text-muted">{facts.join(' · ')}</span>}
       {fails.length > 0 && (
@@ -975,7 +979,23 @@ function OfferLine({ h, m, compact }: { h: Home; m: Mudanza; compact?: boolean }
         </span>
       )}
       <span className="text-[12px] text-muted text-right">si os la aceptan: entrar a vivir {price(ready)}{fit ? <> · {fit}</> : null}</span>
+      <AffordLine h={h} m={m} at={p} />
     </div>
+  )
+}
+
+/** 💳 ¿Nos la podemos permitir a este precio? (con «🧮 ¿Hasta dónde podemos llegar?») */
+function AffordLine({ h, m, at, compact }: { h: Home; m: Mudanza; at: number; compact?: boolean }) {
+  const fin = m.criteria?.finance
+  if (!fin?.income_cents) return null
+  const a = affordHome(affordBase(m, fin), h, at)
+  if (!a) return null
+  const cuota = a.cuota ? `cuota ~${Math.round(a.cuota / 100).toLocaleString('es-ES')} €/mes` : 'sin hipoteca'
+  const tone = a.status === 'no' ? 'text-danger' : a.status === 'justo' ? 'text-[#C77A12]' : 'text-accent'
+  return (
+    <span className={`text-[12px] ${compact ? '' : 'text-right'} ${tone}`}>
+      💳 {AFFORD_ICON[a.status]} {cuota} · {a.slack >= 0 ? `os sobran ~${kShort(a.slack)}` : `faltan ~${kShort(-a.slack)}`}{a.why ? ` (${a.why})` : ''}
+    </span>
   )
 }
 

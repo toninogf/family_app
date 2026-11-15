@@ -1,5 +1,5 @@
 // Filtrar y ordenar los pisos de Buscamos con todo lo que calcula la app: criterios, reforma, gastos, colegios, riesgos…
-import { HOME_STATUS_ORDER, equivRooms, mustHaveCheck, niceCount, type Criteria, type Home, type HomeStatus, type HomeVisit, type Rating } from './mudanza'
+import { HOME_STATUS_ORDER, equivRooms, mustHaveCheck, niceCount, type Criteria, type Home, type HomeStatus, type HomeVisit, type Mudanza, type Rating } from './mudanza'
 import { readyPrice, reformKnown, reformTotal } from './reforma'
 import { healthCounts } from './health'
 import { recommend } from './pricing'
@@ -46,6 +46,8 @@ export const SORTS: { k: SortKey; label: string }[] = [
 export type Ctx = {
   criteria: Criteria | null; visits: HomeVisit[]; ratings: Rating[]; homes: Home[]; today: string
   schools: Record<string, ReturnType<typeof schoolSummary>>
+  /** Para «¿nos la podemos permitir?» (venta y ofertas) */
+  offers?: Mudanza['offers']; listing?: Mudanza['listing']
 }
 
 const ENERGY = 'ABCDEFG'

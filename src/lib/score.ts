@@ -1,6 +1,7 @@
 // Nota 0–10 de cada casa de Buscamos: 6 bloques con pesos ajustables («Qué buscamos»)
 import { fold } from '../data/places'
-import { criteriaLabel, mustHaveCheck, niceCount, type Criteria, type Home, type Rating } from './mudanza'
+import { affordBase, affordHome } from './afford'
+import { criteriaLabel, mustHaveCheck, niceCount, type Criteria, type Home, type Mudanza, type Rating } from './mudanza'
 import { readyPrice } from './reforma'
 import { healthCounts } from './health'
 import { recommend } from './pricing'
@@ -37,7 +38,7 @@ export function weightsOf(c: Criteria | null): ScoreWeights {
 export type ScoreBlock = { k: ScoreKey; icon: string; label: string; score: number; weight: number; why: string[]; missing?: boolean }
 /** penalty: lo que se ha quitado por imprescindibles que no se cumplen (pct total y cada uno) */
 export type HomeScore = { score: number; provisional: boolean; blocks: ScoreBlock[]; before: number; penalty: { pct: number; items: { label: string; pct: number; near: boolean }[] } | null }
-type ScoreCtx = { criteria: Criteria | null; ratings: Rating[]; homes: Home[] }
+type ScoreCtx = { criteria: Criteria | null; ratings: Rating[]; homes: Home[]; offers?: Mudanza['offers']; listing?: Mudanza['listing'] }
 
 const clamp = (x: number) => Math.max(0, Math.min(10, x))
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -102,6 +103,13 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
       if (perM2 && paid) {
         if (perM2 > paid * 1.15) { s -= 0.5; why.push(`${Math.round(perM2).toLocaleString('es-ES')} €/m², por encima de lo que se firma en la zona`) }
         else if (perM2 < paid * 0.95) { s += 0.5; why.push(`${Math.round(perM2).toLocaleString('es-ES')} €/m², por debajo de lo que se firma en la zona`) }
+      }
+      // ¿Nos la podemos permitir? (con la oferta inicial, si está calculada)
+      if (c.offers && cr?.finance?.income_cents && h.price_cents) {
+        const a = affordHome(affordBase({ offers: c.offers, listing: c.listing ?? null }, cr.finance), h, rec?.open ?? h.price_cents)
+        if (a?.status === 'no') { s -= 2; why.push(`⛔ No llega: ${a.why || 'falta dinero'} (−2)`) }
+        else if (a?.status === 'justo') { s -= 0.5; why.push('🟡 Muy justo con vuestro dinero y la cuota (−0,5)') }
+        else if (a) why.push(`✅ Os lo podéis permitir: cuota ~${Math.round((a.cuota ?? 0) / 100).toLocaleString('es-ES')} €/mes`)
       }
       blocks.push({ ...meta('price'), score: clamp(s), weight: W.price, why })
     } else {
