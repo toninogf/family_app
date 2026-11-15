@@ -163,7 +163,7 @@ function FinanceForm({ m, householdId, fin, onDone }: { m: Mudanza; householdId:
     if (!income.trim()) { setError('Pon los ingresos netos al mes: sin ellos no se puede calcular la cuota.'); return }
     if (t != null && (!Number.isFinite(t) || t < 0 || t > 15)) { setError('El tipo tiene que ser un % entre 0 y 15.'); return }
     if (y != null && (!Number.isFinite(y) || y < 5 || y > 40)) { setError('El plazo tiene que estar entre 5 y 40 años.'); return }
-    const finance: Finance = { income_cents: parsePrice(income), debts_cents: parsePrice(debts), savings_cents: parsePrice(savings), cushion_cents: parsePrice(cushion), tin: t, years: y }
+    const finance: Finance = { income_cents: parsePrice(income), debts_cents: parsePrice(debts), savings_cents: parsePrice(savings), cushion_cents: parsePrice(cushion), tin: t, years: y, sim: fin?.sim ?? null }
     const q = m.criteria
       ? supabase.from('search_criteria').update({ finance }).eq('household_id', householdId)
       : supabase.from('search_criteria').insert({ household_id: householdId, finance })
