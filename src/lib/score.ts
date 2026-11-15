@@ -17,7 +17,7 @@ export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: str
   { k: 'nice', icon: '⭐', label: 'Lo que valoráis', help: 'Cuántos de los «Valoramos» tiene (con reforma cuenta la mitad)' },
   { k: 'estado', icon: '🔍', label: 'Estado, riesgos y reforma', help: 'Resta por cada ⛔ y ⚠️ de Documentos y Estado, y por la reforma que necesita' },
   { k: 'ubicacion', icon: '📍', label: 'Ubicación', help: 'Si está donde buscáis y lo cerca que queda el colegio' },
-  { k: 'accesibilidad', icon: '♿', label: 'Accesibilidad', help: 'Lo que marcáis en «♿ Accesibilidad»: cada cosa que tiene suma; sin dato cuenta a medias' },
+  { k: 'accesibilidad', icon: '♿', label: 'Accesibilidad', help: 'Lo que marcáis en «♿ Accesibilidad»: cada cosa que la casa tiene suma por igual' },
   { k: 'espacio', icon: '📐', label: 'Espacio', help: 'Metros de casa y de parcela: el mínimo es un 5 y lo ideal un 10 (más no suma)' },
   { k: 'opinion', icon: '👨‍👩‍👧‍👦', label: 'Vuestra opinión', help: 'Vuestra nota del 1 al 10 tras la visita. Solo cuenta cuando la habéis puntuado' }
 ]
@@ -161,22 +161,18 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
     else if (cr?.ideal_m2 || cr?.ideal_plot_m2) blocks.push({ ...meta('espacio'), score: 5, weight: W.espacio, why: why.length ? why : ['Sin metros: nota neutra'], missing: true })
   }
 
-  // ♿ Accesibilidad: cada cosa marcada vale lo mismo; la tiene = 10, consta que no = 0, sin dato = 5
+  // ♿ Accesibilidad: cada cosa marcada vale lo mismo; si la casa la tiene, 10; si no, 0
   // («Todo en una planta» cumple también «dormitorio en planta baja»)
   {
     const items = cr?.access_items ?? []
     if (items.length) {
       const f = h.features ?? []
-      const has = (k: string) => f.includes(k) || (k === 'dormitorio_pb' && f.includes('una_planta')) || (k === 'ascensor' && f.includes('una_planta'))
-      const no = (k: string) => (k === 'parcela_llana' && f.includes('parcela_pendiente'))
-      const got = items.filter(has), bad = items.filter(k => !has(k) && no(k)), unk = items.filter(k => !has(k) && !no(k))
-      const s = (got.length * 10 + unk.length * 5) / items.length
+      const has = (k: string) => f.includes(k) || (k === 'dormitorio_pb' && f.includes('una_planta'))
+      const got = items.filter(has), miss = items.filter(k => !has(k))
       const why: string[] = []
       if (got.length) why.push(`✅ ${got.map(criteriaLabel).join(', ')}`)
-      if (bad.length) why.push(`❌ ${bad.map(criteriaLabel).join(', ')}`)
-      if (unk.length) why.push(`❓ Sin dato: ${unk.map(criteriaLabel).join(', ')}`)
-      if (unk.length === items.length) provisional = true
-      blocks.push({ ...meta('accesibilidad'), score: s, weight: W.accesibilidad, why })
+      if (miss.length) why.push(`❌ ${miss.map(criteriaLabel).join(', ')}`)
+      blocks.push({ ...meta('accesibilidad'), score: 10 * got.length / items.length, weight: W.accesibilidad, why })
     }
   }
 

@@ -1964,7 +1964,7 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
         </details>
         <details className="rounded-2xl border border-line p-3" open={access.length > 0}>
           <summary className="font-bold text-[15px] cursor-pointer">♿ Accesibilidad{access.length ? ` · ${access.length}` : ''}</summary>
-          <p className="text-[12px] text-muted mt-1 mb-2">Puntúa en su propio bloque de la nota (con su importancia en los pesos). «Todo en una planta» cumple también «dormitorio en planta baja». Si alguna es eliminatoria, márcala en Imprescindibles.</p>
+          <p className="text-[12px] text-muted mt-1 mb-2">Puntúa en su propio bloque de la nota (con su importancia en los pesos). Cada cosa que la casa tiene suma por igual; si no la tiene marcada, no suma. «Todo en una planta» cumple también «dormitorio en planta baja». Si alguna es eliminatoria, márcala en Imprescindibles.</p>
           <GroupedChips label="" groups={[{ title: '', keys: ACCESS_KEYS.filter(k => !must.includes(k)) }]} labels={criteriaLabel} value={access} onChange={setAccess} counts={false} />
         </details>
         <WeightsEditor w={weights} onChange={setWeights} />

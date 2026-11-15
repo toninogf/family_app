@@ -273,7 +273,7 @@ export const EXCLUSIVE: string[][] = EXCLUSIVE_SETS.map(x => x.keys)
 export const HEAT_EMITTERS = { title: 'Cómo calienta', keys: ['radiadores', 'suelo_radiante', 'chimenea'], together: true }
 /** Recuadros de «Qué buscamos» */
 /** Opciones de la sección «♿ Accesibilidad» de lo que buscamos (puntúan en su propio bloque, no en «Valoramos») */
-export const ACCESS_KEYS = ['entrada_sin_escaleras', 'acceso_llano', 'una_planta', 'dormitorio_pb', 'parcela_llana', 'ascensor']
+export const ACCESS_KEYS = ['entrada_sin_escaleras', 'acceso_llano', 'una_planta', 'dormitorio_pb', 'parcela_llana']
 export const CRITERIA_BOXES = [...EXCLUSIVE_SETS, HEAT_EMITTERS]
 /** Para editar una casa: los grupos de extras con el sistema de calefacción («sis:») y el aire («clim:») dentro, como en «Qué buscamos» */
 export const EQUIP_SETS = [
