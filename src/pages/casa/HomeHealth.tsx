@@ -166,7 +166,7 @@ function HealthSheet({ h, m, householdId, check, onClose }: {
   const qa = (h.visit_qa ?? {}) as VisitQAData
   const prevChoice = qa.answers?.[`h:${check.key}`]?.v
   const [choice, setChoice] = useState<string>(doc ? (doc.opts.some(o => o[0] === prevChoice && o[2] === current.s) ? String(prevChoice) : doc.opts.find(o => o[2] === current.s)?.[0] ?? 'unknown') : '')
-  const look = ESTADO_KEYS.includes(check.key)
+  const look = ESTADO_KEYS.includes(check.key) && check.key !== 'motivo'
   const [error, setError] = useState('')
   // Archivos: siempre la versión al día del piso
   const live = (m.homes.find(x => x.id === h.id)?.health ?? {}) as Health

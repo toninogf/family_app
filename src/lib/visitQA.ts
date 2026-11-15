@@ -1,15 +1,16 @@
 // «📋 Cuestionario de la visita»: preguntas para rellenar en la visita. Cada respuesta se guarda donde ya vive ese dato
 // (Estado y documentos, extras de la casa, gastos de la ficha); lo que no tiene sitio propio va en homes.visit_qa.
 import { AI_CHECKS, MANUAL_CHECKS, VISIT_CHECKS, type Health, type HealthStatus } from './health'
-import type { Criteria, Home } from './mudanza'
+import { FEATURES, critItems, criteriaLabel, meets, type Criteria, type Home } from './mudanza'
 
 export type QType = 'estado' | 'yesno' | 'number' | 'choice' | 'text'
 export type QA = { v?: string | number | boolean | null; later?: boolean }
 export type CustomQ = { id: string; q: string; type: 'text' | 'yesno' | 'estado' }
 export type VisitQA = { answers?: Record<string, QA>; hidden?: string[]; custom?: CustomQ[] }
 export type VisitTemplate = { custom?: CustomQ[]; hidden?: string[] }
-export type Section = 'preguntar' | 'mirar' | 'acceso' | 'nuestras'
+export type Section = 'buscamos' | 'preguntar' | 'mirar' | 'acceso' | 'nuestras'
 export const SECTIONS: { k: Section; title: string; help: string }[] = [
+  { k: 'buscamos', title: '🎯 Imprescindibles por confirmar', help: 'Si no consta en la ficha, cuenta como que no' },
   { k: 'preguntar', title: '🗣️ Preguntar', help: 'A la agencia o al vendedor' },
   { k: 'mirar', title: '👀 Mirar en persona', help: 'Lo que solo se ve yendo' },
   { k: 'acceso', title: '♿ Accesibilidad', help: 'Cuenta en la nota de accesibilidad' },
@@ -72,7 +73,10 @@ export function questions(h: Home, c: Criteria | null): Q[] {
   const qa = (h.visit_qa ?? {}) as VisitQA
   const hidden = new Set([...(tpl.hidden ?? []), ...(qa.hidden ?? [])])
   const custom = (cq: CustomQ, scope: 'casa' | 'todas'): Q => ({ id: cq.id, section: 'nuestras', label: cq.q, type: cq.type, bind: { kind: 'answer' }, custom: scope })
-  return [...BASE, ...(tpl.custom ?? []).map(q => custom(q, 'todas')), ...(qa.custom ?? []).map(q => custom(q, 'casa'))].filter(q => !hidden.has(q.id))
+  // Imprescindibles que son extras de la casa y no constan: se confirman en la visita (respondido «No» se queda como no)
+  const must = critItems(c?.must_haves ?? []).filter(k => !k.includes('|') && FEATURES[k] && (!meets(h, k) || qa.answers?.[`m:${k}`] !== undefined))
+    .map((k): Q => ({ id: `m:${k}`, section: 'buscamos', label: `¿Tiene ${criteriaLabel(k).toLowerCase()}?`, type: 'yesno', bind: { kind: 'feature', key: k } }))
+  return [...must, ...BASE, ...(tpl.custom ?? []).map(q => custom(q, 'todas')), ...(qa.custom ?? []).map(q => custom(q, 'casa'))].filter(q => !hidden.has(q.id))
 }
 
 /** Respuesta actual (undefined = sin responder) */

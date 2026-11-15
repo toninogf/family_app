@@ -30,7 +30,7 @@ export const AI_CHECKS: { key: string; title: string; hint: string }[] = [
 /** Lo que solo se sabe pidiendo papeles o yendo a verlo */
 export const MANUAL_CHECKS: { key: string; title: string; hint: string; link?: { label: string; url: string } }[] = [
   { key: 'nota_simple', title: 'Nota simple (cargas)', hint: 'Titular, hipotecas, embargos, usufructos y afecciones. Unos 10 €.', link: { label: 'Pedirla en registradores.org', url: 'https://www.registradores.org' } },
-  { key: 'comunidad', title: 'Comunidad: deudas y derramas', hint: 'Certificado del administrador y últimas actas (derramas aprobadas o previstas). En la visita: ¿hay alguna derrama prevista (fachada, ascensor…)? La cuota al mes va en Editar → El dinero.' },
+  { key: 'comunidad', title: 'Comunidad: deudas y derramas', hint: 'Certificado del administrador y últimas actas (derramas aprobadas o previstas). En la visita: ¿hay alguna derrama prevista (fachada, ascensor…)? La cuota al mes va en Editar → Gastos e impuestos.' },
   { key: 'instalaciones', title: 'Caldera, agua y electricidad', hint: 'Año y última revisión de la caldera; abre un grifo y la ducha (presión y agua caliente); cuadro eléctrico moderno, enchufes suficientes, boletín y potencia.' },
   { key: 'revision', title: 'Revisión técnica', hint: 'Un arquitecto o aparejador antes de comprar: humedades, grietas, tejado, estructura.' }
 ]

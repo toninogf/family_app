@@ -292,7 +292,7 @@ function useGroupLines(h: Home, m: Mudanza, visits: HomeVisit[], offers: HomeOff
     zona: join(school ? `${schoolShort(school)} a ${distLabel(school.dist)}` : h.lat == null ? 'sin ubicación' : null, h.municipality),
     visitas: join(nextV ? `📅 ${relativeDay(nextV.visit_date).toLowerCase()} ${hhmm(nextV.start_time)}` : visits.length ? `${visits.length} visita${visits.length > 1 ? 's' : ''}` : 'sin visitas',
       (() => { const r = m.ratings.filter(x => x.home_id === h.id); return r.length ? `${(r.reduce((a, x) => a + x.score, 0) / r.length).toLocaleString('es-ES', { maximumFractionDigits: 1 })}/10 ⭐` : null })(),
-      brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (brief.look.length + brief.unsure.length) > 0 && `${brief.look.length + brief.unsure.length} por mirar`, h.contact_phone && '📞'),
+      brief.warn.length > 0 && `⚠️ ${brief.warn.length}`, (() => { const p = qaProgress(h, m.criteria); return p.pending ? `📋 ${p.pending} sin responder` : '📋 completo' })(), h.contact_phone && '📞'),
     brief: (() => { const p = qaProgress(h, m.criteria); return join(`📋 ${p.done}/${p.total}`, p.later > 0 && `🕓 ${p.later}`, brief.deal.length > 0 && `${brief.deal.length} ideas`) })(),
     oferta: lastOffer ? join(`${price(lastOffer.amount_cents)}`, OFFER_STATUS[lastOffer.status]?.toLowerCase(), offers.length > 1 && `${offers.length} ofertas`) : join('sin oferta', rec && `recomendada ~${priceShort(rec.open)}`),
     enlaces: nLinks ? `${nLinks} enlace${nLinks > 1 ? 's' : ''}` : 'sin enlaces',
@@ -978,6 +978,8 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
   const toggle = () => setOpen(o => { try { localStorage.setItem('buscamos.criterios', o ? '0' : '1') } catch { /* sin almacenamiento */ } return !o })
   const nice = critItems(c?.nice_to_haves ?? [])
   const access = c?.access_items ?? []
+  // Igual que «Cumple X de Y» de las fichas: presupuesto, habitaciones, metros, parcela y localidad también cuentan
+  const mustN = c ? [c.max_price_cents, c.min_rooms, c.min_m2, c.min_plot_m2, c.municipalities?.length ? 1 : 0].filter(Boolean).length + critItems(c.must_haves).length : 0
   const has = c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.min_plot_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length || nice.length)
   if (!has) {
     return (
@@ -1009,9 +1011,9 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
       <button onClick={toggle} className="text-left flex flex-col gap-1">
         {basics && <span className="text-[14px] font-semibold">{basics}</span>}
         {places.length > 0 && <span className="text-[13px] text-muted truncate">📍 {places.join(', ')}</span>}
-        {!open && (c.must_haves.length > 0 || nice.length > 0 || access.length > 0) && (
+        {!open && (mustN > 0 || nice.length > 0 || access.length > 0) && (
           <span className="flex gap-1.5 flex-wrap mt-0.5">
-            {c.must_haves.length > 0 && <Chip>🎯 {c.must_haves.length} imprescindible{c.must_haves.length === 1 ? '' : 's'}</Chip>}
+            {mustN > 0 && <Chip>🎯 {mustN} imprescindible{mustN === 1 ? '' : 's'}</Chip>}
             {nice.length > 0 && <Chip>⭐ {nice.length} que valoramos</Chip>}
             {access.length > 0 && <Chip>♿ {access.length} de accesibilidad</Chip>}
           </span>
