@@ -274,6 +274,13 @@ export const HEAT_EMITTERS = { title: 'Cómo calienta', keys: ['radiadores', 'su
 /** Recuadros de «Qué buscamos» */
 /** Opciones de la sección «♿ Accesibilidad» de lo que buscamos (puntúan en su propio bloque, no en «Valoramos») */
 export const ACCESS_KEYS = ['entrada_sin_escaleras', 'acceso_llano', 'una_planta', 'dormitorio_pb', 'parcela_llana']
+/** Accesibilidad que buscamos frente a la casa («Todo en una planta» cumple también «dormitorio en planta baja») */
+export function accessCount(h: Pick<Home, 'features'>, c: Criteria | null) {
+  const want = c?.access_items ?? []
+  const f = h.features ?? []
+  const got = want.filter(k => f.includes(k) || (k === 'dormitorio_pb' && f.includes('una_planta')))
+  return { want, got }
+}
 export const CRITERIA_BOXES = [...EXCLUSIVE_SETS, HEAT_EMITTERS]
 /** Para editar una casa: los grupos de extras con el sistema de calefacción («sis:») y el aire («clim:») dentro, como en «Qué buscamos» */
 export const EQUIP_SETS = [

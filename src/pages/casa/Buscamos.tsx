@@ -12,7 +12,7 @@ import { addDays, hhmm, longDate, relativeDay, shortDate, today } from '../../li
 import { isMapsUrl, mapsHref } from '../../lib/kids'
 import {
   COOLING, FEATURES, HEATING, HOME_STATUS, OFFER_STATUS,
-  CRITERIA_GROUPS, CRITERIA_BOXES, ACCESS_KEYS, shownFeatures, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
+  CRITERIA_GROUPS, CRITERIA_BOXES, ACCESS_KEYS, accessCount, critItems, shownFeatures, coverPhoto, criteriaLabel, mergeLinks, mustHaveCheck, niceCount, parsePrice, perM2, photoUrl, photoUrls, portalName, price, priceInput, priceShort,
   equivRooms, roomsLabel, type Check, type RejectReason, REJECT_REASONS, type DiscardCategory, DISCARD_CATS, discardLabel, type Cooling, type HeatingType, type Home, type Link, type HomeOffer, type HomeStatus, type HomeVisit, type Mudanza, type OfferStatus, type Photo
 } from '../../lib/mudanza'
 import { Card } from '../../components/ui'
@@ -481,6 +481,7 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
   const viaReform = fails.filter(c => c.reform).length
   const unknown = checks.filter(c => c.ok == null).length
   const nice = niceCount(h, m.criteria)
+  const acc = accessCount(h, m.criteria)
   const facts = [h.size_m2 && `${Number(h.size_m2)} m²`, h.plot_m2 && `parcela ${Number(h.plot_m2)} m²`, roomsLabel(h), h.baths != null && `${h.baths} baños`, pm2 && `${price(pm2)}/m²`,
     school && `🏫 ${school.type_abbr === 'CP INF-PRI' ? 'CEIP' : school.ownership === 'publico' ? 'Público' : OWN_LABEL[school.ownership]} a ${distLabel(school.dist)}`].filter(Boolean)
   const extra = [next && `📅 Visita ${relativeDay(next.visit_date).toLowerCase()} ${hhmm(next.start_time)}`].filter(Boolean)
@@ -508,11 +509,12 @@ function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
           <StatusBadge s={h.status} />
         </span>
       </span>
-      {(checks.length > 0 || nice.want.length > 0) && (
+      {(checks.length > 0 || nice.want.length > 0 || acc.want.length > 0) && (
         <span className="text-[13px]">
           {checks.length > 0 && <span className={fails.length ? '' : 'text-accent font-semibold'}>🎯 Cumple {checks.length - fails.length - unknown} de {checks.length}{unknown ? ` (${unknown} sin dato)` : ''}{viaReform ? <span className="text-[#C77A12]"> · 🔨 {viaReform} con reforma</span> : null}</span>}
           {checks.length > 0 && nice.want.length > 0 && <span className="text-muted"> · </span>}
           {nice.want.length > 0 && <span>⭐ {nice.got.length} de {nice.want.length} que valoramos{nice.viaReform.length ? <span className="text-[#C77A12]"> (+🔨{nice.viaReform.length})</span> : null}</span>}
+          {acc.want.length > 0 && <><span className="text-muted"> · </span><span>♿ {acc.got.length} de {acc.want.length}</span></>}
         </span>
       )}
       <span className="flex flex-col gap-0.5">
@@ -957,7 +959,8 @@ const kShort = (c: number) => `${(c / 100000).toLocaleString('es-ES', { maximumF
 function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => void }) {
   const [open, setOpen] = useState(() => { try { return localStorage.getItem('buscamos.criterios') === '1' } catch { return false } })
   const toggle = () => setOpen(o => { try { localStorage.setItem('buscamos.criterios', o ? '0' : '1') } catch { /* sin almacenamiento */ } return !o })
-  const nice = c?.nice_to_haves ?? []
+  const nice = critItems(c?.nice_to_haves ?? [])
+  const access = c?.access_items ?? []
   const has = c && (c.max_price_cents || c.min_rooms || c.min_m2 || c.min_plot_m2 || c.zones.length || c.municipalities?.length || c.must_haves.length || nice.length)
   if (!has) {
     return (
@@ -966,7 +969,7 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
           <span className="text-[15px] font-bold">Qué buscamos</span>
           <span className="text-sm text-accent font-semibold">Editar</span>
         </span>
-        <span className="text-sm text-muted">Presupuesto, zonas, imprescindibles y lo que valoramos. Cada piso marcará cuáles cumple.</span>
+        <span className="text-sm text-muted">Presupuesto, zonas, imprescindibles, lo que valoramos y accesibilidad. Cada piso marcará cuáles cumple.</span>
       </button>
     )
   }
@@ -989,10 +992,11 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
       <button onClick={toggle} className="text-left flex flex-col gap-1">
         {basics && <span className="text-[14px] font-semibold">{basics}</span>}
         {places.length > 0 && <span className="text-[13px] text-muted truncate">📍 {places.join(', ')}</span>}
-        {!open && (c.must_haves.length > 0 || nice.length > 0) && (
+        {!open && (c.must_haves.length > 0 || nice.length > 0 || access.length > 0) && (
           <span className="flex gap-1.5 flex-wrap mt-0.5">
             {c.must_haves.length > 0 && <Chip>🎯 {c.must_haves.length} imprescindible{c.must_haves.length === 1 ? '' : 's'}</Chip>}
             {nice.length > 0 && <Chip>⭐ {nice.length} que valoramos</Chip>}
+            {access.length > 0 && <Chip>♿ {access.length} de accesibilidad</Chip>}
           </span>
         )}
       </button>
@@ -1010,6 +1014,12 @@ function CriteriaCard({ c, onEdit }: { c: Mudanza['criteria']; onEdit: () => voi
               <span className="flex gap-1.5 flex-wrap">{nice.map(k => <Chip key={k}>{FEATURE_ICON[k] ? `${FEATURE_ICON[k]} ` : ''}{criteriaLabel(k)}</Chip>)}</span>
             </div>
           )}
+          {access.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[13px] font-semibold text-muted">♿ Accesibilidad</span>
+              <span className="flex gap-1.5 flex-wrap">{access.map(k => <Chip key={k}>{FEATURE_ICON[k] ? `${FEATURE_ICON[k]} ` : ''}{criteriaLabel(k)}</Chip>)}</span>
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -1023,6 +1033,8 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
   const met = checks.filter(c => c.ok).length
   const nice = niceCount(h, m.criteria)
   const [niceOpen, setNiceOpen] = useState(false)
+  const acc = accessCount(h, m.criteria)
+  const [accOpen, setAccOpen] = useState(false)
   const facts: [string, string][] = ([
     h.size_m2 && ['🏠', `${Number(h.size_m2)} m²${h.useful_m2 ? ` (${Number(h.useful_m2)} útiles)` : ''}`],
     h.plot_m2 && ['🌳', `parcela ${Number(h.plot_m2)} m²`],
@@ -1075,6 +1087,19 @@ function QuickFacts({ h, m, onEdit }: { h: Home; m: Mudanza; onEdit: (focus?: Ed
           {niceOpen && (
             <span className="flex gap-1 flex-wrap -mt-1">
               {nice.want.map(k => <Chip key={k} tone={nice.got.includes(k) ? 'ok' : nice.viaReform.includes(k) ? 'warn' : 'unknown'}>{nice.got.includes(k) ? '✓' : nice.viaReform.includes(k) ? '🔨' : '·'} {criteriaLabel(k)}{nice.viaReform.includes(k) ? ' (con reforma)' : ''}</Chip>)}
+            </span>
+          )}
+        </>
+      )}
+      {acc.want.length > 0 && (
+        <>
+          <button onClick={() => setAccOpen(!accOpen)} className="flex justify-between items-center text-left border-t border-line pt-2">
+            <span className="text-[13px] text-muted">♿ Accesibilidad</span>
+            <span className="text-[14px] font-semibold">{acc.got.length} de {acc.want.length} <span className="text-muted">{accOpen ? '▾' : '▸'}</span></span>
+          </button>
+          {accOpen && (
+            <span className="flex gap-1 flex-wrap -mt-1">
+              {acc.want.map(k => <Chip key={k} tone={acc.got.includes(k) ? 'ok' : 'unknown'}>{acc.got.includes(k) ? '✓' : '·'} {criteriaLabel(k)}</Chip>)}
             </span>
           )}
         </>
@@ -2068,6 +2093,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
     { label: 'Zona', show: h => h.zone ?? '—' },
     { label: 'Extras', show: h => (h.features.length ? shownFeatures(h).map(f => FEATURES[f] ?? f).join(', ') : '—'), value: h => h.features.length, better: 'high' },
     { label: 'Imprescindibles', show: h => { const c = mustHaveCheck(h, m.criteria); const r = c.filter(x => x.reform).length; return c.length ? <>{c.filter(x => x.ok).length}/{c.length}{r ? <span className="text-[#C77A12]"> · 🔨{r}</span> : null}</> : '—' }, value: musts, better: 'high' },
+    { label: 'Accesibilidad', show: h => { const a = accessCount(h, m.criteria); return a.want.length ? `${a.got.length}/${a.want.length}` : '—' }, value: h => (m.criteria?.access_items?.length ? accessCount(h, m.criteria).got.length : null), better: 'high' },
     { label: 'Valoramos', show: h => { const n = niceCount(h, m.criteria); return n.want.length ? `${n.got.length}/${n.want.length}` : '—' }, value: h => (m.criteria?.nice_to_haves?.length ? niceCount(h, m.criteria).got.length : null), better: 'high' },
     { label: 'Piscina', show: h => (h.features.includes('piscina') ? 'Propia' : h.features.includes('piscina_comunitaria') ? 'Comunitaria' : '—'), value: h => (h.features.includes('piscina') ? 2 : h.features.includes('piscina_comunitaria') ? 1 : 0), better: 'high' },
     { label: 'Comunidad', show: h => (h.community_fee_cents != null ? `${price(h.community_fee_cents)}/mes` : '—'), value: h => h.community_fee_cents, better: 'low' },
