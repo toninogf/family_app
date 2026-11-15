@@ -83,7 +83,7 @@ function Result({ m, householdId, fin: saved }: { m: Mudanza; householdId: strin
     const old = fin?.sim ?? {}
     if (sim.sale === (old.sale ?? '') && sim.buy === (old.buy ?? '') && sim.reform === (old.reform ?? '')) return
     if (!m.criteria) return
-    await supabase.from('search_criteria').update({ finance: { ...(fin ?? {}), sim } }).eq('household_id', m.criteria.household_id)
+    await supabase.from('search_criteria').update({ finance: { ...(fin ?? {}), sim: { ...(fin?.sim ?? {}), ...sim } } }).eq('household_id', m.criteria.household_id)
     await m.reload()
   }
   const saleOv = saleTxt.trim() ? parsePrice(saleTxt) : null
@@ -95,7 +95,6 @@ function Result({ m, householdId, fin: saved }: { m: Mudanza; householdId: strin
   const top = maxPrice(b, 0)
   const sim = buy ? affordAt(b, buy, reform) : null
   const homes = m.homes.filter(h => h.status !== 'descartado' && h.price_cents)
-  const tone = (st: 'ok' | 'justo' | 'no') => (st === 'no' ? 'text-danger' : st === 'justo' ? 'text-[#C77A12]' : 'text-accent')
   
   return (
     <div className="flex flex-col gap-3">
@@ -123,45 +122,12 @@ function Result({ m, householdId, fin: saved }: { m: Mudanza; householdId: strin
             </label>
           ))}
         </div>
-        <span className="flex justify-between gap-2 text-[11px] text-muted"><span>Vacío = lo de la app (precio de Vendemos). Se guarda lo último que pongáis.</span>{(saleTxt || buyTxt || reformTxt) && <button type="button" onClick={() => { setSaleTxt(''); setBuyTxt(''); setReformTxt(''); if (m.criteria) void supabase.from('search_criteria').update({ finance: { ...(fin ?? {}), sim: null } }).eq('household_id', m.criteria.household_id).then(() => m.reload()) }} className="font-semibold text-accent shrink-0">Vaciar</button>}</span>
+        <span className="flex justify-between gap-2 text-[11px] text-muted"><span>Vacío = lo de la app (precio de Vendemos). Se guarda lo último que pongáis.</span>{(saleTxt || buyTxt || reformTxt) && <button type="button" onClick={() => { setSaleTxt(''); setBuyTxt(''); setReformTxt(''); if (m.criteria) void supabase.from('search_criteria').update({ finance: { ...(fin ?? {}), sim: fin?.sim?.home ? { home: fin.sim.home } : null } }).eq('household_id', m.criteria.household_id).then(() => m.reload()) }} className="font-semibold text-accent shrink-0">Vaciar</button>}</span>
       </div>
 
       <Story m={m} fin={fin} b={b} sim={sim} buy={buy} reform={reform} top={top} />
 
-      {homes.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <span className="flex flex-col">
-            <span className="text-[13px] font-semibold">🏠 Vuestras casas{saleOv ? ' (con la venta puesta a mano)' : ''}</span>
-            <span className="text-[11px] text-muted">Cada una con su propia reforma estimada (no la del simulador), impuestos y honorarios.</span>
-          </span>
-          {homes.map(h => {
-            const rec = recommend(h, m.homes)
-            const a1 = affordHome(b, h, h.price_cents!)
-            const a2 = rec ? affordHome(b, h, rec.open) : null
-            const rf = reformMid(h)
-            const col = (label: string, buyAt: number, a: NonNullable<ReturnType<typeof affordHome>>) => (
-              <span className="rounded-lg bg-bg p-2 flex flex-col gap-0.5 min-w-0">
-                <span className="text-[11px] text-muted">{label} {k(buyAt)}</span>
-                <span className="text-[13px]">entrar a vivir <b>{k(a.need)}</b></span>
-                <b className={`text-[13px] ${tone(a.status)}`}>{AFFORD_ICON[a.status]} {a.slack >= 0 ? `sobran ${k(a.slack)}` : `faltan ${k(-a.slack)}`}</b>
-                <span className="text-[11px] text-muted">{a.cuota ? `cuota ${Math.round(a.cuota / 100).toLocaleString('es-ES')} €/mes` : 'sin hipoteca'}</span>
-              </span>
-            )
-            return (
-              <div key={h.id} className="flex flex-col gap-1.5 border-b border-line last:border-0 pb-2">
-                <span className="flex justify-between items-baseline gap-2 text-[13px]">
-                  <span className="font-semibold truncate min-w-0">{shortName(h)}</span>
-                  <span className="text-[11px] text-muted shrink-0">{rf ? `reforma ~${k(rf)}` : 'sin reforma'}</span>
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  {a1 && col('Piden', h.price_cents!, a1)}
-                  {a2 ? col('Con la oferta', rec!.open, a2) : <span className="rounded-lg bg-bg p-2 text-[12px] text-muted">Sin oferta calculada</span>}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {homes.length > 0 && <HomeCheck m={m} b={b} homes={homes} fin={fin} manualSale={!!saleOv} />}
 
       <div className="flex flex-col gap-1">
         <span className="text-[13px] font-semibold">Precio máximo de compra según la reforma</span>
@@ -185,6 +151,50 @@ function Result({ m, householdId, fin: saved }: { m: Mudanza; householdId: strin
       )}
       <p className="text-[11px] text-muted">Estimación orientativa: el banco decide con su estudio (edad, contrato, vinculaciones).</p>
       </>}
+    </div>
+  )
+}
+
+/** 🏠 Una casa elegida, en detalle: a lo que piden y con la oferta (con su reforma, impuestos y honorarios) */
+function HomeCheck({ m, b, homes, fin, manualSale }: { m: Mudanza; b: ReturnType<typeof affordBase>; homes: Home[]; fin: Finance; manualSale: boolean }) {
+  const [id, setId] = useState(fin.sim?.home && homes.some(h => h.id === fin.sim!.home) ? fin.sim.home : '')
+  async function pick(v: string) {
+    setId(v)
+    if (m.criteria) { await supabase.from('search_criteria').update({ finance: { ...fin, sim: { ...(fin.sim ?? {}), home: v } } }).eq('household_id', m.criteria.household_id); await m.reload() }
+  }
+  const h = homes.find(x => x.id === id)
+  const rec = h ? recommend(h, m.homes) : null
+  const cols = h ? [{ label: 'A lo que piden', at: h.price_cents! }, ...(rec ? [{ label: 'Con la oferta inicial', at: rec.open }] : [])].map(c => ({ ...c, a: affordHome(b, h, c.at) })) : []
+  const tone = (st: 'ok' | 'justo' | 'no') => (st === 'no' ? 'text-danger' : st === 'justo' ? 'text-[#C77A12]' : 'text-accent')
+  const row = (lb: string, v: string, strong = false) => <span className={`flex justify-between gap-2 ${strong ? 'font-bold border-t border-line pt-1' : ''}`}><span className={strong ? '' : 'text-muted'}>{lb}</span><span className="shrink-0">{v}</span></span>
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[13px] font-semibold">🏠 ¿Y esta casa?{manualSale ? ' (con la venta puesta a mano)' : ''}</span>
+        <select value={id} onChange={e => void pick(e.target.value)} className="w-full min-h-11 px-3 rounded-xl border border-line bg-bg text-[14px]">
+          <option value="">Elige una casa…</option>
+          {homes.map(x => <option key={x.id} value={x.id}>{shortName(x)} · {k(x.price_cents)}</option>)}
+        </select>
+      </label>
+      {h && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {cols.map(({ label, at, a }) => a && (
+            <div key={label} className="rounded-xl bg-bg p-3 flex flex-col gap-1 text-[13px]">
+              <span className="text-[13px] font-bold">{label}</span>
+              {row('Compra', price(at))}
+              {row('Impuestos y gastos', price(a.costs))}
+              {a.reform ? row('Reforma estimada', price(a.reform)) : null}
+              {a.fee ? row('Honorarios inmobiliaria', price(a.fee)) : null}
+              {row('Para entrar a vivir', price(a.need), true)}
+              {row('Ponéis vosotros', `− ${price(Math.min(b.own, a.need))}`)}
+              {row('Hipoteca necesaria', price(a.loan), true)}
+              {row('Hipoteca máxima', `${price(a.limit)} (${a.limit < (b.maxLoan ?? 0) ? '80 % del precio' : 'por la cuota'})`)}
+              {row('Cuota', a.cuota ? `${Math.round(a.cuota / 100).toLocaleString('es-ES')} €/mes${fin.income_cents ? ` (${Math.round(a.cuota * 100 / fin.income_cents)} %)` : ''}` : 'sin hipoteca')}
+              <b className={`mt-1 ${tone(a.status)}`}>{AFFORD_ICON[a.status]} {a.slack >= 0 ? `Os sobran ~${k(a.slack)} de margen` : `Faltan ~${k(-a.slack)}`}{a.why ? ` (${a.why})` : ''}</b>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

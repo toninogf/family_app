@@ -14,7 +14,7 @@ export type Finance = {
   tin?: number | null            // tipo de la hipoteca (%)
   years?: number | null          // plazo (años)
   /** Lo último puesto a mano en «Simular» (texto tal cual) */
-  sim?: { sale?: string; buy?: string; reform?: string } | null
+  sim?: { sale?: string; buy?: string; reform?: string; home?: string } | null
 }
 export const RATIO = 0.30        // cuota máxima: 30 % de los ingresos
 export const LTV = 0.80          // el banco presta como mucho el 80 % del precio
@@ -78,7 +78,7 @@ export function affordHome(b: AffordBase, h: Home, buyPrice: number) {
   const cuota = loan ? monthlyPayment(loan, b.tin, b.years) : 0
   const status: 'ok' | 'justo' | 'no' = slack < 0 ? 'no' : slack < 2000000 ? 'justo' : 'ok'
   const why = loan > Math.round(buyPrice * LTV) ? 'el banco no presta más del 80 %: falta entrada' : loan > b.maxLoan ? 'la cuota pasaría del 30 % de los ingresos' : ''
-  return { need, loan, cuota, slack, status, why }
+  return { need, loan, cuota, slack, status, why, costs, reform: reformMid(h), fee: buyerFee(h) ?? 0, limit }
 }
 /** Simulación a mano: comprar a un precio con una reforma (sin casa concreta) */
 export function affordAt(b: AffordBase, buyPrice: number, reform = 0, fee = 0) {
