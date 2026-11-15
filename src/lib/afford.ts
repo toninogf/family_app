@@ -20,13 +20,13 @@ export const DEF_TIN = 2.8
 export const DEF_YEARS = 30
 
 /** Lo que queda de la venta a un precio (por defecto, el publicado o la oferta aceptada) */
-export function saleNetAt(m: SaleSide, discount = 0) {
+export function saleNetAt(m: SaleSide, discount = 0, override?: number | null) {
   const accepted = m.offers.find(o => o.status === 'accepted')
-  const base = accepted?.amount_cents ?? m.listing?.price_cents ?? null
+  const base = override ?? accepted?.amount_cents ?? m.listing?.price_cents ?? null
   if (base == null) return null
   const sale = Math.round(base * (1 - discount))
   const costs = (m.listing?.costs ?? []).reduce((s, c) => s + (c.cents || 0), 0)
-  return { sale, net: sale - (m.listing?.mortgage_cents ?? 0) - costs, accepted: !!accepted }
+  return { sale, net: sale - (m.listing?.mortgage_cents ?? 0) - costs, accepted: !!accepted && override == null, manual: override != null }
 }
 
 /** Préstamo máximo para una cuota (sistema francés) */
@@ -37,10 +37,11 @@ function loanFor(cuota: number, tin: number, years: number) {
 /** Impuestos y gastos de compra como % del precio (vivienda usada en Madrid) */
 const costRate = (p: number) => (purchaseCosts({ price_cents: p }, p)?.mid ?? p * 0.072) / p
 
-export function affordBase(m: SaleSide, f: Finance | null | undefined, saleDiscount = 0) {
+/** saleOverride: precio de venta puesto a mano para simular (si no, el publicado o la oferta aceptada) */
+export function affordBase(m: SaleSide, f: Finance | null | undefined, saleDiscount = 0, saleOverride?: number | null) {
   const fin = f ?? {}
   const tin = fin.tin ?? DEF_TIN, years = fin.years ?? DEF_YEARS
-  const s = saleNetAt(m, saleDiscount)
+  const s = saleNetAt(m, saleDiscount, saleOverride)
   const own = Math.max(0, (s?.net ?? 0) + (fin.savings_cents ?? 0) - (fin.cushion_cents ?? 0))
   const maxCuota = fin.income_cents ? Math.max(0, Math.round(fin.income_cents * RATIO) - (fin.debts_cents ?? 0)) : null
   const maxLoan = maxCuota != null ? loanFor(maxCuota, tin, years) : null
@@ -76,5 +77,18 @@ export function affordHome(b: AffordBase, h: Home, buyPrice: number) {
   const status: 'ok' | 'justo' | 'no' = slack < 0 ? 'no' : slack < 2000000 ? 'justo' : 'ok'
   const why = loan > Math.round(buyPrice * LTV) ? 'el banco no presta más del 80 %: falta entrada' : loan > b.maxLoan ? 'la cuota pasaría del 30 % de los ingresos' : ''
   return { need, loan, cuota, slack, status, why }
+}
+/** Simulación a mano: comprar a un precio con una reforma (sin casa concreta) */
+export function affordAt(b: AffordBase, buyPrice: number, reform = 0, fee = 0) {
+  if (b.maxLoan == null) return null
+  const costs = purchaseCosts({ price_cents: buyPrice }, buyPrice)?.mid ?? Math.round(buyPrice * 0.072)
+  const need = buyPrice + costs + reform + fee
+  const loan = Math.max(0, need - b.own)
+  const limit = Math.min(Math.round(buyPrice * LTV), b.maxLoan)
+  const slack = limit - loan
+  const cuota = loan ? monthlyPayment(loan, b.tin, b.years) : 0
+  const status: 'ok' | 'justo' | 'no' = slack < 0 ? 'no' : slack < 2000000 ? 'justo' : 'ok'
+  const why = loan > Math.round(buyPrice * LTV) ? 'falta entrada: el banco presta como mucho el 80 %' : loan > b.maxLoan ? 'la cuota pasaría del 30 % de los ingresos' : ''
+  return { costs, need, loan, cuota, slack, status, why }
 }
 export const AFFORD_ICON = { ok: '✅', justo: '🟡', no: '⛔' } as const
