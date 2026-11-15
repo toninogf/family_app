@@ -1895,6 +1895,8 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
   const [rooms, setRooms] = useState(c?.min_rooms?.toString() ?? '')
   const [m2, setM2] = useState(c?.min_m2?.toString() ?? '')
   const [plotMin, setPlotMin] = useState(c?.min_plot_m2?.toString() ?? '')
+  const [m2Ideal, setM2Ideal] = useState(c?.ideal_m2?.toString() ?? '')
+  const [plotIdeal, setPlotIdeal] = useState(c?.ideal_plot_m2?.toString() ?? '')
   const [work, setWork] = useState(c?.work_address ?? '')
   const [zones, setZones] = useState((c?.zones ?? []).join(', '))
   const [towns, setTowns] = useState<string[]>(c?.municipalities ?? [])
@@ -1913,6 +1915,8 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
       min_rooms: rooms.trim() ? parseInt(rooms, 10) : null, min_m2: m2.trim() ? parseInt(m2, 10) : null,
       min_plot_m2: plotMin.trim() ? parseInt(plotMin.replace(/\./g, ''), 10) || null : null,
       work_address: work.trim().slice(0, 200) || null,
+      ideal_m2: m2Ideal.trim() ? parseInt(m2Ideal.replace(/\./g, ''), 10) || null : null,
+      ideal_plot_m2: plotIdeal.trim() ? parseInt(plotIdeal.replace(/\./g, ''), 10) || null : null,
       zones: zones.split(',').map(z => z.trim()).filter(Boolean).slice(0, 15).map(z => z.slice(0, 40)), municipalities: towns, must_haves: must.slice(0, 20), nice_to_haves: nice.filter(k => !must.includes(k)).slice(0, 40), score_weights: weights
     }, undefined, 'household_id')
     if (err) setError(err); else onClose()
@@ -1923,12 +1927,15 @@ function CriteriaSheet({ m, householdId, onClose }: { m: Mudanza; householdId: s
       <form onSubmit={submit} className="flex flex-col gap-5">
         <TextField label="Presupuesto máximo para entrar a vivir (€)" inputMode="decimal" value={max} onChange={e => setMax(e.target.value)} placeholder="Ej. 650.000" />
         <p className="text-[12px] text-muted -mt-3">Lo que os cuesta en total: precio + reforma + impuestos y gastos. Así todos los pisos se comparan igual.</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <TextField label="Habitaciones mín." inputMode="numeric" value={rooms} onChange={e => setRooms(e.target.value)} />
+          <span />
           <TextField label="m² casa mín." inputMode="numeric" value={m2} onChange={e => setM2(e.target.value)} />
+          <TextField label="m² casa ideal" inputMode="numeric" value={m2Ideal} onChange={e => setM2Ideal(e.target.value)} placeholder="Más ya no suma" />
           <TextField label="m² parcela mín." inputMode="numeric" value={plotMin} onChange={e => setPlotMin(e.target.value)} placeholder="Ej. 500" />
+          <TextField label="m² parcela ideal" inputMode="numeric" value={plotIdeal} onChange={e => setPlotIdeal(e.target.value)} placeholder="Más ya no suma" />
         </div>
-        <p className="text-[12px] text-muted -mt-3">Las habitaciones cuentan la buhardilla y el sótano habitable. Si falla por poco (menos de un 10 % en metros o parcela) penaliza la mitad.</p>
+        <p className="text-[12px] text-muted -mt-3">Las habitaciones cuentan la buhardilla y el sótano habitable. Si falla por poco (menos de un 10 % en metros o parcela) penaliza la mitad. Entre el mínimo y lo ideal, la nota de «📐 Espacio» sube de 5 a 10.</p>
         <TextField label="💼 Dirección de mi trabajo (para los trayectos del análisis con IA)" value={work} onChange={e => setWork(e.target.value)} placeholder="Calle, número, Madrid" />
         <div className="flex flex-col gap-2">
           <Combobox key={pick} label="Localidades (Comunidad de Madrid)" value={null} options={ALL_MUNICIPALITIES.filter(x => !towns.includes(x))}

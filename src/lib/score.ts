@@ -6,17 +6,18 @@ import { healthCounts } from './health'
 import { recommend } from './pricing'
 import { distLabel } from './colegios'
 
-export type ScoreKey = 'musts' | 'price' | 'nice' | 'estado' | 'ubicacion' | 'opinion'
+export type ScoreKey = 'musts' | 'price' | 'nice' | 'estado' | 'ubicacion' | 'espacio' | 'opinion'
 /** penalty: % que se quita a la nota por cada imprescindible que no se cumple (la mitad si falla por poco) */
 /** niceFull: % de lo que valoráis con el que ya se saca un 10 en ese bloque */
 export type ScoreWeights = Record<ScoreKey | 'penalty' | 'niceFull', number>
-export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 30, price: 25, nice: 15, estado: 15, ubicacion: 15, opinion: 20, penalty: 30, niceFull: 60 }
+export const DEFAULT_WEIGHTS: ScoreWeights = { musts: 30, price: 25, nice: 15, estado: 15, ubicacion: 15, espacio: 15, opinion: 20, penalty: 30, niceFull: 60 }
 export const SCORE_BLOCKS: { k: ScoreKey; icon: string; label: string; help: string }[] = [
   { k: 'musts', icon: '🎯', label: 'Imprescindibles', help: 'Cumple = 10, con reforma = 6, sin dato = 5, no cumple = 0' },
   { k: 'price', icon: '💶', label: 'Precio y presupuesto', help: 'Para entrar a vivir frente a vuestro tope, y si lo que piden es razonable' },
   { k: 'nice', icon: '⭐', label: 'Lo que valoráis', help: 'Cuántos de los «Valoramos» tiene (con reforma cuenta la mitad)' },
   { k: 'estado', icon: '🔍', label: 'Estado, riesgos y reforma', help: 'Resta por cada ⛔ y ⚠️ de Documentos y Estado, y por la reforma que necesita' },
   { k: 'ubicacion', icon: '📍', label: 'Ubicación', help: 'Si está donde buscáis y lo cerca que queda el colegio' },
+  { k: 'espacio', icon: '📐', label: 'Espacio', help: 'Metros de casa y de parcela: el mínimo es un 5 y lo ideal un 10 (más no suma)' },
   { k: 'opinion', icon: '👨‍👩‍👧‍👦', label: 'Vuestra opinión', help: 'Vuestra nota del 1 al 10 tras la visita. Solo cuenta cuando la habéis puntuado' }
 ]
 
@@ -129,6 +130,29 @@ export function homeScore(h: Home, c: ScoreCtx, schoolDist?: number | null): Hom
     else if (!st && !h.reform?.items?.length) { why.push('Sin saber qué reforma necesita'); provisional = true }
     if (!hc.bad && !hc.warn) why.unshift(hc.ok ? `✅ ${hc.ok} puntos bien, sin avisos` : 'Sin avisos (aún sin revisar)')
     blocks.push({ ...meta('estado'), score: clamp(s), weight: W.estado, why })
+  }
+
+  // 📐 Espacio: casa y parcela entre el mínimo (5) y lo ideal (10); por debajo del mínimo baja hacia 0 (y además lo penaliza el imprescindible)
+  {
+    const part = (v: number | null, min: number | null | undefined, ideal: number | null | undefined) => {
+      if (v == null || !ideal) return null
+      const lo = min && min < ideal ? min : null
+      if (v >= ideal) return 10
+      if (lo != null) return v >= lo ? 5 + 5 * (v - lo) / (ideal - lo) : 5 * v / lo
+      return 10 * v / ideal
+    }
+    const parts: number[] = []
+    const why: string[] = []
+    const m2 = h.size_m2 != null ? Number(h.size_m2) : null
+    const plot = h.plot_m2 != null ? Number(h.plot_m2) : null
+    const sc = part(m2, cr?.min_m2, cr?.ideal_m2)
+    if (sc != null) { parts.push(sc); why.push(`🏠 ${m2} m² de casa (ideal ${cr!.ideal_m2})`) }
+    else if (cr?.ideal_m2 && m2 == null) { why.push('Faltan los m² de la casa'); provisional = true }
+    const sp = part(plot, cr?.min_plot_m2, cr?.ideal_plot_m2)
+    if (sp != null) { parts.push(sp); why.push(`🌳 Parcela ${plot!.toLocaleString('es-ES')} m² (ideal ${cr!.ideal_plot_m2!.toLocaleString('es-ES')})`) }
+    else if (cr?.ideal_plot_m2 && plot == null) { why.push('Falta la parcela'); provisional = true }
+    if (parts.length) blocks.push({ ...meta('espacio'), score: parts.reduce((a, b) => a + b, 0) / parts.length, weight: W.espacio, why })
+    else if (cr?.ideal_m2 || cr?.ideal_plot_m2) blocks.push({ ...meta('espacio'), score: 5, weight: W.espacio, why: why.length ? why : ['Sin metros: nota neutra'], missing: true })
   }
 
   // 📍 Ubicación

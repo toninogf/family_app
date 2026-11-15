@@ -49,6 +49,7 @@ export function homeSearchPrompt(c: Criteria | null, homes: Home[], rejections: 
     c?.min_rooms ? `- Mínimo ${c.min_rooms} habitaciones (la buhardilla y el sótano habitable cuentan como una más cada uno)` : null,
     c?.min_m2 ? `- Mínimo ${c.min_m2} m² construidos` : null,
     c?.min_plot_m2 ? `- Parcela de al menos ${c.min_plot_m2} m²` : null,
+    c?.ideal_m2 || c?.ideal_plot_m2 ? `- Ideal (más no suma): ${[c.ideal_m2 && `${c.ideal_m2} m² de casa`, c.ideal_plot_m2 && `parcela de ${c.ideal_plot_m2} m²`].filter(Boolean).join(' y ')}` : null,
     c?.must_haves.length ? `- IMPRESCINDIBLE: ${critItems(c.must_haves).map(criteriaLabel).join(', ')}` : null,
     c?.nice_to_haves.length ? `- Valoramos (suma, no obliga): ${critItems(c.nice_to_haves).map(criteriaLabel).join(', ')}` : null
   ].filter(Boolean)

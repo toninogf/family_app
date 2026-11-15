@@ -66,6 +66,7 @@ export function deepAnalysisPrompt(h: Home, m: Mudanza, ctx: DeepContext) {
     'LO QUE BUSCAMOS',
     `- Presupuesto PARA ENTRAR A VIVIR: ${eur(c?.max_price_cents)}`,
     `- Imprescindible: ${[c?.min_rooms && `${c.min_rooms}+ habitaciones (buhardilla y sótano habitable cuentan como una)`, c?.min_m2 && `${c.min_m2}+ m²`, c?.min_plot_m2 && `parcela ${c.min_plot_m2}+ m²`, ...critItems(c?.must_haves ?? []).map(criteriaLabel)].filter(Boolean).join('; ') || '—'}`,
+    ...(c?.ideal_m2 || c?.ideal_plot_m2 ? [`- Ideal de espacio (más no suma): ${[c.ideal_m2 && `${c.ideal_m2} m² de casa`, c.ideal_plot_m2 && `parcela de ${c.ideal_plot_m2} m²`].filter(Boolean).join(' y ')}`] : []),
     `- Valoramos: ${critItems(c?.nice_to_haves ?? []).map(criteriaLabel).join('; ') || '—'}`,
     `- Localidades: ${[...(c?.municipalities ?? []), ...(c?.zones ?? [])].join(', ') || '—'}`,
     '- Tener que hacer mucha reforma nos descarta la casa. Colegio: público como prioridad y, después, concertado.',
