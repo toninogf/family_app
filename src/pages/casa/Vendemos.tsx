@@ -99,6 +99,9 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
 
   return (
     <div className="flex flex-col gap-5">
+      {/* En pantallas grandes: cabecera fija a la izquierda y los grupos a la derecha */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-8 lg:items-start">
+      <div className="flex flex-col gap-5 lg:sticky lg:top-6">
       {/* 1. Cabecera: fotos y las cifras */}
       <SaleGallery m={m} onAdd={() => g.go('fotos')} />
       <div className="flex flex-col gap-1 -mt-2">
@@ -196,6 +199,8 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         </button>
       )}
 
+      </div>
+      <div className="flex flex-col gap-5">
       {grp('resumen', null, <>
         <div className="grid grid-cols-2 gap-2">
           <Tile label="👀 Visitas" value={<>{done.length}{upcoming.length ? <span className="text-[13px] font-normal text-muted"> · {upcoming.length} próx.</span> : null}</>} tone={done.length ? 'ok' : 'none'} onClick={() => g.go('visitas')} />
@@ -370,6 +375,8 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         </span>
         <span className="text-muted text-lg" aria-hidden="true">›</span>
       </button>
+      </div>
+      </div>
 
 
       {visitSheet.open && (

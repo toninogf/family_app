@@ -25,15 +25,16 @@ export default function BottomNav() {
   const { prefs } = usePrefs()
   const items = [{ to: '/', label: 'Hoy', icon: icons.hoy }, ...prefs.tabs.map(k => ({ to: TAB_ROUTES[k].to, label: TAB_LABEL[k], icon: TAB_ROUTES[k].icon }))]
   return (
-    <nav aria-label="Secciones" className="fixed bottom-0 inset-x-0 bg-card border-t border-line pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
-      <ul className="grid max-w-xl mx-auto" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+    <nav aria-label="Secciones" className="fixed z-20 bottom-0 inset-x-0 bg-card border-t border-line pb-[max(env(safe-area-inset-bottom),8px)] pt-2 lg:top-0 lg:right-auto lg:w-56 lg:border-t-0 lg:border-r lg:pt-8 lg:pb-6">
+      <span className="hidden lg:block px-6 pb-6 text-[20px] font-bold tracking-tight">Familia</span>
+      <ul className="grid max-w-xl mx-auto lg:flex lg:flex-col lg:gap-1 lg:px-3" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map(item => (
           <li key={item.to}>
             <NavLink
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center justify-center gap-1 min-h-12 text-[11px] ${isActive ? 'text-accent font-bold' : 'text-muted font-medium'}`
+                `flex flex-col items-center justify-center gap-1 min-h-12 text-[11px] lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:min-h-11 lg:rounded-xl lg:text-[15px] ${isActive ? 'text-accent font-bold lg:bg-accent-soft' : 'text-muted font-medium lg:hover:bg-bg'}`
               }
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{item.icon}</svg>

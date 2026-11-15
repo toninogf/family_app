@@ -186,7 +186,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
           <HomesMap homes={list} m={m} onOpen={setOpenId} />
         </Suspense>
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 homes-grid lg:gap-4">
           {list.map(h => {
             const cp = coverPhoto(h, m.photos)
             return <HomeCard key={h.id} h={h} m={m} cover={cp ? { url: covers[cp.path], ad: cp.kind === 'anuncio' } : null}
@@ -630,7 +630,7 @@ function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, onReject
   if (offerSheet.open) return <HomeOfferSheet home={h} offer={offerSheet.offer} m={m} onClose={() => setOfferSheet({ open: false })} />
 
   return (
-    <Sheet title={short} onClose={onClose}>
+    <Sheet title={short} onClose={onClose} variant="side">
       {/* 1. Cabecera visual */}
       <div className="-mt-3 flex flex-col gap-2">
         <Gallery h={h} m={m} onAdd={() => onEdit('fotos')} />
@@ -2143,7 +2143,7 @@ function CompareSheet({ homes, m, onRemove, onClose }: { homes: Home[]; m: Mudan
   }
 
   return (
-    <Sheet title="Comparar pisos" onClose={onClose}>
+    <Sheet title="Comparar pisos" onClose={onClose} variant="wide">
       <section className="flex flex-col gap-2 bg-card rounded-2xl p-4">
         <h3 className="font-bold text-[15px]">Diferencias importantes</h3>
         {summary.length === 0

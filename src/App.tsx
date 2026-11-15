@@ -31,7 +31,7 @@ export default function App() {
     <AuthGate>
       <HouseholdProvider>
         <PrefsProvider>
-        <main className="max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28">
+        <main className="max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28 md:max-w-3xl lg:max-w-none lg:ml-56 lg:px-10 lg:pb-12 xl:pr-16">
           <Suspense fallback={<p className="text-muted text-sm py-10 text-center">Cargando…</p>}>
           <Routes>
             <Route path="/" element={<HomeOrShare />} />

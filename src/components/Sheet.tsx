@@ -1,21 +1,36 @@
 import { useEffect, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react'
 
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+/**
+ * Hoja que sube desde abajo (móvil). En pantallas grandes: ventana centrada; «wide» = ancha (comparador);
+ * «side» = panel fijo a la derecha que deja ver y usar la lista de al lado (ficha de un piso).
+ */
+export function Sheet({ title, onClose, children, variant }: { title: string; onClose: () => void; children: ReactNode; variant?: 'wide' | 'side' }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
-  }, [onClose])
+    const big = window.matchMedia('(min-width: 1024px)').matches
+    const side = variant === 'side' && big
+    if (side) document.body.dataset.side = '1'; else document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (side) delete document.body.dataset.side; else document.body.style.overflow = ''
+    }
+  }, [onClose, variant])
 
+  const outer = variant === 'side'
+    ? 'fixed inset-0 z-30 flex flex-col justify-end bg-black/40 lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[min(46vw,760px)] lg:bg-transparent lg:justify-start'
+    : 'fixed inset-0 z-30 flex flex-col justify-end bg-black/40 lg:justify-center lg:items-center lg:p-6'
+  const panel = variant === 'side'
+    ? 'lg:max-w-none lg:h-full lg:max-h-none lg:rounded-none lg:border-l lg:border-line lg:shadow-xl'
+    : variant === 'wide' ? 'lg:max-w-6xl lg:rounded-3xl lg:max-h-[88vh]' : 'lg:max-w-2xl lg:rounded-3xl lg:max-h-[88vh]'
   return (
-    <div className="fixed inset-0 z-30 flex flex-col justify-end bg-black/40" onClick={onClose}>
+    <div className={outer} onClick={onClose}>
       <div
         role="dialog"
-        aria-modal="true"
+        aria-modal={variant === 'side' ? undefined : true}
         aria-label={title}
         onClick={e => e.stopPropagation()}
-        className="bg-bg rounded-t-3xl max-h-[92vh] overflow-y-auto w-full max-w-xl mx-auto pb-[max(env(safe-area-inset-bottom),16px)]"
+        className={`bg-bg rounded-t-3xl max-h-[92vh] overflow-y-auto w-full max-w-xl mx-auto pb-[max(env(safe-area-inset-bottom),16px)] ${panel}`}
       >
         <div className="flex flex-col gap-5 p-5">
           <div className="flex justify-between items-center">
