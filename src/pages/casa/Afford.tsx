@@ -80,28 +80,9 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
           ))}
         </div>
         <span className="flex justify-between gap-2 text-[11px] text-muted"><span>Vacío = lo de la app (precio de Vendemos). Se guarda lo último que pongáis.</span>{(saleTxt || buyTxt || reformTxt) && <button type="button" onClick={() => { setSaleTxt(''); setBuyTxt(''); setReformTxt(''); if (m.criteria) void supabase.from('search_criteria').update({ finance: { ...(fin ?? {}), sim: null } }).eq('household_id', m.criteria.household_id).then(() => m.reload()) }} className="font-semibold text-accent shrink-0">Vaciar</button>}</span>
-        {sim && (
-          <div className={`rounded-lg bg-bg p-2.5 flex flex-col gap-0.5 text-[13px]`}>
-            <b className={tone(sim.status)}>{AFFORD_ICON[sim.status]} {sim.status === 'no' ? 'No llega' : sim.status === 'justo' ? 'Muy justo' : 'Entra'}: {sim.slack >= 0 ? `os sobran ~${k(sim.slack)}` : `faltan ~${k(-sim.slack)}`}{sim.why ? ` (${sim.why})` : ''}</b>
-            <span className="text-muted">Necesitáis {price(sim.need)} (compra + ~{k(sim.costs)} de impuestos y gastos{reform ? ` + ${k(reform)} de reforma` : ''}) · hipoteca {price(sim.loan)} · cuota ~{sim.cuota ? `${Math.round(sim.cuota / 100).toLocaleString('es-ES')} €/mes` : '0'}</span>
-          </div>
-        )}
       </div>
 
-      <div className="rounded-xl bg-bg p-3 flex flex-col gap-1 text-[13px]">
-        <span className="flex justify-between"><span className="text-muted">De la venta {b.sale?.manual ? '(precio puesto a mano)' : b.sale?.accepted ? '(oferta aceptada)' : '(precio publicado)'}</span><b>{price(b.sale?.net ?? 0)}</b></span>
-        <span className="flex justify-between"><span className="text-muted">+ Ahorros que ponéis</span><b>{price(fin?.savings_cents ?? 0)}</b></span>
-        {fin?.cushion_cents ? <span className="flex justify-between"><span className="text-muted">− Colchón que no se toca</span><b>{price(fin.cushion_cents)}</b></span> : null}
-        <span className="flex justify-between border-t border-line pt-1"><span>Dinero propio</span><b>{price(b.own)}</b></span>
-        <span className="flex justify-between"><span className="text-muted">Cuota máxima ({Math.round(RATIO * 100)} % de ingresos{fin?.debts_cents ? ' − otras cuotas' : ''})</span><b>{price(b.maxCuota)}/mes</b></span>
-        <span className="flex justify-between"><span className="text-muted">Hipoteca máxima con esa cuota ({String(b.tin).replace('.', ',')} %, {b.years} años)</span><b>{price(b.maxLoan)}</b></span>
-      </div>
-      {top && (
-        <p className="text-[13px]">
-          Hasta ~<b>{k(top.ready)}</b> para entrar a vivir. Lo que os limita: <b>{top.why === 'entrada' ? 'el dinero propio' : 'la cuota'}</b>.{' '}
-          {top.why === 'entrada' ? 'El banco presta como mucho el 80 % del precio y el resto, los impuestos (~7 %) y la reforma salen de vuestro dinero.' : 'Con más precio, la cuota pasaría del 30 % de los ingresos.'}
-        </p>
-      )}
+      <Story m={m} fin={fin} b={b} sim={sim} buy={buy} reform={reform} top={top} />
 
       {homes.length > 0 && (
         <div className="flex flex-col gap-1">
@@ -145,6 +126,57 @@ function Result({ m, fin, onEdit }: { m: Mudanza; fin: Finance | null; onEdit: (
       )}
       <p className="text-[11px] text-muted">Estimación orientativa: el banco decide con su estudio (edad, contrato, vinculaciones).</p>
       <button onClick={onEdit} className="self-start min-h-9 px-3 rounded-xl border border-line text-sm font-semibold">✏️ Cambiar los datos</button>
+    </div>
+  )
+}
+
+/** El cálculo contado paso a paso: qué necesitáis → qué ponéis → cuánto os prestan → qué cuota queda */
+function Story({ m, fin, b, sim, buy, reform, top }: {
+  m: Mudanza; fin: Finance | null; b: ReturnType<typeof affordBase>; sim: ReturnType<typeof affordAt>; buy: number | null; reform: number; top: ReturnType<typeof maxPrice>
+}) {
+  const sale = b.sale
+  const mort = m.listing?.mortgage_cents ?? 0
+  const scosts = (m.listing?.costs ?? []).reduce((a, c) => a + (c.cents || 0), 0)
+  const eur = (c: number | null | undefined) => price(c ?? 0)
+  const cuotaTxt = (c: number | null | undefined) => `${Math.round((c ?? 0) / 100).toLocaleString('es-ES')} €/mes`
+  const ltv = buy ? Math.round(buy * 0.8) : null
+  const steps: { icon: string; title: string; value: string; detail: string; tone?: string }[] = []
+  if (buy && sim) steps.push({ icon: '🏠', title: 'Qué necesitáis', value: eur(sim.need), detail: `compra ${eur(buy)} + impuestos y gastos ~${eur(sim.costs)}${reform ? ` + reforma ${eur(reform)}` : ''}` })
+  steps.push({
+    icon: '💶', title: 'Qué ponéis vosotros', value: eur(b.own),
+    detail: [sale ? `venta ${eur(sale.sale)}${sale.manual ? ' (a mano)' : ''}${mort ? ` − hipoteca pendiente ${eur(mort)}` : ''}${scosts ? ` − gastos de venta ${eur(scosts)}` : ''} = ${eur(sale.net)}` : 'sin venta', fin?.savings_cents ? `+ ahorros ${eur(fin.savings_cents)}` : '', fin?.cushion_cents ? `− colchón ${eur(fin.cushion_cents)}` : ''].filter(Boolean).join(' ')
+  })
+  steps.push({ icon: '📅', title: 'Cuota máxima', value: cuotaTxt(b.maxCuota), detail: `${Math.round(RATIO * 100)} % de ${eur(fin?.income_cents)} de ingresos${fin?.debts_cents ? ` − otras cuotas ${eur(fin.debts_cents)}` : ''}` })
+  steps.push({
+    icon: '🏦', title: 'Hipoteca máxima', value: eur(ltv != null ? Math.min(ltv, b.maxLoan ?? 0) : b.maxLoan),
+    detail: `con esa cuota al ${String(b.tin).replace('.', ',')} % a ${b.years} años: ${eur(b.maxLoan)}${ltv != null ? ` · el banco presta como mucho el 80 % del precio: ${eur(ltv)}` : ''}`
+  })
+  if (buy && sim) {
+    steps.push({ icon: '🧾', title: 'Qué hipoteca necesitáis', value: eur(sim.loan), detail: sim.loan ? `${eur(sim.need)} que necesitáis − ${eur(b.own)} que ponéis` : 'os llega con vuestro dinero', tone: sim.status === 'no' ? 'text-danger' : undefined })
+    steps.push({ icon: '💳', title: 'Qué cuota queda', value: sim.cuota ? cuotaTxt(sim.cuota) : '0 €/mes', detail: fin?.income_cents && sim.cuota ? `el ${Math.round(sim.cuota * 100 / fin.income_cents)} % de los ingresos` : '' })
+  }
+  const verdict = buy && sim
+    ? { tone: sim.status === 'no' ? 'bg-danger/10 text-danger' : sim.status === 'justo' ? 'bg-[#E0A21B]/15 text-[#C77A12]' : 'bg-accent-soft text-accent', text: `${AFFORD_ICON[sim.status]} ${sim.status === 'no' ? 'No llega' : sim.status === 'justo' ? 'Muy justo' : 'Entra'}: ${sim.slack >= 0 ? `os sobran ~${k(sim.slack)} de margen` : `faltan ~${k(-sim.slack)}`}${sim.why ? ` (${sim.why})` : ''}` }
+    : top ? { tone: 'bg-accent-soft', text: `Hasta ~${k(top.ready)} para entrar a vivir (compra hasta ~${k(top.price)} sin reforma). Lo que os limita: ${top.why === 'entrada' ? 'vuestro dinero (el banco solo presta el 80 %)' : 'la cuota (30 % de los ingresos)'}.` } : null
+  return (
+    <div className="flex flex-col">
+      {steps.map((st, n) => (
+        <div key={st.title} className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <span className="w-7 h-7 rounded-full bg-bg text-[13px] font-bold flex items-center justify-center shrink-0">{n + 1}</span>
+            {n < steps.length - 1 && <span className="w-px flex-1 bg-line my-1" />}
+          </div>
+          <div className="flex-1 min-w-0 pb-3">
+            <span className="flex justify-between items-baseline gap-2">
+              <span className="text-[14px] font-semibold">{st.icon} {st.title}</span>
+              <b className={`text-[15px] shrink-0 ${st.tone ?? ''}`}>{st.value}</b>
+            </span>
+            {st.detail && <span className="block text-[12px] text-muted">{st.detail}</span>}
+          </div>
+        </div>
+      ))}
+      {verdict && <p className={`rounded-xl p-3 text-[14px] font-semibold ${verdict.tone}`}>{verdict.text}</p>}
+      {!buy && <p className="text-[11px] text-muted mt-1">Pon un precio en «Compramos a» para ver qué hipoteca necesitáis y qué cuota queda.</p>}
     </div>
   )
 }
