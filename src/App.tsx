@@ -2,15 +2,25 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AuthGate from './auth/AuthGate'
 import { HouseholdProvider } from './lib/household'
 import BottomNav from './components/BottomNav'
+import { lazy, Suspense, type ComponentType } from 'react'
 import Hoy from './pages/Hoy'
-import Perfil from './pages/Perfil'
-import Compra from './pages/Compra'
-import Dinero from './pages/Dinero'
-import Tareas from './pages/Casa'
-import Mudanza from './pages/Mudanza'
-import Compartir from './pages/Compartir'
-import Ninos from './pages/Ninos'
-import Gym from './pages/Gym'
+// El resto de pantallas se cargan al abrirlas: la app arranca antes en el móvil (quedan guardadas para usar sin conexión).
+// Si tras publicar una versión nueva falta el trozo antiguo, se recarga la app una vez para coger la nueva.
+const page = (load: () => Promise<unknown>) => lazy(() => load().then(m => {
+  try { sessionStorage.removeItem('chunk-reload') } catch { /* sin almacenamiento */ }
+  return m as { default: ComponentType }
+}, () => {
+  try { if (!sessionStorage.getItem('chunk-reload')) { sessionStorage.setItem('chunk-reload', '1'); location.reload() } } catch { /* sin almacenamiento */ }
+  return new Promise<{ default: ComponentType }>(() => {})
+}))
+const Perfil = page(() => import('./pages/Perfil'))
+const Compra = page(() => import('./pages/Compra'))
+const Dinero = page(() => import('./pages/Dinero'))
+const Tareas = page(() => import('./pages/Casa'))
+const Mudanza = page(() => import('./pages/Mudanza'))
+const Compartir = page(() => import('./pages/Compartir'))
+const Ninos = page(() => import('./pages/Ninos'))
+const Gym = page(() => import('./pages/Gym'))
 import { PrefsProvider } from './lib/prefs'
 import AccessBanner from './components/AccessBanner'
 
@@ -22,6 +32,7 @@ export default function App() {
       <HouseholdProvider>
         <PrefsProvider>
         <main className="max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28">
+          <Suspense fallback={<p className="text-muted text-sm py-10 text-center">Cargando…</p>}>
           <Routes>
             <Route path="/" element={<HomeOrShare />} />
             <Route path="/compra" element={<Compra />} />
@@ -36,6 +47,7 @@ export default function App() {
             <Route path="/perfil" element={<Perfil />} />
             <Route path="*" element={<Hoy />} />
           </Routes>
+          </Suspense>
         </main>
         <BottomNav />
       </PrefsProvider>
