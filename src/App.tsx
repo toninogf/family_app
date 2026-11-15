@@ -25,13 +25,15 @@ import { PrefsProvider } from './lib/prefs'
 import AccessBanner from './components/AccessBanner'
 
 export default function App() {
+  // En pantallas grandes, Mudanza usa todo el ancho (lista + ficha); el resto, una columna cómoda de leer
+  const wide = useLocation().pathname.startsWith('/mudanza')
   return (
     <>
     <AccessBanner />
     <AuthGate>
       <HouseholdProvider>
         <PrefsProvider>
-        <main className="max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28 md:max-w-3xl lg:max-w-none lg:ml-56 lg:px-10 lg:pb-12 xl:pr-16">
+        <main className={`max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28 md:max-w-3xl lg:pl-[calc(14rem+2.5rem)] lg:pr-10 lg:pb-12 ${wide ? 'lg:max-w-none' : 'lg:max-w-[calc(48rem+14rem)]'}`}>
           <Suspense fallback={<p className="text-muted text-sm py-10 text-center">Cargando…</p>}>
           <Routes>
             <Route path="/" element={<HomeOrShare />} />
