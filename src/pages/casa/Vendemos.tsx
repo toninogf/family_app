@@ -16,11 +16,11 @@ import { DossierSheet } from './VentaDossier'
 import { SaleFacts, SaleGallery, SaleMonthly } from './VentaHeader'
 import { GroupBox, Tile, useOpenGroups } from '../../components/Groups'
 
-type SaleGroup = 'resumen' | 'competencia' | 'visitas' | 'casa' | 'cuentas' | 'docs' | 'pasos' | 'enlaces' | 'fotos'
+type SaleGroup = 'resumen' | 'competencia' | 'visitas' | 'casa' | 'cuentas' | 'docs' | 'pasos' | 'enlaces' | 'fotos' | 'notas'
 const SALE_GROUPS: { k: SaleGroup; icon: string; title: string }[] = [
   { k: 'resumen', icon: '🧭', title: 'Resumen' }, { k: 'casa', icon: '🏠', title: 'Nuestra casa' }, { k: 'competencia', icon: '🏘️', title: 'Competencia' },
   { k: 'cuentas', icon: '💶', title: '¿Cuánto nos queda?' }, { k: 'docs', icon: '📄', title: 'Documentos' }, { k: 'visitas', icon: '👀', title: 'Visitas y ofertas' }, { k: 'pasos', icon: '✍️', title: 'Pasos hasta la firma' },
-  { k: 'enlaces', icon: '🔗', title: 'Enlaces' }, { k: 'fotos', icon: '📷', title: 'Fotos y capturas' }
+  { k: 'enlaces', icon: '🔗', title: 'Enlaces' }, { k: 'fotos', icon: '📷', title: 'Fotos y capturas' }, { k: 'notas', icon: '📝', title: 'Notas y comentarios' }
 ]
 const daysBetween = (a: string, b: string) => Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000)
 const nameOf = (id: string | null, members: Member[]) => (id ? members.find(m => m.id === id)?.display_name ?? '' : '')
@@ -79,7 +79,8 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
     docs: m.saleDocs.length ? docsSummary(m.saleDocs) : 'nota simple, certificado energético, IBI…',
     pasos: stepsSummary(m.saleSteps),
     enlaces: `${m.listing?.links?.length ?? 0} enlace${(m.listing?.links?.length ?? 0) === 1 ? '' : 's'}`,
-    fotos: `${m.salePhotos.filter(p => p.kind === 'foto').length} fotos · ${m.salePhotos.filter(p => p.kind === 'anuncio').length} capturas`
+    fotos: `${m.salePhotos.filter(p => p.kind === 'foto').length} fotos · ${m.salePhotos.filter(p => p.kind === 'anuncio').length} capturas`,
+    notas: m.listing?.notes ? m.listing.notes.replace(/\s+/g, ' ').slice(0, 60) + (m.listing.notes.length > 60 ? '…' : '') : 'sin notas'
   }
   // Mercado (misma valoración que «¿Estamos en precio?») y competencia en bruto (€/m² de los que siguen en venta)
   const val = valuation(m.listing, m.competitors)
@@ -360,7 +361,7 @@ export default function Vendemos({ m, members, householdId }: { m: Mudanza; memb
         </div>
       </>)}
 
-      <SaleNotes m={m} householdId={householdId} />
+      {grp('notas', null, <SaleNotes m={m} householdId={householdId} />)}
 
       <button onClick={() => setDossierOpen(true)} className="bg-card rounded-2xl p-4 flex justify-between items-center gap-2 text-left">
         <span className="flex flex-col gap-0.5">
