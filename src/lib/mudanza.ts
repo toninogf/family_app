@@ -223,14 +223,14 @@ export const FEATURES: Record<string, string> = {
   // Piscina y exterior
   piscina: 'Piscina propia', piscina_comunitaria: 'Piscina comunitaria', jardin: 'Jardín', terraza: 'Terraza', porche: 'Porche',
   barbacoa: 'Barbacoa', riego: 'Riego automático', huerto: 'Huerto', zona_juegos: 'Zona de juegos',
-  parcela_llana: 'Parcela llana', parcela_pendiente: 'Parcela en pendiente', orientacion_sur: 'Orientación sur', vistas: 'Vistas', exterior: 'Exterior',
+  parcela_llana: 'Parcela llana (sin desniveles)', parcela_pendiente: 'Parcela en pendiente', orientacion_sur: 'Orientación sur', vistas: 'Vistas', exterior: 'Exterior',
   // Energía y confort
   radiadores: 'Radiadores', calefaccion: 'Calefacción', aire: 'Aire acondicionado', aerotermia: 'Aerotermia', geotermia: 'Geotermia', placas_solares: 'Placas solares', bateria: 'Batería (placas)',
   solar_termica: 'Solar térmica (agua)', suelo_radiante: 'Suelo radiante', chimenea: 'Chimenea o estufa', aislamiento: 'Buen aislamiento / doble cristal',
   cargador: 'Punto de carga (coche)',
   // La casa
   // Accesibilidad
-  entrada_sin_escaleras: 'Entrada sin escaleras', acceso_llano: 'Acceso llano (sin cuestas)', una_planta: 'Todo en una planta',
+  entrada_sin_escaleras: 'Entrada sin escaleras', acceso_llano: 'Calle llana (sin cuestas para llegar)', una_planta: 'Todo en una planta',
   reformado: 'Reformado', sotano: 'Sótano', sotano_habitable: 'Sótano habitable', buhardilla: 'Buhardilla', dormitorio_pb: 'Dormitorio en planta baja',
   garaje: 'Garaje', garaje_cerrado: 'Garaje cerrado', trastero: 'Trastero', armarios: 'Armarios empotrados', ascensor: 'Ascensor', portero: 'Portero / conserje', balcon: 'Balcón',
   // Urbanización y servicios
