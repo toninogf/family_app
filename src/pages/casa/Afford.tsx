@@ -4,7 +4,6 @@ import { supabase } from '../../lib/supabase'
 import { parsePrice, price, priceInput, type Mudanza } from '../../lib/mudanza'
 import { AFFORD_ICON, DEF_TIN, DEF_YEARS, RATIO, affordAt, affordBase, affordHome, maxPrice, saleNetAt, type Finance } from '../../lib/afford'
 import { recommend } from '../../lib/pricing'
-import { reformMid } from '../../lib/reforma'
 import type { Home } from '../../lib/mudanza'
 
 /** «Chalet pareado · Los Linares · Moralzarzal» (sin habitaciones ni metros, para distinguirlas) */
