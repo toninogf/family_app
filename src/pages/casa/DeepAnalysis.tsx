@@ -1,6 +1,5 @@
 // «🔬 Análisis a fondo (IA)» en la ficha de Buscamos: lanza la investigación, guarda el informe y propone cambios para aceptar uno a uno
 import { useState } from 'react'
-import { supabase } from '../../lib/supabase'
 import type { Home, Mudanza } from '../../lib/mudanza'
 import { STATUS_ICON } from '../../lib/health'
 import { PARTIDA, REFORM_STATE, kEur } from '../../lib/reforma'

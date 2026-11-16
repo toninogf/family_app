@@ -1,6 +1,6 @@
 // «🧮 ¿Hasta dónde podemos llegar?»: con lo que deja la venta, los ahorros, los ingresos y la hipoteca,
 // cuánto podemos pagar por una casa (y si una casa concreta entra). Es una estimación: el banco decide con su estudio.
-import type { Home, Mudanza } from './mudanza'
+import type { Home } from './mudanza'
 import { saleNet, type SaleSide } from './funds'
 import { monthlyPayment } from './compra'
 import { purchaseCosts } from './gastos'
