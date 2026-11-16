@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
+import { canQueue, enqueue, isNetworkError, loadPending, overlay, savePending, type Pending } from './offlineQueue'
 import { compressImage } from './money'
 import { addDays } from './dates'
 import { PARTIDA, readyPrice, reformTotal, type Reform, type ReformItem } from './reforma'
@@ -435,6 +436,17 @@ export function mustHaveCheck(h: Home, c: Criteria | null) {
 }
 
 // ---------- Datos ----------
+/** Valoraciones con lo pendiente aplicado (si no existía la de esa persona, se añade) */
+function withRatings(rows: Rating[], q: Pending[]): Rating[] {
+  let out = rows
+  for (const p of q.filter(x => x.table === 'home_ratings')) {
+    const d = p.data as Partial<Rating>
+    const i = out.findIndex(r => r.home_id === d.home_id && r.member_id === d.member_id)
+    out = i >= 0 ? out.map((r, j) => (j === i ? { ...r, ...d } as Rating : r)) : [...out, { comment: null, ...d } as Rating]
+  }
+  return out
+}
+
 const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers', 'home_rejections', 'sale_competitors']
 
 export type DiscardCategory = 'precio' | 'ubicacion' | 'parcela' | 'distribucion' | 'estado' | 'legal' | 'vendida' | 'otra' | 'otro'
@@ -480,6 +492,11 @@ export function useMudanza() {
   const [saleSteps, setSaleSteps] = useState<SaleStep[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Cambios hechos sin conexión, a la espera de enviarse
+  const [pending, setPendingState] = useState<Pending[]>(loadPending)
+  const pendingRef = useRef(pending)
+  const setPending = (q: Pending[]) => { pendingRef.current = q; savePending(q); setPendingState(q) }
+  const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
 
   const load = useCallback(async () => {
     const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp] = await Promise.all([
@@ -500,15 +517,19 @@ export function useMudanza() {
       supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light, year_built, building_reform_year, review, reject_reason').order('created_at', { ascending: false })
     ])
     const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp].find(x => x.error)?.error
+    // Sin red: se queda lo que ya se veía (no se vacía la pantalla)
+    if (firstError && isNetworkError(firstError.message)) { setOffline(true); setLoading(false); return }
     if (firstError) setError(firstError.message)
+    setOffline(false)
+    const q = pendingRef.current
     setListing((l.data as Listing | null) ?? null)
     setPrices((p.data ?? []) as PricePoint[])
     setVisits((v.data ?? []) as BuyerVisit[])
     setOffers((o.data ?? []) as BuyerOffer[])
-    setCriteria((c.data as Criteria | null) ?? null)
-    setHomes((h.data ?? []) as Home[])
-    setHomeVisits((hv.data ?? []) as HomeVisit[])
-    setRatings((r.data ?? []) as Rating[])
+    setCriteria(c.data ? overlay([c.data as Criteria], q, 'search_criteria', () => true)[0] : null)
+    setHomes(overlay((h.data ?? []) as Home[], q, 'homes'))
+    setHomeVisits(overlay((hv.data ?? []) as HomeVisit[], q, 'home_visits'))
+    setRatings(withRatings((r.data ?? []) as Rating[], q))
     setPhotos((ph.data ?? []) as Photo[])
     setHomeOffers((ho.data ?? []) as HomeOffer[])
     setSalePhotos((sp.data ?? []) as SalePhoto[])
@@ -519,25 +540,81 @@ export function useMudanza() {
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    load()
-    let channel = supabase.channel(`mudanza:${crypto.randomUUID()}`)
-    for (const t of TABLES) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, () => load())
-    channel.subscribe()
-    const onVisible = () => { if (document.visibilityState === 'visible') load() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => { supabase.removeChannel(channel); document.removeEventListener('visibilitychange', onVisible) }
+  /** Envía lo pendiente, en orden. Si vuelve a faltar la red, se para y espera. */
+  const flushing = useRef(false)
+  const flush = useCallback(async () => {
+    if (flushing.current || !pendingRef.current.length) return
+    flushing.current = true
+    try {
+      while (pendingRef.current.length) {
+        const [it, ...rest] = pendingRef.current
+        const { error } = await send(it.table, it.data, it.id, it.onConflict)
+        if (error && isNetworkError(error.message)) { setOffline(true); break }
+        if (error) setError(`No se pudo guardar un cambio hecho sin conexión: ${friendly(error.message)}`)
+        setPending(rest)
+      }
+    } finally { flushing.current = false }
+    await load()
+  }, [load]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recarga agrupada: varios cambios seguidos (del otro móvil o propios) hacen una sola carga
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleLoad = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => { timer.current = null; load() }, 400)
   }, [load])
 
-  /** Inserta o actualiza y recarga. Devuelve el mensaje de error, si lo hay. */
-  async function write(table: string, data: Record<string, unknown>, id?: string, onConflict?: string): Promise<string | undefined> {
-    const q = id
+  useEffect(() => {
+    if (pendingRef.current.length) flush(); else load()
+    let channel = supabase.channel(`mudanza:${crypto.randomUUID()}`)
+    for (const t of TABLES) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, scheduleLoad)
+    channel.subscribe()
+    const onVisible = () => { if (document.visibilityState === 'visible') { if (pendingRef.current.length) flush(); else load() } }
+    const onOnline = () => { setOffline(false); flush().then(() => load()) }
+    const onOffline = () => setOffline(true)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      supabase.removeChannel(channel)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      if (timer.current) clearTimeout(timer.current)
+    }
+  }, [load, flush, scheduleLoad])
+
+  function send(table: string, data: Record<string, unknown>, id?: string, onConflict?: string) {
+    return id
       ? supabase.from(table).update(data).eq('id', id)
       : onConflict
         ? supabase.from(table).upsert(data, { onConflict })
         : supabase.from(table).insert(data)
-    const { error } = await q
-    if (error) { setError(friendly(error.message)); return friendly(error.message) }
+  }
+
+  /** Guarda en el móvil un cambio que no se pudo enviar y lo muestra ya en pantalla */
+  function queueLocal(item: Pending) {
+    setPending(enqueue(pendingRef.current, item))
+    const one = [item]
+    if (item.table === 'homes') setHomes(h => overlay(h, one, 'homes'))
+    else if (item.table === 'home_visits') setHomeVisits(v => overlay(v, one, 'home_visits'))
+    else if (item.table === 'search_criteria') setCriteria(c => (c ? { ...c, ...item.data } as Criteria : c))
+    else if (item.table === 'home_ratings') setRatings(r => withRatings(r, one))
+  }
+
+  /** Inserta o actualiza y recarga. Devuelve el mensaje de error, si lo hay.
+   *  Sin conexión, las actualizaciones se guardan en el móvil y se envían solas al volver la red. */
+  async function write(table: string, data: Record<string, unknown>, id?: string, onConflict?: string): Promise<string | undefined> {
+    const queueable = canQueue(id, onConflict)
+    const item: Pending = { table, data, id, onConflict, at: Date.now() }
+    // Si ya hay cambios esperando, este va detrás (para no adelantar a uno anterior de la misma ficha)
+    if (queueable && (pendingRef.current.length || (typeof navigator !== 'undefined' && !navigator.onLine))) { queueLocal(item); setOffline(!navigator.onLine); if (navigator.onLine) flush(); return }
+    const { error } = await send(table, data, id, onConflict)
+    if (error && queueable && isNetworkError(error.message)) { queueLocal(item); setOffline(true); return }
+    if (error) {
+      const msg = isNetworkError(error.message) ? 'Sin conexión: esto no se puede guardar hasta que vuelva la red.' : friendly(error.message)
+      setError(msg); return msg
+    }
     await load()
   }
 
@@ -636,6 +713,7 @@ export function useMudanza() {
     rejections, rejectProposal, restoreRejection, competitors, competitorProposals, competitorRejected,
     listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, loading, error,
     salePhotos, saleDocs, saleSteps, addSalePhoto, removeSalePhoto, uploadSaleDoc, removeSaleDocFile, removeSaleDoc,
+    pendingCount: pending.length, offline, syncNow: flush,
     clearError: () => setError(''), reload: load, write, remove, removeHome, createHome, addPhoto, removePhoto
   }
 }

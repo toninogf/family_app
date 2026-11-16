@@ -154,7 +154,7 @@ function PushCard() {
     setBusy(true); await disablePush(); setBusy(false); await refresh()
   }
 
-  async function toggle(key: 'daily' | 'weekly' | 'evening') {
+  async function toggle(key: 'daily' | 'weekly' | 'evening' | 'mudanza') {
     if (status?.state !== 'on') return
     const prefs = { ...status.prefs, [key]: !status.prefs[key] }
     setStatus({ state: 'on', prefs })
@@ -187,7 +187,7 @@ function PushCard() {
           <Button onClick={turnOn} disabled={busy}>{busy ? 'Activando…' : 'Activar avisos'}</Button>
         ) : (
           <div className="flex flex-col gap-1">
-            {([['daily', 'Resumen de la mañana (agenda, tareas, compra…)'], ['evening', 'Tareas pendientes de la tarde'], ['weekly', 'Resumen semanal']] as const).map(([k, label]) => (
+            {([['daily', 'Resumen de la mañana (agenda, tareas, compra…)'], ['evening', 'Tareas pendientes de la tarde'], ['weekly', 'Resumen semanal'], ['mudanza', 'Mudanza: casas nuevas, bajadas de precio y visitas de mañana (20:00)']] as const).map(([k, label]) => (
               <label key={k} className="flex items-center justify-between min-h-12">
                 <span className="text-[15px]">{label}</span>
                 <input type="checkbox" checked={status.prefs[k]} onChange={() => toggle(k)} className="w-5 h-5 accent-[var(--app-accent)]" />

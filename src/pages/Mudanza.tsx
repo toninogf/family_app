@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
+import { PushNudge } from '../components/PushNudge'
 import { useMudanza } from '../lib/mudanza'
 import { useHousehold } from '../lib/household'
 import { Card } from '../components/ui'
@@ -26,6 +27,19 @@ export default function Mudanza() {
   return (
     <div className="flex flex-col gap-4 pb-16">
       <h1 className="text-[26px] font-bold tracking-tight">Mudanza</h1>
+      <PushNudge />
+      {(m.offline || m.pendingCount > 0) && (
+        <div role="status" className="rounded-2xl border border-line bg-card p-3 flex items-center gap-2 text-sm">
+          <span aria-hidden className="text-xl">{m.offline ? '📴' : '⏳'}</span>
+          <span className="flex-1">
+            {m.offline ? 'Sin conexión. ' : ''}
+            {m.pendingCount > 0
+              ? `${m.pendingCount} cambio${m.pendingCount === 1 ? '' : 's'} guardado${m.pendingCount === 1 ? '' : 's'} en este móvil: se enviará${m.pendingCount === 1 ? '' : 'n'} solo${m.pendingCount === 1 ? '' : 's'} al volver la red.`
+              : 'Lo que cambies en las fichas se guarda en el móvil y se envía al volver la red.'}
+          </span>
+          {!m.offline && m.pendingCount > 0 && <button onClick={() => m.syncNow()} className="min-h-11 px-3 rounded-xl border border-line text-accent font-semibold">Enviar</button>}
+        </div>
+      )}
       <div role="tablist" aria-label="Sección" className="grid grid-cols-4 p-1 rounded-xl bg-card border border-line">
         {([['buscamos', 'Buscamos'], ['compramos', 'Compramos'], ['vendemos', 'Vendemos'], ['visitas', 'Visitas']] as const).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={vista === k} onClick={() => setParams(k === 'buscamos' ? {} : { vista: k }, { replace: true })}
