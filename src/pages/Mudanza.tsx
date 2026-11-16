@@ -7,6 +7,7 @@ import Vendemos from './casa/Vendemos'
 import Buscamos from './casa/Buscamos'
 import Compramos from './casa/Compramos'
 import Visitas from './casa/Visitas'
+import { PlanCard } from './casa/Plan'
 import { useCompra } from '../lib/compra'
 
 type Vista = 'vendemos' | 'buscamos' | 'compramos' | 'visitas'
@@ -41,7 +42,7 @@ export default function Mudanza() {
         </div>
       )}
       <div role="tablist" aria-label="Sección" className="grid grid-cols-4 p-1 rounded-xl bg-card border border-line">
-        {([['buscamos', 'Buscamos'], ['compramos', 'Compramos'], ['vendemos', 'Vendemos'], ['visitas', 'Visitas']] as const).map(([k, l]) => (
+        {([['buscamos', 'Buscamos'], ['compramos', 'Compramos'], ['vendemos', 'Vendemos'], ['visitas', 'Agenda']] as const).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={vista === k} onClick={() => setParams(k === 'buscamos' ? {} : { vista: k }, { replace: true })}
             className={`relative min-h-10 rounded-lg text-[13px] font-semibold ${vista === k ? 'bg-accent text-white dark:text-bg' : 'text-muted'}`}>
             {l}
@@ -64,7 +65,7 @@ export default function Mudanza() {
             </Card>
           )}
           {vista === 'visitas'
-            ? <Visitas m={m} members={members} householdId={me.household_id} meId={me.id} />
+            ? <div className="flex flex-col gap-5"><PlanCard m={m} c={c} /><Visitas m={m} members={members} householdId={me.household_id} meId={me.id} /></div>
             : vista === 'vendemos'
             ? <Vendemos m={m} members={members} householdId={me.household_id} />
             : vista === 'compramos'

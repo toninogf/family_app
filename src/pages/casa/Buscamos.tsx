@@ -38,6 +38,7 @@ import { qaProgress } from '../../lib/visitQA'
 import { Stars, rateHome } from './HomeStars'
 import { EquipChips } from './EquipChips'
 import { AffordCard } from './Afford'
+import { DecideButton, DecideSheet } from './Decidir'
 import { DeepAnalysisPanel, VerdictChip, deepLine } from './DeepAnalysis'
 import { DEFAULT_WEIGHTS, SCORE_BLOCKS, fmtScore, homeScore, scoreTone, weightsOf, type HomeScore, type ScoreKey, type ScoreWeights } from '../../lib/score'
 import { EditSection, Field, FEATURE_ICON, GroupedChips, ImportSummary, SaveBar, SelectField, thousands, useDirty, useFlash, useSections, SubHead } from '../../components/FormKit'
@@ -106,6 +107,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
   }, [])
   const [criteriaOpen, setCriteriaOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
+  const [decideOpen, setDecideOpen] = useState(false)
   // Pisos marcados para comparar (se recuerdan en este móvil)
   const [picked, setPicked] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('compare-picked') ?? '[]') } catch { return [] } })
   useEffect(() => { try { localStorage.setItem('compare-picked', JSON.stringify(picked)) } catch { /* nada */ } }, [picked])
@@ -157,6 +159,8 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
           </button>
         )
       })()}
+
+      <DecideButton m={m} members={members} onOpen={() => setDecideOpen(true)} />
 
       <div className="grid grid-cols-2 p-1 rounded-xl bg-card border border-line" role="tablist" aria-label="Vista">
         {([['lista', '☰ Lista'], ['mapa', '🗺️ Mapa']] as const).map(([k, l]) => (
@@ -228,6 +232,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
           onCreated={() => setEditHome({ open: false })} />
       )}
       {criteriaOpen && <CriteriaSheet m={m} householdId={householdId} onClose={() => setCriteriaOpen(false)} />}
+      {decideOpen && <DecideSheet m={m} members={members} onOpenHome={id => { setDecideOpen(false); setOpenId(id) }} onClose={() => setDecideOpen(false)} />}
       {compareOpen && pickedHomes.length >= 2 && (
         <CompareSheet homes={pickedHomes} m={m} onRemove={id => setPicked(p => p.filter(x => x !== id))} onClose={() => setCompareOpen(false)} />
       )}
