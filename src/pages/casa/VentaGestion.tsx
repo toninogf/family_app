@@ -1,3 +1,6 @@
+import { saleNet } from '../../lib/funds'
+import { needFromSale } from '../../lib/afford'
+import { usePurchaseLoan } from '../../lib/purchaseFunds'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { addDays, hhmm, relativeDay, shortDate, today } from '../../lib/dates'
 import {
@@ -183,19 +186,14 @@ function DocSheet({ doc: initial, m, householdId, onClose }: { doc?: SaleDoc; m:
 }
 
 // ---------- Cuentas de la venta ----------
-export function saleNet(m: Mudanza) {
-  const accepted = m.offers.find(o => o.status === 'accepted')
-  const sale = accepted?.amount_cents ?? m.listing?.price_cents ?? null
-  const costs = (m.listing?.costs ?? []).reduce((s, c) => s + (c.cents || 0), 0)
-  const mortgage = m.listing?.mortgage_cents ?? 0
-  return { sale, fromOffer: !!accepted, costs, mortgage, net: sale != null ? sale - mortgage - costs : null }
-}
+export { saleNet } from '../../lib/funds'
 
 /** «¿Cuánto nos queda?»: precio − hipoteca − gastos de la venta. Solo consulta; se cambia en Editar → ¿Cuánto nos queda? */
 export function VentaCuentas({ m, onEdit }: { m: Mudanza; onEdit: () => void }) {
   const l = m.listing
   const n = saleNet(m)
   const budget = m.criteria?.max_price_cents ?? null
+  const nf = needFromSale(budget, m.criteria?.finance, usePurchaseLoan())
   const costs = (l?.costs ?? []).filter(c => c.cents)
 
   return (
@@ -217,7 +215,10 @@ export function VentaCuentas({ m, onEdit }: { m: Mudanza; onEdit: () => void }) 
         {!costs.length && <button onClick={onEdit} className="text-left text-[13px] text-[#C77A12]">− Gastos de la venta: sin poner (plusvalía, cancelación…)</button>}
         <div className="flex justify-between text-[16px] font-bold border-t border-line pt-2 mt-1"><span>Os queda para la compra</span><span className="text-accent">{price(n.net)}</span></div>
         {budget != null && n.net != null && (
-          <p className="text-xs text-muted">Presupuesto máximo para entrar a vivir (Buscamos): {price(budget)} · {budget > n.net ? `harían falta ${price(budget - n.net)} más (ahorros o hipoteca)` : `os sobran ${price(n.net - budget)}`}.</p>
+          <p className="text-xs text-muted">
+            Para comprar hasta {price(budget)} para entrar a vivir (Buscamos) hacen falta {price(nf!.need)} de la venta{nf!.savings || nf!.loan ? ` (contando ${price(nf!.savings)} de ahorros y ${price(nf!.loan)} de hipoteca${nf!.loanFrom === 'calculadora' ? ' máxima' : ''})` : ' (sin ahorros ni hipoteca: ponlos en «¿Hasta dónde podemos llegar?»)'}:{' '}
+            <b className={n.net >= nf!.need ? 'text-accent' : 'text-danger'}>{n.net >= nf!.need ? `os sobran ${price(n.net - nf!.need)}` : `faltan ${price(nf!.need - n.net)}`}</b>.
+          </p>
         )}
       </div>
       <p className="text-[11px] text-muted">La plusvalía municipal y el IRPF dependen de cada caso (por ejemplo, si reinvertís en vivienda habitual puede haber exención): confirmad las cifras con un gestor o asesor.</p>

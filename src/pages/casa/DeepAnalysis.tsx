@@ -1,11 +1,13 @@
 // «🔬 Análisis a fondo (IA)» en la ficha de Buscamos: lanza la investigación, guarda el informe y propone cambios para aceptar uno a uno
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Home, Mudanza } from '../../lib/mudanza'
 import { STATUS_ICON } from '../../lib/health'
 import { PARTIDA, REFORM_STATE, kEur } from '../../lib/reforma'
 import { VERDICT, checkTitle, deepAnalysisPrompt, parseDeepAnalysis, type DeepAnalysis, type DeepData } from '../../lib/deepAnalysis'
-import { saleNet } from './VentaGestion'
+import { saleNet } from '../../lib/funds'
+import { needFromSale } from '../../lib/afford'
+import { usePurchaseLoan } from '../../lib/purchaseFunds'
 import { today } from '../../lib/dates'
 
 const e = (n?: number) => (n == null ? '—' : `${Math.round(n).toLocaleString('es-ES')} €`)
@@ -29,17 +31,15 @@ export function DeepAnalysisPanel({ h, m }: { h: Home; m: Mudanza }) {
   const [launch, setLaunch] = useState(!a)
   const [note, setNote] = useState('')
   const [text, setText] = useState('')
-  const [buy, setBuy] = useState<{ savings_cents: number | null; loan_cents: number | null } | null>(null)
+  const loanChosen = usePurchaseLoan()
   const [showReport, setShowReport] = useState(false)
   const [askDel, setAskDel] = useState(false)
-  useEffect(() => { void supabase.from('purchase').select('savings_cents, loan_cents').maybeSingle().then(({ data }) => setBuy(data as never)) }, [])
 
   if (!h.address) return <p className="text-sm text-muted">Añade la dirección de la casa (Editar → La zona) para poder lanzar el análisis a fondo.</p>
 
   async function ask(ai: 'chatgpt' | 'gemini' | 'claude') {
     const s = m.listing ? saleNet(m) : null
-    const budget = m.criteria?.max_price_cents ?? null
-    const need = budget != null ? budget - (buy?.savings_cents ?? 0) - (buy?.loan_cents ?? 0) : null
+    const need = needFromSale(m.criteria?.max_price_cents, m.criteria?.finance, loanChosen)?.need ?? null
     const prompt = deepAnalysisPrompt(h, m, {
       workAddress: m.criteria?.work_address ?? null,
       sale: s ? { price: s.sale, net: s.net, need, accepted: s.fromOffer, status: s.fromOffer ? 'con oferta aceptada' : 'en venta' } : null

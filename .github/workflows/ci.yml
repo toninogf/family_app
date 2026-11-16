@@ -14,6 +14,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - name: Pruebas de los cálculos (nota, precio, calculadora, cuestionario)
+        run: npm test
       - run: npm run build
 
   # Levanta una base de datos local con todas las migraciones y ejecuta las pruebas de seguridad (RLS, 2FA, aislamiento)

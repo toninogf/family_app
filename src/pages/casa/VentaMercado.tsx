@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
 import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
 import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, competitorFromLinkPrompt, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
+import { saleNet } from '../../lib/funds'
+import { needFromSale } from '../../lib/afford'
+import { usePurchaseLoan } from '../../lib/purchaseFunds'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
 import { Field, SelectField } from '../../components/FormKit'
 
@@ -136,13 +138,12 @@ function MarketRefs({ m, householdId }: { m: Mudanza; householdId: string }) {
 function Simulator({ m }: { m: Mudanza }) {
   const l = m.listing
   const [p, setP] = useState(priceInput(l?.price_cents))
-  const [buy, setBuy] = useState<{ savings_cents: number | null; loan_cents: number | null } | null>(null)
-  useEffect(() => { void supabase.from('purchase').select('savings_cents, loan_cents').maybeSingle().then(({ data }) => setBuy(data as never)) }, [])
+  const loanChosen = usePurchaseLoan()
   const cents = parsePrice(p)
-  const costs = (l?.costs ?? []).reduce((s, c) => s + (c.cents || 0), 0)
-  const net = cents != null ? cents - (l?.mortgage_cents ?? 0) - costs : null
+  const net = cents != null ? saleNet(m, { price: cents }).net : null
   const budget = m.criteria?.max_price_cents ?? null
-  const need = budget != null ? budget - (buy?.savings_cents ?? 0) - (buy?.loan_cents ?? 0) : null
+  const nf = needFromSale(budget, m.criteria?.finance, loanChosen)
+  const need = nf?.need ?? null
   return (
     <section className="bg-card rounded-2xl p-4 flex flex-col gap-2">
       <span className="font-bold text-[15px]">🧮 Si lo vendemos a…</span>
@@ -155,7 +156,7 @@ function Simulator({ m }: { m: Mudanza }) {
               {net >= need ? `✅ Llega para comprar hasta ${priceShort(budget!)} para entrar a vivir (sobran ${price(net - need)})` : `Faltarían ${price(need - net)} para comprar hasta ${priceShort(budget!)} para entrar a vivir`}
             </span>
           )}
-          <span className="text-[11px] text-muted">Precio − hipoteca pendiente − gastos de la venta.{need != null ? ` Para comprar se cuenta el presupuesto de «Qué buscamos»${buy?.savings_cents || buy?.loan_cents ? ', vuestros ahorros y la hipoteca de Compramos' : ' (sin ahorros ni hipoteca nueva: ponlos en Compramos)'}.` : ''}</span>
+          <span className="text-[11px] text-muted">Precio − hipoteca pendiente − gastos de la venta.{need != null ? ` Para comprar se cuenta el presupuesto de «Qué buscamos»${nf && (nf.savings || nf.loan) ? `, ${price(nf.savings)} de ahorros y ${price(nf.loan)} de hipoteca (${nf.loanFrom === 'compramos' ? 'la de Compramos' : 'la máxima de «¿Hasta dónde podemos llegar?»'})` : ' (sin ahorros ni hipoteca: ponlos en «¿Hasta dónde podemos llegar?», en Buscamos)'}.` : ''}</span>
         </>
       )}
     </section>
@@ -499,15 +500,12 @@ export function ObjectionHelp({ objections }: { objections: [string, number][] }
 /** Segunda opinión: prepara un texto con todos los datos de la venta y abre la IA */
 function AiOpinion({ m }: { m: Mudanza }) {
   const [note, setNote] = useState('')
-  const [buy, setBuy] = useState<{ savings_cents: number | null; loan_cents: number | null } | null>(null)
-  useEffect(() => { void supabase.from('purchase').select('savings_cents, loan_cents').maybeSingle().then(({ data }) => setBuy(data as never)) }, [])
+  const loanChosen = usePurchaseLoan()
   const l = m.listing
   if (!l) return null
   async function ask(ai: 'chatgpt' | 'gemini' | 'claude') {
-    const costs = (l!.costs ?? []).reduce((s, c) => s + (c.cents || 0), 0)
-    const net = l!.price_cents != null ? l!.price_cents - (l!.mortgage_cents ?? 0) - costs : null
-    const budget = m.criteria?.max_price_cents ?? null
-    const need = budget != null ? budget - (buy?.savings_cents ?? 0) - (buy?.loan_cents ?? 0) : null
+    const net = saleNet(m).net
+    const need = needFromSale(m.criteria?.max_price_cents, m.criteria?.finance, loanChosen)?.need ?? null
     const prompt = opinionPrompt({ l: l!, competitors: m.competitors, visits: m.visits, offers: m.offers, prices: m.prices, today: today(), net, need })
     let copied = true
     try { await navigator.clipboard.writeText(prompt) } catch { copied = false }

@@ -125,7 +125,8 @@ export function patchFor(q: Q, h: Home, v: string | number | boolean | null, not
   }
   if (b.kind === 'feature') {
     const f = h.features.filter(x => x !== b.key)
-    return { features: v === true ? [...f, b.key] : f, visit_qa: withAnswer(v === false ? { v: false } : null) }
+    // Se guarda también el «Sí»: así la pregunta de un imprescindible sigue en la lista (respondida) en vez de desaparecer
+    return { features: v === true ? [...f, b.key] : f, visit_qa: withAnswer(typeof v === 'boolean' ? { v } : null) }
   }
   if (b.kind === 'parcela') {
     const f = h.features.filter(x => x !== 'parcela_llana' && x !== 'parcela_pendiente')

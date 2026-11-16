@@ -1,7 +1,7 @@
 // «🧮 ¿Hasta dónde podemos llegar?»: con lo que deja la venta, los ahorros, los ingresos y la hipoteca,
 // cuánto podemos pagar por una casa (y si una casa concreta entra). Es una estimación: el banco decide con su estudio.
 import type { Home, Mudanza } from './mudanza'
-type SaleSide = Pick<Mudanza, 'offers' | 'listing'>
+import { saleNet, type SaleSide } from './funds'
 import { monthlyPayment } from './compra'
 import { purchaseCosts } from './gastos'
 import { buyerFee, reformMid } from './reforma'
@@ -21,18 +21,14 @@ export const LTV = 0.80          // el banco presta como mucho el 80 % del preci
 export const DEF_TIN = 2.8
 export const DEF_YEARS = 30
 
-/** Lo que queda de la venta a un precio (por defecto, el publicado o la oferta aceptada) */
+/** Lo que queda de la venta (misma cuenta que Vendemos: ver funds.ts) */
 export function saleNetAt(m: SaleSide, discount = 0, override?: number | null) {
-  const accepted = m.offers.find(o => o.status === 'accepted')
-  const base = override ?? accepted?.amount_cents ?? m.listing?.price_cents ?? null
-  if (base == null) return null
-  const sale = Math.round(base * (1 - discount))
-  const costs = (m.listing?.costs ?? []).reduce((s, c) => s + (c.cents || 0), 0)
-  return { sale, net: sale - (m.listing?.mortgage_cents ?? 0) - costs, accepted: !!accepted && override == null, manual: override != null }
+  const n = saleNet(m, { discount, price: override })
+  return n.sale == null || n.net == null ? null : { sale: n.sale, net: n.net, accepted: n.fromOffer, manual: n.manual }
 }
 
 /** Préstamo máximo para una cuota (sistema francés) */
-function loanFor(cuota: number, tin: number, years: number) {
+export function loanFor(cuota: number, tin: number, years: number) {
   const n = years * 12, r = tin / 100 / 12
   return Math.round(r === 0 ? cuota * n : cuota * (1 - Math.pow(1 + r, -n)) / r)
 }
@@ -92,5 +88,17 @@ export function affordAt(b: AffordBase, buyPrice: number, reform = 0, fee = 0) {
   const status: 'ok' | 'justo' | 'no' = slack < 0 ? 'no' : slack < 2000000 ? 'justo' : 'ok'
   const why = loan > Math.round(buyPrice * LTV) ? 'falta entrada: el banco presta como mucho el 80 %' : loan > b.maxLoan ? 'la cuota pasaría del 30 % de los ingresos' : ''
   return { costs, need, loan, cuota, slack, status, why }
+}
+/**
+ * Lo que hace falta sacar de la venta para comprar al presupuesto de «Qué buscamos»:
+ * presupuesto − ahorros (menos el colchón) − hipoteca (la elegida en Compramos o, si no hay, la máxima de la calculadora, hasta el 80 %)
+ */
+export function needFromSale(budget: number | null | undefined, fin: Finance | null | undefined, loanChosen: number | null | undefined) {
+  if (budget == null) return null
+  const savings = Math.max(0, (fin?.savings_cents ?? 0) - (fin?.cushion_cents ?? 0))
+  const maxCuota = fin?.income_cents ? Math.max(0, Math.round(fin.income_cents * RATIO) - (fin.debts_cents ?? 0)) : null
+  const byCuota = maxCuota != null ? loanFor(maxCuota, fin?.tin ?? DEF_TIN, fin?.years ?? DEF_YEARS) : null
+  const loan = loanChosen ?? (byCuota != null ? Math.min(byCuota, Math.round(budget / 1.072 * LTV)) : 0)
+  return { need: Math.max(0, budget - savings - loan), savings, loan, loanFrom: loanChosen != null ? 'compramos' as const : byCuota != null ? 'calculadora' as const : 'ninguna' as const }
 }
 export const AFFORD_ICON = { ok: '✅', justo: '🟡', no: '⛔' } as const

@@ -9,6 +9,7 @@ import {
 } from '../../lib/compra'
 import { Choice, ConfirmDelete, Sheet, TextArea, TextField } from '../../components/Sheet'
 import DocFiles, { openDocFile } from '../../components/DocFiles'
+import { supabase } from '../../lib/supabase'
 import { Fold, saleNet } from './VentaGestion'
 import { HomePrice } from './HomePrice'
 import { buyerFee, feeLabel, reformTotal } from '../../lib/reforma'
@@ -663,7 +664,9 @@ function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra;
   const chosen = c.banks.find(b => b.chosen)
   const [costs, setCosts] = useState<{ label: string; amount: string }[]>(
     p?.costs?.length ? p.costs.map(x => ({ label: x.label, amount: priceInput(x.cents) })) : PCOST_TEMPLATE.map(label => ({ label, amount: '' })))
-  const [savings, setSavings] = useState(priceInput(p?.savings_cents))
+  // Los ahorros son los de «🧮 ¿Hasta dónde podemos llegar?» (una sola fuente): se leen y se guardan allí
+  const fin = m.criteria?.finance ?? null
+  const [savings, setSavings] = useState(priceInput(fin?.savings_cents ?? p?.savings_cents))
   const [loan, setLoan] = useState(priceInput(p?.loan_cents ?? chosen?.amount_cents))
   const [error, setError] = useState('')
 
@@ -672,9 +675,16 @@ function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra;
   }
   async function save(rows = costs) {
     const err = await c.savePurchase(householdId, {
-      costs: list(rows), savings_cents: savings.trim() ? parsePrice(savings) : null, loan_cents: loan.trim() ? parsePrice(loan) : null
+      costs: list(rows), loan_cents: loan.trim() ? parsePrice(loan) : null
     })
     setError(err ?? '')
+    const sav = savings.trim() ? parsePrice(savings) : null
+    if (!err && sav !== (fin?.savings_cents ?? null)) {
+      const finance = { ...(fin ?? {}), savings_cents: sav }
+      const q = m.criteria ? supabase.from('search_criteria').update({ finance }).eq('household_id', householdId) : supabase.from('search_criteria').insert({ household_id: householdId, finance })
+      const { error: e2 } = await q
+      if (e2) setError('No se han podido guardar los ahorros. Inténtalo de nuevo.'); else await m.reload()
+    }
   }
   // Rellena impuestos y gastos estimados sobre el precio de compra (solo las líneas vacías: lo que ya sea real no se toca)
   const MATCH: Record<string, RegExp> = { itp: /ITP|transmisiones/i, iva: /^IVA/i, ajd: /^AJD/i, notaria: /notar/i, registro: /registro/i, gestoria: /gestor/i, nota: /nota simple/i, tasacion: /tasaci/i }
@@ -759,7 +769,7 @@ function Cuentas({ m, c, householdId, buyPrice, home }: { m: Mudanza; c: Compra;
 
       <span className="text-sm font-medium text-muted mt-1">De dónde sale el dinero</span>
       <div className="flex justify-between text-sm"><span className="text-muted">Lo que nos queda de la venta</span><span>{price(net)}</span></div>
-      <TextField label="Ahorros que ponemos (€)" inputMode="decimal" value={savings} onChange={e => setSavings(e.target.value)} onBlur={() => save()} />
+      <TextField label="Ahorros que ponemos (€) · los de «¿Hasta dónde podemos llegar?»" inputMode="decimal" value={savings} onChange={e => setSavings(e.target.value)} onBlur={() => save()} />
       <TextField label="Hipoteca (€)" inputMode="decimal" value={loan} onChange={e => setLoan(e.target.value)} onBlur={() => save()} placeholder={chosen?.amount_cents ? `La elegida: ${price(chosen.amount_cents)}` : ''} />
       {cuota ? <p className="text-xs text-muted -mt-2">Cuota con {chosen!.bank}: {price(cuota)}/mes.</p> : null}
       {gap != null && (

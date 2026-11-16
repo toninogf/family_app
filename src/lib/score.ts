@@ -31,7 +31,8 @@ export function weightsOf(c: Criteria | null): ScoreWeights {
   const out = { ...DEFAULT_WEIGHTS }
   for (const k of Object.keys(out) as (keyof ScoreWeights)[]) if (typeof w[k] === 'number' && w[k]! >= 0) out[k] = Math.min(100, w[k]!)
   // Los bloques van por importancia 0–5; si vienen pesos antiguos (hasta 50), se pasan a esa escala
-  if (BASE_KEYS.some(k => out[k] > 5)) for (const k of BASE_KEYS) out[k] = Math.max(0, Math.min(5, Math.round(out[k] / 6)))
+  // (solo los que venían guardados: los que faltan ya están en la escala nueva)
+  if (BASE_KEYS.some(k => out[k] > 5)) for (const k of BASE_KEYS) if (typeof w[k] === 'number') out[k] = Math.max(0, Math.min(5, Math.round(out[k] / 6)))
   return out
 }
 
