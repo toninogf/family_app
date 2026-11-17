@@ -20,7 +20,8 @@ const COOL: Cooling[] = ['no', 'splits', 'conductos', 'aerotermia']
 function learnings(homes: Home[], rejections: Rejection[]) {
   const out: string[] = []
   const cut = (x: string | null | undefined, n: number) => (x ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
-  for (const r of rejections.filter(r => !r.reproposed_at).slice(0, 10)) {
+  // «Anuncio dado de baja» no dice nada de lo que nos gusta: no es una lección
+  for (const r of rejections.filter(r => !r.reproposed_at && r.reason !== 'retirado').slice(0, 10)) {
     out.push(`- ${r.reason ? REJECT_REASONS[r.reason].replace(/^\S+\s/, '') : 'no'}: ${[cut(r.municipality, 30), r.price_cents ? kShort(r.price_cents) : null, r.plot_m2 ? `parcela ${r.plot_m2} m²` : null].filter(Boolean).join(', ')}`)
   }
   for (const h of homes.filter(h => h.status === 'descartado' && h.discard_category && !['vendida', 'otra'].includes(h.discard_category)).slice(0, 10)) {

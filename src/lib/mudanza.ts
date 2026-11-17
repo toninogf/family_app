@@ -461,9 +461,9 @@ export function discardLabel(h: { discard_category: DiscardCategory | null; disc
   return [c, r && `«${r}»`].filter(Boolean).join(' — ') || null
 }
 
-export type RejectReason = 'precio' | 'ubicacion' | 'parcela' | 'estado' | 'no_gusta' | 'otro'
+export type RejectReason = 'precio' | 'ubicacion' | 'parcela' | 'estado' | 'no_gusta' | 'retirado' | 'otro'
 export const REJECT_REASONS: Record<RejectReason, string> = {
-  precio: '💶 Precio', ubicacion: '📍 Ubicación', parcela: '🌳 Parcela pequeña', estado: '🔨 Estado o reforma', no_gusta: '👎 No nos gusta', otro: 'Otro'
+  precio: '💶 Precio', ubicacion: '📍 Ubicación', parcela: '🌳 Parcela pequeña', estado: '🔨 Estado o reforma', no_gusta: '👎 No nos gusta', retirado: '🚫 Anuncio no publicado o dado de baja', otro: 'Otro'
 }
 export type Rejection = {
   id: string; title: string | null; url: string | null; municipality: string | null; zone: string | null; price_cents: number | null
