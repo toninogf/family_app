@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
-import { CONDITION_LABEL, OBJECTION_HELP, adjustments, adjTotal, competitorFromLinkPrompt, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
+import { CONDITION_ICON, CONDITION_LABEL, conditionAdj, conditionOf, OBJECTION_HELP, adjustments, adjTotal, competitorFromLinkPrompt, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
 import { saleNet } from '../../lib/funds'
 import { needFromSale } from '../../lib/afford'
@@ -171,6 +171,12 @@ const COMP_REJECT = ['Ya no está publicado', 'No se parece al nuestro', 'Otra z
  * Pisos que ha traído la búsqueda automática: se revisan (abrir el anuncio) y se aceptan o se rechazan.
  * Solo los aceptados cuentan en «¿Estamos en precio?»; los rechazados no vuelven.
  */
+/** «🔨 a reformar» (lo puesto a mano o, si no, lo que se deduce del año de reforma) */
+function condText(c: Competitor) {
+  const k = conditionOf({ features: c.features, reform_year: c.reform_year, year_built: c.year_built, condition: c.condition })
+  return k ? `${CONDITION_ICON[k]} ${CONDITION_LABEL[k].replace(/ \(.*\)$/, '').toLowerCase()}` : null
+}
+
 function CompetitorProposals({ m }: { m: Mudanza }) {
   const [rejecting, setRejecting] = useState<string | null>(null)
   const [other, setOther] = useState('')
@@ -202,7 +208,7 @@ function CompetitorProposals({ m }: { m: Mudanza }) {
                   <span className="font-bold shrink-0">{c.price_cents != null ? price(c.price_cents) : '—'}</span>
                 </div>
                 <span className="text-[12px] text-muted">
-                  {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor,
+                  {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, condText(c),
                     raw && `${Math.round(raw / 100).toLocaleString('es-ES')} €/m²${ourM2 ? ` (vuestro ${Math.round(ourM2 / 100).toLocaleString('es-ES')})` : ''}`,
                     raw && Math.abs(adj) >= 0.5 && `ajustado ${adj > 0 ? '+' : ''}${adj.toFixed(1).replace('.', ',')} %`].filter(Boolean).join(' · ')}
                 </span>
@@ -274,7 +280,7 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
               <span className="text-[15px] font-bold shrink-0">{price(c.price_cents)}</span>
             </span>
             <span className="text-[12px] text-muted">
-              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, c.year_built && `finca ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}`, c.status !== 'activo' && (c.status === 'vendido' ? 'vendido' : 'retirado'), dropped && `📉 ha bajado ${price(c.first_price_cents! - c.price_cents!)}`, hist.length > 1 && `${hist.length - 1} cambio${hist.length > 2 ? 's' : ''} de precio`].filter(Boolean).join(' · ')}
+              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, condText(c), c.year_built && `finca ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}`, c.status !== 'activo' && (c.status === 'vendido' ? 'vendido' : 'retirado'), dropped && `📉 ha bajado ${price(c.first_price_cents! - c.price_cents!)}`, hist.length > 1 && `${hist.length - 1} cambio${hist.length > 2 ? 's' : ''} de precio`].filter(Boolean).join(' · ')}
             </span>
             {raw != null && (
               <span className="text-[13px]">
@@ -301,7 +307,8 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
   )
 }
 
-const COMP_FEATURES = ['exterior', 'aire', 'ascensor', 'terraza', 'balcon', 'garaje', 'trastero', 'portero', 'piscina_comunitaria', 'reformado']
+// «Reformado» no va aquí: sale del estado (abajo) para que no se contradigan
+const COMP_FEATURES = ['exterior', 'aire', 'ascensor', 'terraza', 'balcon', 'garaje', 'trastero', 'portero', 'piscina_comunitaria']
 
 function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mudanza; householdId: string; onClose: () => void }) {
   const [url, setUrl] = useState(c?.url ?? '')
@@ -388,7 +395,8 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
       household_id: householdId, title: title.trim().slice(0, 160), url: u, zone: zone.trim() || null, price_cents: cents,
       first_price_cents: c?.first_price_cents ?? cents, size_m2: m2.trim() ? Number(m2.replace(',', '.')) : null, rooms: int(rooms), baths: int(baths),
       floor: floor.trim() || null, condition: cond, reform_year: /^\d{4}$/.test(reformYear.trim()) ? Number(reformYear) : null,
-      year_built: /^\d{4}$/.test(yearBuilt.trim()) ? Number(yearBuilt) : null, building_reform_year: /^\d{4}$/.test(buildingRehab.trim()) ? Number(buildingRehab) : null, features, status, notes: notes.trim() || null,
+      year_built: /^\d{4}$/.test(yearBuilt.trim()) ? Number(yearBuilt) : null, building_reform_year: /^\d{4}$/.test(buildingRehab.trim()) ? Number(buildingRehab) : null,
+      features: [...features.filter(f => f !== 'reformado'), ...(cond === 'reformado' ? ['reformado'] : [])], status, notes: notes.trim() || null,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, heating_type: central ? 'central' : c?.heating_type === 'central' ? null : c?.heating_type ?? null,
       energy, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light,
       price_history: cents != null && cents !== c?.price_cents ? [...hist, { date: today(), cents }].slice(-60) : hist
@@ -436,9 +444,21 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
           <Field label="Baños" inputMode="numeric" value={baths} onChange={e => setBaths(e.target.value)} />
           <Field label="Planta" value={floor} onChange={e => setFloor(e.target.value)} maxLength={20} />
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <SelectField<Condition> label="Estado" value={cond} onChange={setCond} options={(Object.keys(CONDITION_LABEL) as Condition[]).map(k => ({ value: k, label: CONDITION_LABEL[k] }))} />
-          <Field label="Año de reforma" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-semibold">Estado del piso</span>
+          <div className="flex gap-1.5 flex-wrap" role="radiogroup" aria-label="Estado del piso">
+            {(Object.keys(CONDITION_LABEL) as Condition[]).map(k => {
+              const on = cond === k
+              return <button key={k} type="button" role="radio" aria-checked={on} onClick={() => setCond(on ? null : k)}
+                className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${on ? 'bg-ink text-bg border-ink' : 'bg-card border-line'}`}>{CONDITION_ICON[k]} {CONDITION_LABEL[k]}</button>
+            })}
+          </div>
+          {(() => {
+            const a = m.listing ? conditionAdj(m.listing, cond) : null
+            if (a == null) return cond ? null : <span className="text-[12px] text-muted">Pesa en la comparación con el vuestro: un piso a reformar vale bastante menos por m².</span>
+            return <span className="text-[12px] text-muted">{a === 0 ? 'Mismo estado que el vuestro: no corrige nada.' : `En la comparación, su €/m² se corrige un ${a > 0 ? '+' : ''}${a} % (${a > 0 ? 'el vuestro está mejor' : 'está mejor que el vuestro'}).`}</span>
+          })()}
+          <Field label="Año de reforma del piso" inputMode="numeric" value={reformYear} onChange={e => setReformYear(e.target.value)} placeholder="Si lo dice" />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Año de la finca" inputMode="numeric" value={yearBuilt} onChange={e => setYearBuilt(e.target.value)} placeholder="Anuncio o Catastro" />

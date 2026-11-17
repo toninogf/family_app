@@ -4,6 +4,7 @@ import { BUILDING_LABEL, LIGHT_LABEL, NOISE_LABEL, type BuyerOffer, type BuyerVi
 
 export type Condition = 'nuevo' | 'reformado' | 'buen_estado' | 'a_reformar'
 export const CONDITION_LABEL: Record<Condition, string> = { nuevo: 'Obra nueva', reformado: 'Reformado (≤ 10 años)', buen_estado: 'Buen estado', a_reformar: 'A reformar' }
+export const CONDITION_ICON: Record<Condition, string> = { nuevo: '✨', reformado: '🛠️', buen_estado: '👍', a_reformar: '🔨' }
 // Estado: la diferencia entre «a reformar» y «reformado» ≈ coste de una reforma integral (600–900 €/m², ~8 % a precios de Chamberí) + algo por la molestia
 const COND_SCORE: Record<Condition, number> = { nuevo: 7, reformado: 3, buen_estado: 0, a_reformar: -8 }
 
@@ -44,6 +45,12 @@ export function conditionOf(x: { features: string[]; reform_year?: number | null
   if (x.reform_year) return year - x.reform_year <= 10 ? 'reformado' : year - x.reform_year <= 25 ? 'buen_estado' : 'a_reformar'
   if (x.features.includes('reformado')) return 'reformado'
   return null
+}
+
+/** Cuánto corrige el estado de otro piso frente al nuestro (+ = el nuestro está mejor), o null si falta alguno */
+export function conditionAdj(ours: Listing, cond: Condition | null): number | null {
+  const o = conditionOf({ features: ours.features ?? [], reform_year: ours.reform_year, year_built: ours.year_built })
+  return o && cond ? COND_SCORE[o] - COND_SCORE[cond] : null
 }
 
 function traits(x: { size_m2?: number | string | null; rooms?: number | null; baths?: number | null; floor?: string | null; features: string[]; cooling?: string | null; reform_year?: number | null; year_built?: number | null; condition?: Condition | null }, exteriorKnown: boolean): Traits {
