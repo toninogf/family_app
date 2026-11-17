@@ -2,7 +2,8 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import AuthGate from './auth/AuthGate'
 import { HouseholdProvider } from './lib/household'
 import BottomNav from './components/BottomNav'
-import { lazy, Suspense, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
+import { keepPush } from './lib/push'
 import Hoy from './pages/Hoy'
 import { ErrorBoundary } from './components/ErrorBoundary'
 // El resto de pantallas se cargan al abrirlas: la app arranca antes en el móvil (quedan guardadas para usar sin conexión).
@@ -35,6 +36,7 @@ export default function App() {
     <AuthGate>
       <HouseholdProvider>
         <PrefsProvider>
+        <PushKeeper />
         <main className={`max-w-xl mx-auto px-5 pt-[max(env(safe-area-inset-top),24px)] pb-28 md:max-w-3xl lg:pl-[calc(14rem+2.5rem)] lg:pr-10 lg:pb-12 ${wide ? 'lg:max-w-none' : 'lg:max-w-[calc(48rem+14rem)]'}`}>
           <ErrorBoundary resetKey={pathname}>
           <Suspense fallback={<p className="text-muted text-sm py-10 text-center">Cargando…</p>}>
@@ -73,4 +75,17 @@ function CasaRedirect() {
 function HomeOrShare() {
   const p = new URLSearchParams(useLocation().search)
   return p.has('text') || p.has('url') || p.has('title') ? <Compartir /> : <Hoy />
+}
+
+/** Mantiene los avisos de este dispositivo aunque se actualice la app (al abrirla y al volver a ella, como mucho cada hora) */
+function PushKeeper() {
+  useEffect(() => {
+    let last = 0
+    const run = () => { if (Date.now() - last > 60 * 60 * 1000) { last = Date.now(); void keepPush() } }
+    run()
+    const onVisible = () => { if (document.visibilityState === 'visible') run() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+  return null
 }

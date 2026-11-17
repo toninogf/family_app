@@ -9,11 +9,13 @@ import { WeekdayPicker } from '../components/Sheet'
 import { useShoppingLists } from '../lib/shopping'
 import { ALL_SECTIONS, ALL_TABS, SECTION_LABEL, TAB_LABEL, moveIn, usePrefs, type SectionKey, type TabKey } from '../lib/prefs'
 
-/** Borra la copia guardada de la app y vuelve a descargarla (pasando por Cloudflare Access si hace falta) */
+/** Borra la copia guardada de la app y vuelve a descargarla (pasando por Cloudflare Access si hace falta), sin perder los avisos */
 async function forceUpdate() {
   try {
+    // Sin dar de baja el service worker: si se da de baja, se pierden los avisos de este móvil.
+    // Basta con borrar la copia guardada y pedir la versión nueva (/renovar siempre va a la red).
     const regs = await navigator.serviceWorker?.getRegistrations?.() ?? []
-    await Promise.all(regs.map(r => r.unregister()))
+    await Promise.all(regs.map(r => r.update().catch(() => undefined)))
     const keys = await caches?.keys?.() ?? []
     await Promise.all(keys.map(k => caches.delete(k)))
   } catch { /* seguimos igualmente */ }
