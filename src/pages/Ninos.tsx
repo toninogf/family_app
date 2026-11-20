@@ -310,7 +310,7 @@ export default function Ninos() {
           adults={adults}
           members={members}
           onClose={() => setOccSheet(null)}
-          onSaveException={async input => { await ev.saveException(occSheet.event.id, occSheet.date, input); setOccSheet(null) }}
+          onSaveException={async input => { await ev.saveException(occSheet.event.id, occSheet.exception?.occurrence_date ?? occSheet.date, input); setOccSheet(null) }}
           onClearException={occSheet.exception ? async () => { await ev.clearException(occSheet.exception!.id); setOccSheet(null) } : undefined}
           onEdit={() => { setEventSheet({ open: true, event: occSheet.event }); setOccSheet(null) }}
           onEndFrom={async () => { await ev.endEventFrom(occSheet.event, occSheet.date); setOccSheet(null) }}
@@ -359,7 +359,7 @@ export function AgendaCard({ a, members, cats, onOpen, compact }: { a: Agenda; m
         </span>
         <span className="text-[13px] text-muted">
           {childName}{a.event.location ? ` · ${a.event.location}` : ''}
-          {a.cancelled ? ' · Cancelada este día' : a.changed ? ' · Cambiada este día' : ''}
+          {a.cancelled ? ' · Cancelada este día' : a.movedFrom ? ` · Movida desde el ${shortDate(a.movedFrom)}` : a.changed ? ' · Cambiada este día' : ''}
         </span>
         {visitWho && !a.cancelled && (
           <span className="flex gap-1.5 flex-wrap">
@@ -403,10 +403,13 @@ export function AgendaCard({ a, members, cats, onOpen, compact }: { a: Agenda; m
 
 function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClearException, onEdit, onEndFrom, onDelete }: {
   a: Agenda; adults: Member[]; members: Member[]; onClose: () => void
-  onSaveException: (input: { cancelled: boolean; hidden?: boolean; start_time: string | null; end_time: string | null; override_drivers: boolean; drop_off_id: string | null; pick_up_id: string | null; note: string | null }) => Promise<void>
+  onSaveException: (input: { cancelled: boolean; hidden?: boolean; start_time: string | null; end_time: string | null; override_drivers: boolean; drop_off_id: string | null; pick_up_id: string | null; note: string | null; moved_to?: string | null }) => Promise<void>
   onClearException?: () => Promise<void>
   onEdit: () => void; onEndFrom: () => Promise<void>; onDelete: () => Promise<void>
 }) {
+  // Día original de esta vez (si ya se había movido, el de antes) y el día en que se hace
+  const origDate = a.exception?.occurrence_date ?? a.date
+  const [day, setDay] = useState(a.date)
   const [start, setStart] = useState(hhmm(a.start))
   const [end, setEnd] = useState(hhmm(a.end))
   const [drop, setDrop] = useState<string | null>(a.dropOff)
@@ -422,6 +425,7 @@ function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClear
     const timeChanged = start !== hhmm(a.event.start_time) || end !== hhmm(a.event.end_time)
     await onSaveException({
       cancelled: false,
+      moved_to: day && day !== origDate ? day : null,
       start_time: timeChanged ? start : null,
       end_time: timeChanged ? (end || null) : null,
       override_drivers: drop !== a.event.drop_off_id || pick !== a.event.pick_up_id,
@@ -433,7 +437,7 @@ function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClear
 
   return (
     <Sheet title={`${a.event.title} · ${nameOf(a.event.child_id, members) ?? 'Familia'}`} onClose={onClose}>
-      <p className="text-sm text-muted -mt-3">{longDate(a.date)}{weekly ? ` · se repite ${weekdaysLabel(a.event.weekdays)}` : ''}</p>
+      <p className="text-sm text-muted -mt-3">{longDate(a.date)}{a.movedFrom ? ` (movida desde el ${longDate(a.movedFrom).toLowerCase()})` : ''}{weekly ? ` · se repite ${weekdaysLabel(a.event.weekdays)}` : ''}</p>
 
       {weekly && (
         a.cancelled ? (
@@ -445,6 +449,8 @@ function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClear
         ) : (
           <form onSubmit={saveChanges} className="flex flex-col gap-4 bg-card rounded-2xl p-4">
             <h3 className="font-bold text-[15px]">Solo este día</h3>
+            <TextField label="Día" type="date" value={day} onChange={e => setDay(e.target.value)} required />
+            {day && day !== origDate && <p className="text-xs text-muted -mt-2">Se pasa del {longDate(origDate).toLowerCase()} al {longDate(day).toLowerCase()}. Las demás semanas siguen igual.</p>}
             <div className="grid grid-cols-2 gap-3">
               <TextField label="Empieza" type="time" value={start} onChange={e => setStart(e.target.value)} required />
               <TextField label="Termina" type="time" value={end} onChange={e => setEnd(e.target.value)} />
@@ -452,7 +458,7 @@ function OccurrenceSheet({ a, adults, members, onClose, onSaveException, onClear
             <Choice label="Lleva" value={drop} onChange={setDrop} options={driverOptions} />
             <Choice label="Recoge" value={pick} onChange={setPick} options={driverOptions} />
             <TextField label="Nota para este día" value={note} onChange={e => setNote(e.target.value)} maxLength={200} placeholder="Ej. llevar el chándal" />
-            <button type="submit" className="py-3 rounded-xl bg-accent text-white dark:text-bg font-bold">Guardar cambios de este día</button>
+            <button type="submit" className="py-3 rounded-xl bg-accent text-white dark:text-bg font-bold">{day && day !== a.date ? 'Mover a ese día' : 'Guardar cambios de este día'}</button>
             <div className="flex justify-between">
               <button type="button" onClick={() => onSaveException({ cancelled: true, start_time: null, end_time: null, override_drivers: false, drop_off_id: null, pick_up_id: null, note: null })}
                 className="min-h-11 text-danger text-sm font-semibold">Cancelar este día</button>

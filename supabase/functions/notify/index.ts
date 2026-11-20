@@ -142,7 +142,7 @@ Deno.serve(async (req: Request) => {
     const [{ data: members }, { data: events }, { data: exceptions }, { data: tasks }, { data: completions }] = await Promise.all([
       db.from('members').select('id, household_id, display_name, kind, user_id').eq('household_id', hh),
       db.from('events').select('*').eq('household_id', hh).eq('paused', false).lte('start_date', to),
-      db.from('event_exceptions').select('*').eq('household_id', hh).gte('occurrence_date', from).lte('occurrence_date', to),
+      db.from('event_exceptions').select('*').eq('household_id', hh).or(`and(occurrence_date.gte.${from},occurrence_date.lte.${to}),and(moved_to.gte.${from},moved_to.lte.${to})`),
       db.from('tasks').select('*').eq('household_id', hh).eq('active', true),
       db.from('task_completions').select('task_id, occurrence_date').eq('household_id', hh).eq('occurrence_date', today)
     ])
@@ -180,17 +180,26 @@ Deno.serve(async (req: Request) => {
     const name = (id: string | null) => ms.find(m => m.id === id)?.display_name ?? ''
 
     // Actividades por día con cambios puntuales aplicados
-    const agenda = (date: string) => (events ?? [])
-      .filter(e => date >= e.start_date && (!e.until || date <= e.until) && (e.repeat === 'none' ? date === e.start_date : (e.weekdays as number[]).includes(isoWeekday(date))))
-      .map(e => {
-        const x = (exceptions ?? []).find(x => x.event_id === e.id && x.occurrence_date === date)
-        return {
-          title: e.title as string, child: name(e.child_id), start: (x?.start_time ?? e.start_time) as string,
-          drop: (x?.override_drivers ? x.drop_off_id : e.drop_off_id) as string | null,
-          pick: (x?.override_drivers ? x.pick_up_id : e.pick_up_id) as string | null,
-          cancelled: !!x?.cancelled, date, origin: (e.origin ?? null) as string | null
-        }
+    // (un día movido a otra fecha sale en la nueva y no en la original)
+    type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+    const occ = (e: Row, x: Row | undefined, date: string) => ({
+      title: e.title as string, child: name(e.child_id), start: (x?.start_time ?? e.start_time) as string,
+      drop: (x?.override_drivers ? x.drop_off_id : e.drop_off_id) as string | null,
+      pick: (x?.override_drivers ? x.pick_up_id : e.pick_up_id) as string | null,
+      cancelled: !!x?.cancelled, date, origin: (e.origin ?? null) as string | null
+    })
+    const agenda = (date: string) => [
+      ...(events ?? [])
+        .filter(e => date >= e.start_date && (!e.until || date <= e.until) && (e.repeat === 'none' ? date === e.start_date : (e.weekdays as number[]).includes(isoWeekday(date))))
+        .flatMap(e => {
+          const x = (exceptions ?? []).find(x => x.event_id === e.id && x.occurrence_date === date)
+          return x?.moved_to && x.moved_to !== date ? [] : [occ(e, x, date)]
+        }),
+      ...(exceptions ?? []).filter(x => x.moved_to === date && !x.cancelled).flatMap(x => {
+        const e = (events ?? []).find(ev => ev.id === x.event_id)
+        return e ? [occ(e, x, date)] : []
       })
+    ]
       .filter(a => !a.cancelled)
       .sort((a, b) => a.start.localeCompare(b.start))
 

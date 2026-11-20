@@ -13,7 +13,7 @@ type Ev = {
 }
 type Ex = {
   event_id: string; occurrence_date: string; cancelled: boolean; start_time: string | null; end_time: string | null
-  override_drivers: boolean; drop_off_id: string | null; pick_up_id: string | null; note: string | null
+  override_drivers: boolean; drop_off_id: string | null; pick_up_id: string | null; note: string | null; moved_to: string | null
 }
 
 const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
   const [{ data: members }, { data: events }, { data: exceptions }] = await Promise.all([
     db.from('members').select('id, display_name').eq('household_id', hh),
     db.from('events').select('id, child_id, title, location, start_time, end_time, repeat, weekdays, start_date, until, drop_off_id, pick_up_id, note').eq('household_id', hh),
-    db.from('event_exceptions').select('event_id, occurrence_date, cancelled, start_time, end_time, override_drivers, drop_off_id, pick_up_id, note').eq('household_id', hh)
+    db.from('event_exceptions').select('event_id, occurrence_date, cancelled, start_time, end_time, override_drivers, drop_off_id, pick_up_id, note, moved_to').eq('household_id', hh)
   ])
   const name = (id: string | null) => (id ? (members ?? []).find(m => m.id === id)?.display_name ?? '' : '')
   const drivers = (drop: string | null, pick: string | null, note: string | null) => {
@@ -115,14 +115,15 @@ Deno.serve(async (req: Request) => {
     }
     out.push('END:VEVENT')
 
-    // Días cambiados: misma UID con RECURRENCE-ID
+    // Días cambiados (o movidos a otra fecha): misma UID con RECURRENCE-ID del día original
     for (const x of exs.filter(x => !x.cancelled && e.repeat === 'weekly')) {
+      const day = x.moved_to ?? x.occurrence_date
       const s = x.start_time ?? e.start_time
       const en = x.end_time ?? (x.start_time ? plusHour(x.start_time) : end)
       const d = drivers(x.override_drivers ? x.drop_off_id : e.drop_off_id, x.override_drivers ? x.pick_up_id : e.pick_up_id, x.note ?? e.note)
       out.push('BEGIN:VEVENT', `UID:${uid}`, `DTSTAMP:${stamp}`,
         `RECURRENCE-ID;TZID=${TZ}:${local(x.occurrence_date, e.start_time)}`,
-        `DTSTART;TZID=${TZ}:${local(x.occurrence_date, s)}`, `DTEND;TZID=${TZ}:${local(x.occurrence_date, en)}`,
+        `DTSTART;TZID=${TZ}:${local(day, s)}`, `DTEND;TZID=${TZ}:${local(day, en)}`,
         fold(`SUMMARY:${esc(summary)}`))
       if (e.location) out.push(fold(`LOCATION:${esc(e.location)}`))
       if (d) out.push(fold(`DESCRIPTION:${esc(d)}`))

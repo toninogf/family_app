@@ -33,9 +33,11 @@ export type EventException = {
   drop_off_id: string | null
   pick_up_id: string | null
   note: string | null
+  /** Si este día se ha pasado a otra fecha */
+  moved_to: string | null
 }
 export type EventInput = Omit<FamilyEvent, 'id' | 'origin' | 'paused'>
-export type ExceptionInput = Omit<EventException, 'id' | 'event_id' | 'occurrence_date' | 'hidden'> & { hidden?: boolean }
+export type ExceptionInput = Omit<EventException, 'id' | 'event_id' | 'occurrence_date' | 'hidden' | 'moved_to'> & { hidden?: boolean; moved_to?: string | null }
 
 /** Una actividad concreta en un día, ya con los cambios puntuales aplicados */
 export type Agenda = {
@@ -49,6 +51,8 @@ export type Agenda = {
   changed: boolean
   note: string | null
   exception: EventException | undefined
+  /** Día original, si esta vez se ha movido aquí desde otro día */
+  movedFrom: string | null
 }
 
 const MAPS_RE = /^https:\/\/(maps\.app\.goo\.gl\/|goo\.gl\/maps\/|maps\.google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})\/|(www\.)?google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})\/maps)/
@@ -72,24 +76,31 @@ export function eventOccursOn(e: FamilyEvent, date: string) {
 
 export function agendaFor(events: FamilyEvent[], exceptions: EventException[], date: string): Agenda[] {
   const exc = new Map(exceptions.filter(x => x.occurrence_date === date).map(x => [x.event_id, x]))
-  return events
-    .filter(e => eventOccursOn(e, date) && !exc.get(e.id)?.hidden)
-    .map(e => {
-      const x = exc.get(e.id)
-      return {
-        event: e,
-        date,
-        start: x?.start_time ?? e.start_time,
-        end: x?.end_time ?? e.end_time,
-        dropOff: x?.override_drivers ? x.drop_off_id : e.drop_off_id,
-        pickUp: x?.override_drivers ? x.pick_up_id : e.pick_up_id,
-        cancelled: x?.cancelled ?? false,
-        changed: !!x && !x.cancelled,
-        note: x?.note ?? e.note,
-        exception: x
-      }
+  const item = (e: FamilyEvent, x: EventException | undefined, movedFrom: string | null): Agenda => ({
+    event: e,
+    date,
+    start: x?.start_time ?? e.start_time,
+    end: x?.end_time ?? e.end_time,
+    dropOff: x?.override_drivers ? x.drop_off_id : e.drop_off_id,
+    pickUp: x?.override_drivers ? x.pick_up_id : e.pick_up_id,
+    cancelled: x?.cancelled ?? false,
+    changed: !!x && !x.cancelled,
+    note: x?.note ?? e.note,
+    exception: x,
+    movedFrom
+  })
+  // Las de su día (salvo las quitadas y las que se han pasado a otro día)…
+  const own = events
+    .filter(e => eventOccursOn(e, date) && !exc.get(e.id)?.hidden && !(exc.get(e.id)?.moved_to && exc.get(e.id)!.moved_to !== date))
+    .map(e => item(e, exc.get(e.id), null))
+  // …y las que se han movido a este día desde otro
+  const movedIn = exceptions
+    .filter(x => x.moved_to === date && !x.cancelled)
+    .flatMap(x => {
+      const e = events.find(ev => ev.id === x.event_id)
+      return e && !e.paused ? [item(e, x, x.occurrence_date)] : []
     })
-    .sort((a, b) => a.start.localeCompare(b.start))
+  return [...own, ...movedIn].sort((a, b) => a.start.localeCompare(b.start))
 }
 
 export function useEvents(from: string, to: string) {
@@ -106,8 +117,9 @@ export function useEvents(from: string, to: string) {
         .or(`until.is.null,until.gte.${from}`)
         .order('start_time'),
       supabase.from('event_exceptions')
-        .select('id, event_id, occurrence_date, cancelled, hidden, start_time, end_time, override_drivers, drop_off_id, pick_up_id, note')
-        .gte('occurrence_date', from).lte('occurrence_date', to)
+        .select('id, event_id, occurrence_date, cancelled, hidden, start_time, end_time, override_drivers, drop_off_id, pick_up_id, note, moved_to')
+        // las de días del rango y las movidas a días del rango
+        .or(`and(occurrence_date.gte.${from},occurrence_date.lte.${to}),and(moved_to.gte.${from},moved_to.lte.${to})`)
     ])
     if (e.error) setError(e.error.message)
     setEvents((e.data ?? []) as FamilyEvent[])
@@ -152,7 +164,7 @@ export function useEvents(from: string, to: string) {
 
   async function saveException(eventId: string, date: string, input: ExceptionInput) {
     const { error } = await supabase.from('event_exceptions').upsert(
-      { event_id: eventId, occurrence_date: date, hidden: false, ...input },
+      { event_id: eventId, occurrence_date: date, hidden: false, moved_to: null, ...input },
       { onConflict: 'event_id,occurrence_date' }
     )
     if (error) setError(error.message)
