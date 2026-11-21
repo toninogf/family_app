@@ -50,13 +50,31 @@ export function OffMarketPanel({ h, onSave, onCancel }: {
 /** Historial de precio en una línea: «690k (01/10) → 650k (20/10) · −5,8 %» */
 export function PriceTrailLine({ h, prices }: { h: Home; prices: HomePrice[] }) {
   const t = priceTrail(h.id, prices)
-  if (t.length < 2) return null
   const d = dropPct(t)
+  const dm = daysOnMarket(h, today())
   return (
-    <p className="text-[13px] text-muted -mt-2">
-      {d > 0 ? '📉' : '📈'} {t.slice(-4).map(p => `${k(p.price_cents)} (${ddmm(p.changed_on)})`).join(' → ')}
-      {d !== 0 && <> · <b className={d > 0 ? 'text-[#1F8A4C]' : 'text-[#C8452F]'}>{d > 0 ? '−' : '+'}{Math.abs(d).toLocaleString('es-ES')} %</b></>}
-    </p>
+    <div className="text-[13px] text-muted -mt-2 flex flex-col gap-0.5">
+      {/* Cuánto lleva a la venta: desde el anuncio o, si no se sabe, desde que la añadisteis (serán algunos días más) */}
+      <span>📅 {dm.exact ? `Anunciada el ${shortDate(dm.from)}` : `Añadida el ${shortDate(dm.from)} (fecha del anuncio sin poner)`} · lleva {dm.exact ? 'unos' : '≥'} <b className={dm.days >= 90 ? 'text-[#C77A12]' : ''}>{dm.days} días</b> a la venta{dm.days >= 90 ? ' · suele haber margen para negociar' : ''}</span>
+      {t.length >= 2 && (
+        <span>
+          {d > 0 ? '📉' : '📈'} {t.slice(-4).map(p => `${k(p.price_cents)} (${ddmm(p.changed_on)})`).join(' → ')}
+          {d !== 0 && <> · <b className={d > 0 ? 'text-[#1F8A4C]' : 'text-[#C8452F]'}>{d > 0 ? '−' : '+'}{Math.abs(d).toLocaleString('es-ES')} %</b></>}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** «51 d» para la tarjeta (≥ si no sabemos la fecha del anuncio) */
+export function DaysChip({ h }: { h: Home }) {
+  if (h.status === 'fuera' || h.status === 'descartado') return null
+  const dm = daysOnMarket(h, today())
+  return (
+    <span title={dm.exact ? `Anunciada el ${shortDate(dm.from)}` : `Añadida el ${shortDate(dm.from)}`}
+      className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md ${dm.days >= 90 ? 'bg-[#E0A21B]/15 text-[#C77A12]' : 'text-muted'}`}>
+      📅 {dm.exact ? '' : '≥'}{dm.days} d
+    </span>
   )
 }
 

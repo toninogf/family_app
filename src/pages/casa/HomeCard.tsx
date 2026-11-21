@@ -7,6 +7,7 @@ import { accessCount, mustHaveCheck, niceCount, perM2, portalName, price, roomsL
 import { buyingCosts, rangeK, readyPrice, reformTotal } from '../../lib/reforma'
 import { OWN_LABEL, distLabel } from '../../lib/colegios'
 import { homeScore } from '../../lib/score'
+import { DaysChip } from './FueraMercado'
 import { StatusBadge, CheckChip, shortTitle, useNearestSchool, ScoreBadge, LinkChips, kShort } from './BuscamosComun'
 import { ReasonPicker } from './Rechazadas'
 
@@ -59,6 +60,7 @@ export function HomeCard({ h, m, cover, onOpen, picked, onPick, onReject }: {
         <span className="flex flex-col items-end gap-1 shrink-0">
           <ScoreBadge s={sc} />
           <StatusBadge s={h.status} />
+          <DaysChip h={h} />
         </span>
       </span>
       {(checks.length > 0 || nice.want.length > 0 || acc.want.length > 0) && (
