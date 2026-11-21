@@ -297,8 +297,9 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
   const [showOld, setShowOld] = useState(false)
   const l = m.listing
   const ourM2 = l?.price_cents && l.size_m2 ? l.price_cents / Number(l.size_m2) : null
-  const list = m.competitors.filter(c => showOld || c.status === 'activo')
-  const old = m.competitors.filter(c => c.status !== 'activo').length
+  const list = m.competitors.filter(c => c.status === 'activo')
+  // Los que ya no están: aparte, los más recientes primero
+  const gone = m.competitors.filter(c => c.status !== 'activo').sort((a, b) => (b.off_market_on ?? b.last_seen).localeCompare(a.off_market_on ?? a.last_seen))
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[12px] text-muted">El €/m² de cada uno se corrige por lo que le falta o le sobra frente al vuestro (exterior, estado, aire, baños, planta, terraza…). La búsqueda de los martes y viernes añade y vigila pisos; también puedes añadirlos a mano.</p>
@@ -306,7 +307,25 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
       <CompetitorProposals m={m} />
       <AiCompetitorSearch m={m} householdId={householdId} />
       {list.length === 0 && <p className="text-sm text-muted">Aún no hay pisos de la competencia verificados.</p>}
-      {list.map(c => {
+      {list.map(c => card(c))}
+      <div className="flex gap-2 items-center">
+        <button onClick={() => setEdit('new')} className="flex-1 min-h-11 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir un piso parecido</button>
+      </div>
+      {gone.length > 0 && (
+        <div className="flex flex-col gap-2 mt-2">
+          <button onClick={() => setShowOld(!showOld)} aria-expanded={showOld} className="flex items-center gap-2 text-left min-h-11">
+            <span className="font-bold text-[14px] flex-1">🏁 Ya no están a la venta ({gone.length})</span>
+            <span className="text-[12px] text-muted">{gone.filter(c => c.status === 'vendido').length} vendidos · {gone.filter(c => c.status === 'retirado').length} retirados</span>
+            <span className="text-muted" aria-hidden="true">{showOld ? '▴' : '▾'}</span>
+          </button>
+          {showOld && gone.map(c => card(c))}
+        </div>
+      )}
+      {edit && <CompetitorSheet c={edit === 'new' ? undefined : edit} m={m} householdId={householdId} onClose={() => setEdit(null)} />}
+    </div>
+  )
+
+  function card(c: Competitor) {
         const adj = l ? adjustments(l, c) : []
         const total = adjTotal(adj)
         const raw = c.price_cents && c.size_m2 ? c.price_cents / Number(c.size_m2) : null
@@ -316,13 +335,18 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
         return (
           // Tarjeta pulsable (abre la ficha) con el enlace al anuncio dentro: div con rol de botón para no anidar <a> en <button>
           <div key={c.id} role="button" tabIndex={0} onClick={() => setEdit(c)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEdit(c) } }}
-            className={`rounded-2xl bg-card p-3 text-left flex flex-col gap-1 cursor-pointer ${c.status !== 'activo' ? 'opacity-60' : ''}`}>
+            className={`rounded-2xl p-3 text-left flex flex-col gap-1 cursor-pointer ${c.status === 'activo' ? 'bg-card' : 'bg-card/60 border border-line'}`}>
+            {c.status !== 'activo' && (
+              <span className={`self-start text-[12px] font-bold px-2 py-0.5 rounded-lg ${c.status === 'vendido' ? 'bg-[#1F8A4C]/15 text-[#1F8A4C]' : 'bg-line text-muted'}`}>
+                {c.status === 'vendido' ? '🤝 Vendido' : '🚫 Retirado'}{exitRange(c) ? ` ${exitRange(c)}` : ''}
+              </span>
+            )}
             <span className="flex justify-between gap-2 items-baseline">
               <span className="text-[14px] font-semibold min-w-0 truncate">{c.title}</span>
               <span className="text-[15px] font-bold shrink-0">{price(c.price_cents)}</span>
             </span>
             <span className="text-[12px] text-muted">
-              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, condText(c), c.year_built && `finca ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}`, c.status !== 'activo' && `${c.status === 'vendido' ? '🤝 vendido' : '🚫 retirado'}${exitRange(c) ? ` ${exitRange(c)}` : ''}`,
+              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, condText(c), c.year_built && `finca ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}`, 
                 `${c.status === 'activo' ? '⏱️ ' : ''}${daysText(c)}`, c.relisted > 0 && `🔁 reanunciado${c.relisted > 1 ? ` ${c.relisted} veces` : ''}`, dropped && `📉 ha bajado ${price(c.first_price_cents! - c.price_cents!)}`, hist.length > 1 && `${hist.length - 1} cambio${hist.length > 2 ? 's' : ''} de precio`].filter(Boolean).join(' · ')}
             </span>
             {raw != null && (
@@ -340,14 +364,7 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
             )}
           </div>
         )
-      })}
-      <div className="flex gap-2 items-center">
-        <button onClick={() => setEdit('new')} className="flex-1 min-h-11 rounded-xl border border-dashed border-line text-sm font-semibold text-accent">+ Añadir un piso parecido</button>
-        {old > 0 && <button onClick={() => setShowOld(!showOld)} className="min-h-11 px-3 text-[13px] text-muted">{showOld ? 'Ocultar' : `Ver ${old}`} vendidos/retirados</button>}
-      </div>
-      {edit && <CompetitorSheet c={edit === 'new' ? undefined : edit} m={m} householdId={householdId} onClose={() => setEdit(null)} />}
-    </div>
-  )
+  }
 }
 
 // «Reformado» no va aquí: sale del estado (abajo) para que no se contradigan
