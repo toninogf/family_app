@@ -568,7 +568,7 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
         <Field label="Anuncio publicado el (aprox.)" type="date" value={listedOn} max={today()} onChange={e => setListedOn(e.target.value)} />
         {c && (() => {
           const d = compDays({ ...c, listed_on: listedOn || null }, today())
-          return <p className="text-[12px] text-muted -mt-1">{listedOn ? '' : `Sin fecha del anuncio: se cuenta desde que lo encontramos (${c.first_seen.split('-').reverse().slice(0, 2).join('/')}). `}{d.ongoing ? 'Lleva' : 'Estuvo'} {d.exact ? 'unos' : '≥'} {d.days} días a la venta{c.status !== 'activo' && exitRange(c) ? `; salió ${exitRange(c)}` : ''}.</p>
+          return <p className="text-[12px] text-muted -mt-1">{!listedOn ? `Sin fecha del anuncio: se cuenta desde que lo encontramos (${c.first_seen.split('-').reverse().slice(0, 2).join('/')}). ` : !d.exact ? `El anuncio dice una fecha posterior a cuando lo encontramos (se republicaría): se cuenta desde el ${c.first_seen.split('-').reverse().slice(0, 2).join('/')}. ` : ''}{d.ongoing ? 'Lleva' : 'Estuvo'} {d.exact ? 'unos' : '≥'} {d.days} días a la venta{c.status !== 'activo' && exitRange(c) ? `; salió ${exitRange(c)}` : ''}.</p>
         })()}
         <TextArea label="Notas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={600} />
         {c && c.price_history.length > 1 && <p className="text-[12px] text-muted">Historial: {c.price_history.map(h => `${h.date.slice(5).split('-').reverse().join('/')} ${priceShort(h.cents)}`).join(' → ')}</p>}

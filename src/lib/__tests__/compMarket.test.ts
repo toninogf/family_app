@@ -51,3 +51,13 @@ describe('plazos', () => {
     expect(s.gone).toBe(1); expect(s.sold).toBe(0)
   })
 })
+
+describe('fecha de partida', () => {
+  it('se queda con la más antigua', async () => {
+    const { compSince } = await import('../compMarket')
+    const { listedSince } = await import('../market')
+    expect(compSince({ listed_on: '2026-11-15', first_seen: '2026-11-01' })).toEqual({ date: '2026-11-01', exact: false })
+    expect(compSince({ listed_on: '2026-10-01', first_seen: '2026-11-01' })).toEqual({ date: '2026-10-01', exact: true })
+    expect(listedSince({ listed_on: '2026-11-20', created_at: '2026-11-08T10:00:00Z' })).toEqual({ date: '2026-11-08', exact: false })
+  })
+})

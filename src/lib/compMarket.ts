@@ -13,8 +13,9 @@ export const median = (xs: number[]) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-/** Desde cuándo estaba a la venta (el anuncio o, si no, cuando lo encontramos) */
-export const compSince = (c: Pick<Competitor, 'listed_on' | 'first_seen'>) => ({ date: c.listed_on ?? c.first_seen, exact: !!c.listed_on })
+/** Desde cuándo estaba a la venta: la fecha más antigua que sepamos (si el anuncio dice una posterior a cuando lo vimos, se republicó o es la de «actualizado») */
+export const compSince = (c: Pick<Competitor, 'listed_on' | 'first_seen'>) =>
+  c.listed_on && c.listed_on <= c.first_seen ? { date: c.listed_on, exact: true } : { date: c.first_seen, exact: false }
 
 /** Días a la venta: hasta la salida (punto medio entre la última vez visto y el día que ya no estaba) o hasta hoy */
 export function compDays(c: Pick<Competitor, 'listed_on' | 'first_seen' | 'off_market_on' | 'off_market_after' | 'status'>, today: string) {

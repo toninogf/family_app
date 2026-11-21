@@ -14,7 +14,9 @@ const diff = (a: string, b: string) => Math.round((day(b) - day(a)) / 864e5)
 
 /** Desde cuándo estaba a la venta: la fecha del anuncio o, si no, cuando la añadisteis (y si es así, lo dice) */
 export function listedSince(h: Pick<Home, 'listed_on' | 'created_at'>) {
-  return h.listed_on ? { date: h.listed_on, exact: true } : { date: h.created_at.slice(0, 10), exact: false }
+  // La más antigua: si el anuncio dice una fecha posterior a cuando la añadisteis, se republicó o es la de «actualizado»
+  const added = h.created_at.slice(0, 10)
+  return h.listed_on && h.listed_on <= added ? { date: h.listed_on, exact: true } : { date: added, exact: false }
 }
 
 /** Días a la venta (hasta la baja o, si sigue, hasta hoy) */

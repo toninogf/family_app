@@ -55,7 +55,7 @@ export function PriceTrailLine({ h, prices }: { h: Home; prices: HomePrice[] }) 
   return (
     <div className="text-[13px] text-muted -mt-2 flex flex-col gap-0.5">
       {/* Cuánto lleva a la venta: desde el anuncio o, si no se sabe, desde que la añadisteis (serán algunos días más) */}
-      <span>📅 {dm.exact ? `Anunciada el ${shortDate(dm.from)}` : `Añadida el ${shortDate(dm.from)} (fecha del anuncio sin poner)`} · lleva {dm.exact ? 'unos' : '≥'} <b className={dm.days >= 90 ? 'text-[#C77A12]' : ''}>{dm.days} días</b> a la venta{dm.days >= 90 ? ' · suele haber margen para negociar' : ''}</span>
+      <span>📅 {dm.exact ? `Anunciada el ${shortDate(dm.from)}` : `Añadida el ${shortDate(dm.from)} ${h.listed_on ? '(antes de la fecha que pone el anuncio: se republicaría)' : '(fecha del anuncio sin poner)'}`} · lleva {dm.exact ? 'unos' : '≥'} <b className={dm.days >= 90 ? 'text-[#C77A12]' : ''}>{dm.days} días</b> a la venta{dm.days >= 90 ? ' · suele haber margen para negociar' : ''}</span>
       {t.length >= 2 && (
         <span>
           {d > 0 ? '📉' : '📈'} {t.slice(-4).map(p => `${k(p.price_cents)} (${ddmm(p.changed_on)})`).join(' → ')}
