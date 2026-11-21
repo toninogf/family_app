@@ -190,13 +190,23 @@ export type Valuation = {
   comps: { c: Competitor; adj: Adj[]; total: number; raw: number; adjusted: number }[]
 }
 /** Precio objetivo (lo que esperar cerrar), de salida y suelo razonable */
+/**
+ * Cuánto cuenta un vendido para la valoración según cuándo se vendió: completo hasta 3 meses, la mitad hasta 6 y nada después
+ * (una venta antigua ya no refleja el mercado de hoy). Los que siguen a la venta cuentan siempre.
+ */
+export function soldWeight(c: Pick<Competitor, 'status' | 'off_market_on' | 'last_seen'>, today = new Date().toISOString().slice(0, 10)) {
+  if (c.status !== 'vendido') return 1
+  const d = Math.round((Date.parse(today + 'T12:00:00Z') - Date.parse((c.off_market_on ?? c.last_seen) + 'T12:00:00Z')) / 864e5)
+  return d <= 90 ? 1 : d <= 180 ? 0.5 : 0
+}
+
 export function valuation(ours: Listing | null, competitors: Competitor[]): Valuation | null {
   if (!ours?.size_m2) return null
   const m2 = Number(ours.size_m2)
   const prem = premium(ours)
   const premPct = prem.reduce((s, x) => s + x.pct, 0)
   const comps = competitors
-    .filter(c => c.status !== 'retirado' && c.price_cents && c.size_m2)
+    .filter(c => c.status !== 'retirado' && soldWeight(c) > 0 && c.price_cents && c.size_m2)
     .map(c => {
       const adj = adjustments(ours, c)
       const total = adjTotal(adj)
@@ -206,7 +216,7 @@ export function valuation(ours: Listing | null, competitors: Competitor[]): Valu
   const refs: { v: number; w: number; label: string }[] = []
   if (comps.length) {
     // Los anuncios están pedidos ~6 % por encima de lo que se acaba firmando (los vendidos, menos)
-    const v = median(comps.map(x => ({ v: x.adjusted * (x.c.status === 'vendido' ? 0.98 : 0.94), w: 1 / (1 + Math.abs(x.total) / 10) })))
+    const v = median(comps.map(x => ({ v: x.adjusted * (x.c.status === 'vendido' ? 0.98 : 0.94), w: soldWeight(x.c) / (1 + Math.abs(x.total) / 10) })))
     refs.push({ v, w: comps.length >= 3 ? 0.6 : 0.35, label: `${comps.length} piso${comps.length > 1 ? 's' : ''} parecido${comps.length > 1 ? 's' : ''} ajustado${comps.length > 1 ? 's' : ''} al vuestro` })
   }
   const mk = ours.market ?? {}

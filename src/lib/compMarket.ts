@@ -2,7 +2,7 @@
 // y cuánto bajan antes. Las fechas son aproximadas: la búsqueda pasa dos veces por semana y, si el anuncio no dice
 // cuándo se publicó, se cuenta desde que lo encontramos (sale algo menos de lo real).
 import type { Competitor, Listing } from './mudanza'
-import { adjTotal, adjustments } from './venta'
+import { adjTotal, adjustments, soldWeight } from './venta'
 
 const day = (s: string) => Date.parse(s.slice(0, 10) + 'T12:00:00Z')
 const diff = (a: string, b: string) => Math.round((day(b) - day(a)) / 864e5)
@@ -64,8 +64,12 @@ export const MARKET_MIN_GONE = 3
 export function compMarket(comps: Competitor[], ours: Listing | null, today: string): CompMarket {
   const cs = comps.filter(c => c.review == null)
   const since28 = addDays(today, -28)
-  const gone = cs.filter(c => c.status !== 'activo' && c.off_market_on)
+  // Para tiempos y bajadas, solo los que salieron en los últimos 6 meses (lo de antes ya no refleja el mercado)
+  const since180 = addDays(today, -180)
+  const gone = cs.filter(c => c.status !== 'activo' && c.off_market_on && c.off_market_on >= since180)
   const sold = gone.filter(c => c.status === 'vendido')
+  // €/m² de vendidos: solo los que siguen contando para el precio (hasta 6 meses)
+  const soldForPrice = sold.filter(c => soldWeight(c, today) > 0)
   const m2 = (c: Competitor) => {
     if (!c.price_cents || !c.size_m2) return null
     const raw = c.price_cents / Number(c.size_m2)
@@ -84,7 +88,7 @@ export function compMarket(comps: Competitor[], ours: Listing | null, today: str
     exact: gone.filter(c => c.listed_on).length,
     droppedShare: gone.length ? Math.round((drops.filter(d => d > 0).length / gone.length) * 100) : null,
     avgDrop: drops.filter(d => d > 0).length ? Math.round((drops.filter(d => d > 0).reduce((a, b) => a + b, 0) / drops.filter(d => d > 0).length) * 10) / 10 : null,
-    soldM2: median(nums(sold.map(m2))),
+    soldM2: median(nums(soldForPrice.map(m2))),
     activeM2: median(nums(cs.filter(c => c.status === 'activo').map(m2))),
     ourM2: ours?.price_cents && ours.size_m2 ? ours.price_cents / Number(ours.size_m2) : null,
     ourDays: ours?.published_on ? Math.max(0, diff(ours.published_on, today)) : null,

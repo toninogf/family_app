@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
-import { CONDITION_ICON, CONDITION_LABEL, conditionAdj, conditionOf, OBJECTION_HELP, adjustments, adjTotal, competitorFromLinkPrompt, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
+import { soldWeight, CONDITION_ICON, CONDITION_LABEL, conditionAdj, conditionOf, OBJECTION_HELP, adjustments, adjTotal, competitorFromLinkPrompt, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
 import { compDays, compMarket, exitRange, MARKET_MIN_GONE } from '../../lib/compMarket'
 import { saleNet } from '../../lib/funds'
@@ -213,7 +213,7 @@ function MarketMoves({ m }: { m: Mudanza }) {
         <span>💶 Corregido al vuestro: {s.soldM2 != null ? <>vendidos <b>{k(s.soldM2)}</b> · </> : null}{s.activeM2 != null ? <>a la venta {k(s.activeM2)} · </> : null}vosotros <b className={s.ourM2 > (s.soldM2 ?? s.activeM2!) * 1.05 ? 'text-danger' : ''}>{k(s.ourM2)}</b></span>
       )}
       {s.relisted > 0 && <span className="text-muted">🔁 {s.relisted} han vuelto a salir con otro anuncio: se cuentan como el mismo piso.</span>}
-      <span className="text-[11px] text-muted">Retirado no siempre es vendido: los vendidos pesan más en la valoración del vuestro.</span>
+      <span className="text-[11px] text-muted">Retirado no siempre es vendido: los vendidos pesan más en la valoración del vuestro (completos hasta 3 meses, la mitad hasta 6; después dejan de contar).</span>
     </div>
   )
 }
@@ -339,6 +339,8 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
             {c.status !== 'activo' && (
               <span className={`self-start text-[12px] font-bold px-2 py-0.5 rounded-lg ${c.status === 'vendido' ? 'bg-[#1F8A4C]/15 text-[#1F8A4C]' : 'bg-line text-muted'}`}>
                 {c.status === 'vendido' ? '🤝 Vendido' : '🚫 Retirado'}{exitRange(c) ? ` ${exitRange(c)}` : ''}
+                {c.status === 'vendido' && (soldWeight(c) === 0 ? ' · ya no cuenta para el precio (más de 6 meses)' : soldWeight(c) < 1 ? ' · cuenta la mitad (3–6 meses)' : '')}
+                {c.status === 'retirado' && c.off_market_on && c.off_market_on < new Date(Date.now() - 180 * 864e5).toISOString().slice(0, 10) ? ' · ya no cuenta (más de 6 meses)' : ''}
               </span>
             )}
             <span className="flex justify-between gap-2 items-baseline">

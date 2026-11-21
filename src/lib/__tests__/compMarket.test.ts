@@ -36,3 +36,18 @@ describe('cómo se mueve el mercado', () => {
     expect(s.droppedShare).toBe(50); expect(s.avgDrop).toBe(10)
   })
 })
+
+describe('plazos', () => {
+  it('peso de los vendidos según cuándo se vendieron', async () => {
+    const { soldWeight } = await import('../venta')
+    const v = (d: string) => soldWeight({ status: 'vendido', off_market_on: d, last_seen: d }, '2026-11-21')
+    expect(v('2026-10-01')).toBe(1)
+    expect(v('2026-07-01')).toBe(0.5)
+    expect(v('2026-03-01')).toBe(0)
+    expect(soldWeight({ status: 'activo', off_market_on: null, last_seen: '2025-01-01' }, '2026-11-21')).toBe(1)
+  })
+  it('el panel ignora salidas de hace más de 6 meses', () => {
+    const s = compMarket([C({ status: 'vendido', off_market_on: '2026-03-01' }), C({ status: 'retirado', off_market_on: '2026-11-01' })], null, '2026-11-21')
+    expect(s.gone).toBe(1); expect(s.sold).toBe(0)
+  })
+})
