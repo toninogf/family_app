@@ -182,7 +182,8 @@ function condText(c: Competitor) {
 /** «unos 45 días a la venta» (aprox. si no sabemos cuándo se publicó) */
 function daysText(c: Competitor) {
   const d = compDays(c, today())
-  return `${d.exact ? '' : '≥ '}${d.days} día${d.days === 1 ? '' : 's'} ${d.ongoing ? 'a la venta' : 'en venta'}`
+  const since = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(new Date((c.listed_on ?? c.first_seen) + 'T12:00:00Z'))
+  return `${d.exact ? '' : '≥ '}${d.days} día${d.days === 1 ? '' : 's'} ${d.ongoing ? 'a la venta' : 'en venta'} (${d.exact ? 'anunciado' : 'visto'} el ${since})`
 }
 
 /** «📊 Cómo se mueve el mercado»: entradas y salidas de pisos parecidos, cuánto tardan y cuánto bajan, frente al vuestro */
@@ -363,6 +364,7 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
   const [floor, setFloor] = useState(c?.floor ?? '')
   const [cond, setCond] = useState<Condition | null>(c?.condition ?? null)
   const [reformYear, setReformYear] = useState(c?.reform_year?.toString() ?? '')
+  const [listedOn, setListedOn] = useState(c?.listed_on ?? '')
   const [yearBuilt, setYearBuilt] = useState(c?.year_built?.toString() ?? '')
   const [buildingRehab, setBuildingRehab] = useState(c?.building_reform_year?.toString() ?? '')
   const [features, setFeatures] = useState<string[]>(c?.features ?? [])
@@ -450,6 +452,7 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, heating_type: central ? 'central' : c?.heating_type === 'central' ? null : c?.heating_type ?? null,
       energy, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light,
       price_history: cents != null && cents !== c?.price_cents ? [...hist, { date: today(), cents }].slice(-60) : hist,
+      listed_on: listedOn || null,
       // Al marcarlo vendido o retirado a mano: sale hoy (la última vez a la venta, la que teníamos); si vuelve, se borra
       ...(status !== 'activo' && (!c || c.status === 'activo') ? { off_market_on: today(), off_market_after: c?.last_seen ?? null }
         : status === 'activo' && c && c.status !== 'activo' ? { off_market_on: null, off_market_after: null, relisted: c.relisted + 1 } : {})
@@ -543,6 +546,11 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
         </div>
         <SelectField<Competitor['status']> label="Situación" value={status} onChange={v => setStatus(v ?? 'activo')} empty="En venta"
           options={[{ value: 'vendido', label: 'Vendido' }, { value: 'retirado', label: 'Retirado' }]} />
+        <Field label="Anuncio publicado el (aprox.)" type="date" value={listedOn} max={today()} onChange={e => setListedOn(e.target.value)} />
+        {c && (() => {
+          const d = compDays({ ...c, listed_on: listedOn || null }, today())
+          return <p className="text-[12px] text-muted -mt-1">{listedOn ? '' : `Sin fecha del anuncio: se cuenta desde que lo encontramos (${c.first_seen.split('-').reverse().slice(0, 2).join('/')}). `}{d.ongoing ? 'Lleva' : 'Estuvo'} {d.exact ? 'unos' : '≥'} {d.days} días a la venta{c.status !== 'activo' && exitRange(c) ? `; salió ${exitRange(c)}` : ''}.</p>
+        })()}
         <TextArea label="Notas" value={notes} onChange={e => setNotes(e.target.value)} maxLength={600} />
         {c && c.price_history.length > 1 && <p className="text-[12px] text-muted">Historial: {c.price_history.map(h => `${h.date.slice(5).split('-').reverse().join('/')} ${priceShort(h.cents)}`).join(' → ')}</p>}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
