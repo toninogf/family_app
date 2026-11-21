@@ -119,13 +119,6 @@ export function HomeEditSheet({ home, initial, m, householdId, onClose, onCreate
     if (d.changes) setChanges(d.changes)
     if (d.reform) setReform(r => mergeAiReform(r, d.reform!))
     if (d.cadastral_ref && !cadRef) setCadRef(d.cadastral_ref)
-    if (d.zone_m2_eur || d.asking_m2_eur) {
-      setMarket(mk => ({
-        ...(mk ?? {}), at: new Date().toISOString(),
-        ...(d.zone_m2_eur ? { paid_m2: d.zone_m2_eur, paid_note: d.zone_m2_note } : {}),
-        ...(d.asking_m2_eur ? { asking_m2: d.asking_m2_eur, asking_note: d.asking_m2_note } : {})
-      }))
-    }
     if (d.solar_note && health.solar?.src !== 'manual') setHealth(hl => ({ ...hl, solar: { s: 'ok', n: d.solar_note!, src: 'ia' } }))
     if (d.checks) {
       const next: Health = { ...health, ...(d.solar_note && health.solar?.src !== 'manual' ? { solar: { s: 'ok' as const, n: d.solar_note, src: 'ia' as const } } : {}) }
@@ -137,6 +130,11 @@ export function HomeEditSheet({ home, initial, m, householdId, onClose, onCreate
     }
     const f = merger()
     const eur = (v?: number) => (v ? priceInput(Math.round(v * 100)) : null)
+    // €/m² de la zona: si ya había otro dato, se ofrece en la lista de diferencias en vez de cambiarlo
+    const m2eur = (v: number | null | undefined) => (v ? `${Math.round(v).toLocaleString('es-ES')} €/m²` : null)
+    const setMk = (part: Partial<Market>) => setMarket(mk => ({ ...(mk ?? {}), ...part, at: new Date().toISOString() }))
+    f.put('€/m² pagado en la zona', m2eur(market?.paid_m2), m2eur(d.zone_m2_eur), () => setMk({ paid_m2: d.zone_m2_eur, paid_note: d.zone_m2_note }))
+    f.put('€/m² pedido en la zona', m2eur(market?.asking_m2), m2eur(d.asking_m2_eur), () => setMk({ asking_m2: d.asking_m2_eur, asking_note: d.asking_m2_note }))
     f.put('nombre', title, d.title, setTitle, { diff: false })
     f.put('precio', amount, eur(d.price_eur), setAmount)
     f.put('m²', m2, d.size_m2 ? String(d.size_m2).replace('.', ',') : null, setM2)

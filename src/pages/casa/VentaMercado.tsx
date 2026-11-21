@@ -8,6 +8,7 @@ import { needFromSale } from '../../lib/afford'
 import { usePurchaseLoan } from '../../lib/purchaseFunds'
 import { ConfirmDelete, Sheet, TextArea } from '../../components/Sheet'
 import { Field, SelectField } from '../../components/FormKit'
+import { ImportDiffs, importMessage, merger, type ImportDiff } from '../../components/ListingImport'
 
 const toneCls = (t: string) => (t === 'ok' ? 'text-accent' : t === 'warn' ? 'text-[#C77A12]' : t === 'bad' ? 'text-danger' : 'text-muted')
 const dot = (t: string) => (t === 'ok' ? '🟢' : t === 'warn' ? '🟠' : t === 'bad' ? '🔴' : '⚪')
@@ -379,6 +380,7 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
   const int = (x: string) => (x.trim() && Number.isFinite(Number(x)) ? Math.round(Number(x)) : null)
   // Ayuda de la IA: le pasas el enlace, contesta con un JSON y se rellena la ficha (solo lo que esté vacío)
   const [aiNote, setAiNote] = useState('')
+  const [diffs, setDiffs] = useState<ImportDiff[]>([])
   const [aiText, setAiText] = useState('')
   const [aiOpen, setAiOpen] = useState(false)
   const fullUrl = url.trim() ? (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`) : ''
@@ -396,32 +398,39 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
     const r = parseCompetitors(t)
     const x = r.items[0]
     if (r.error || !x) { setAiNote(r.error ?? 'La respuesta no trae el piso.'); return }
-    let n = 0
-    const put = <T,>(empty: boolean, v: T | null | undefined, set: (v: T) => void) => { if (empty && v != null && v !== '') { set(v); n++ } }
-    put(!title.trim(), x.title !== 'Piso parecido' ? x.title : null, setTitle)
-    put(!zone.trim() || zone === m.listing?.zone, x.zone, setZone)
-    put(!amount.trim(), x.price_cents != null ? priceInput(x.price_cents) : null, setAmount)
-    put(!m2.trim(), x.size_m2 != null ? String(x.size_m2) : null, setM2)
-    put(!rooms.trim(), x.rooms != null ? String(Math.round(x.rooms)) : null, setRooms)
-    put(!baths.trim(), x.baths != null ? String(Math.round(x.baths)) : null, setBaths)
-    put(!floor.trim(), x.floor, setFloor)
-    put(!cond, x.condition, setCond)
-    put(!reformYear.trim(), x.reform_year != null ? String(Math.round(x.reform_year)) : null, setReformYear)
-    put(!yearBuilt.trim(), x.year_built != null ? String(x.year_built) : null, setYearBuilt)
-    put(!buildingRehab.trim(), x.building_reform_year != null ? String(x.building_reform_year) : null, setBuildingRehab)
-    put(!fee.trim(), x.community_fee_cents != null ? priceInput(x.community_fee_cents) : null, setFee)
-    put(!energy, x.energy, setEnergy)
-    put(!building, x.building_state, setBuilding)
-    put(!derrama.trim(), x.derrama_cents != null ? priceInput(x.derrama_cents) : null, setDerrama)
-    put(!noise, x.noise, setNoise)
-    put(!light, x.light, setLight)
-    put(!notes.trim(), x.notes, setNotes)
-    if (x.heating_type === 'central' && !central) { setCentral(true); n++ }
-    const newF = x.features.filter(f => COMP_FEATURES.includes(f) && !features.includes(f))
-    if (newF.length) { setFeatures(f => [...f, ...newF]); n++ }
-    if (x.status !== 'activo' && status === 'activo') { setStatus(x.status); n++ }
+    // Lo vacío se rellena; si ya había otro valor, no se toca y se ofrece en la lista de diferencias
+    const f = merger()
+    const eurIn = (c: number | null | undefined) => (c != null ? priceInput(c) : null)
+    const year = (y: number | null | undefined) => (y != null ? String(Math.round(y)) : null)
+    f.put('nombre', title, x.title !== 'Piso parecido' ? x.title : null, setTitle, { diff: false })
+    f.put('zona', zone === m.listing?.zone ? '' : zone, x.zone, setZone)
+    f.put('precio', amount, eurIn(x.price_cents), setAmount)
+    f.put('m²', m2, x.size_m2 != null ? String(x.size_m2) : null, setM2)
+    f.put('habitaciones', rooms, year(x.rooms), setRooms)
+    f.put('baños', baths, year(x.baths), setBaths)
+    f.put('planta', floor, x.floor, setFloor)
+    f.put('estado', cond ? CONDITION_LABEL[cond] : null, x.condition ? CONDITION_LABEL[x.condition] : null, () => setCond(x.condition))
+    f.put('año de reforma', reformYear, year(x.reform_year), setReformYear)
+    f.put('año de la finca', yearBuilt, year(x.year_built), setYearBuilt)
+    f.put('rehabilitación de la finca', buildingRehab, year(x.building_reform_year), setBuildingRehab)
+    f.put('comunidad', fee, eurIn(x.community_fee_cents), setFee)
+    f.put('certificado', energy, x.energy, () => setEnergy(x.energy))
+    f.put('edificio', building ? BUILDING_LABEL[building] : null, x.building_state ? BUILDING_LABEL[x.building_state] : null, () => setBuilding(x.building_state))
+    f.put('derrama', derrama, eurIn(x.derrama_cents), setDerrama)
+    f.put('ruido', noise ? NOISE_LABEL[noise] : null, x.noise ? NOISE_LABEL[x.noise] : null, () => setNoise(x.noise))
+    f.put('luz', light ? LIGHT_LABEL[light] : null, x.light ? LIGHT_LABEL[x.light] : null, () => setLight(x.light))
+    f.put('notas', notes, x.notes, setNotes, { diff: false })
+    if (x.heating_type === 'central' && !central) { setCentral(true); f.filled.push('calefacción central') }
+    const newF = x.features.filter(k => COMP_FEATURES.includes(k) && !features.includes(k))
+    if (newF.length) { setFeatures(cur => [...cur, ...newF]); f.filled.push('características') }
+    if (x.status !== status) {
+      if (status === 'activo') { setStatus(x.status); f.filled.push('situación') }
+      else { const L = { activo: 'en venta', vendido: 'vendido', retirado: 'retirado' } as const; f.diffs.push({ label: 'situación', now: L[status], next: L[x.status], use: () => setStatus(x.status) }) }
+    }
     setAiText(''); setAiOpen(false)
-    setAiNote(n ? `✨ Rellenados ${n} dato${n === 1 ? '' : 's'}. Revísalos antes de guardar (lo que ya tenías no se ha tocado).` : 'La respuesta no añade nada a lo que ya tienes.')
+    setDiffs(f.diffs)
+    const msg = importMessage('✨ Rellenado', f.filled, f.diffs.length)
+    setAiNote(f.filled.length || f.diffs.length ? msg.text : 'La respuesta no añade nada a lo que ya tienes.')
   }
   async function pasteAi() {
     try { const t = await navigator.clipboard.readText(); setAiText(t); fillFrom(t) } catch { setAiOpen(true); setAiNote('No puedo leer el portapapeles: pega la respuesta en el recuadro.') }
@@ -476,6 +485,7 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
             </>
           )}
           {aiNote && <span className="text-[12px] text-muted">{aiNote}</span>}
+          <ImportDiffs diffs={diffs} onChange={setDiffs} />
         </div>
         <Field label="Título" value={title} onChange={e => setTitle(e.target.value)} maxLength={160} placeholder="Piso 2 hab. en Vallehermoso" />
         <div className="grid grid-cols-2 gap-2">
