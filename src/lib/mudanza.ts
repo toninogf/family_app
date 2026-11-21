@@ -223,10 +223,10 @@ export const PREP_ITEMS = [
   'Juguetes recogidos', 'Guardar papeles y objetos de valor', 'Plan para los niños'
 ]
 /** Tipo de calefacción y de aire acondicionado */
-export type HeatingType = 'gas_natural' | 'gasoil' | 'propano' | 'electrica' | 'aerotermia' | 'geotermia' | 'biomasa' | 'central' | 'ninguna'
+export type HeatingType = 'gas_natural' | 'gasoil' | 'propano' | 'electrica' | 'aerotermia' | 'geotermia' | 'bomba_calor' | 'biomasa' | 'central' | 'ninguna'
 export type Cooling = 'no' | 'si' | 'splits' | 'conductos' | 'aerotermia'
 export const HEATING: Record<HeatingType, string> = {
-  gas_natural: 'Gas natural', gasoil: 'Gasóleo', propano: 'Propano', electrica: 'Eléctrica', aerotermia: 'Aerotermia', geotermia: 'Geotermia',
+  gas_natural: 'Gas natural', gasoil: 'Gasóleo', propano: 'Propano', electrica: 'Eléctrica', aerotermia: 'Aerotermia', geotermia: 'Geotermia', bomba_calor: 'Bomba de calor (splits o conductos)',
   biomasa: 'Biomasa / pellets', central: 'Central (comunidad)', ninguna: 'Sin calefacción'
 }
 export const COOLING: Record<Cooling, string> = { no: 'Sin aire', si: 'Sí', splits: 'Splits', conductos: 'Por conductos', aerotermia: 'Aerotermia' }

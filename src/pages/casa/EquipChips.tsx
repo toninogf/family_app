@@ -17,8 +17,10 @@ export function EquipChips({ label, features, setFeatures, heat, setHeat, cool, 
         const c = v.find(k => k.startsWith('clim:'))
         setFeatures(v.filter(k => !k.includes(':') && !(c && k === 'aire')))
         const h = v.find(k => k.startsWith('sis:'))
-        setHeat(h ? h.slice(4) as HeatingType : null)
-        setCool(c ? c.slice(5) as Cooling : null)
+        const heatNext = h ? h.slice(4) as HeatingType : null
+        setHeat(heatNext)
+        // La bomba de calor (splits o conductos) también es aire acondicionado: si no había, se marca «aire»
+        setCool(c ? c.slice(5) as Cooling : heatNext === 'bomba_calor' && heat !== 'bomba_calor' ? 'si' : null)
       }} />
   )
 }

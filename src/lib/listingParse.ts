@@ -99,7 +99,7 @@ const FEATURE_PATTERNS: [string, RegExp][] = [
   ['parcela_pendiente', /\b(parcela|terreno|finca) (en|con) pendiente\b|\bparcela en pendiente\b|\bterrazas escalonadas\b|\bdesnivel\b/i],
   ['orientacion_sur', /\borientaci[oó]n (sur|sureste|suroeste)\b|\borientad[oa] al sur\b/i],
   ['vistas', /\bvistas\b/i],
-  ['aerotermia', /\baerotermia\b|\bbomba de calor\b/i],
+  ['aerotermia', /\baerotermia\b|\bbomba de calor aire[- ]agua\b/i],
   ['geotermia', /\bgeot[eé]rmi(a|ca)\b/i],
   ['sotano', /\bs[oó]tano\b|\bsemis[oó]tano\b/i],
   ['sotano_habitable', /\b(semi)?s[oó]tano (habitable|acondicionado|diáfano acondicionado|con ventanas)\b|\b(semi)?s[oó]tano con (dormitorio|habitaci[oó]n|sal[oó]n)\b/i],
@@ -161,7 +161,7 @@ export function parseListing(raw: string): ListingData {
   const energy = text.match(/(?:[Cc]onsumo|[Cc]alificaci[oó]n energ[eé]tica|[Cc]ertificado energ[eé]tico)[^\n]{0,40}?\b([A-G])\b(?![a-záéíóúñ])/)
   if (energy) out.energy = energy[1]
   // Calefacción y aire, si el anuncio lo dice con palabras
-  const heatTxt = text.match(/calefacci[oó]n[^.\n]{0,60}/i)?.[0] ?? (/geoterm/i.test(text) ? 'geotermia' : /aerotermia|bomba de calor/i.test(text) ? 'aerotermia' : '')
+  const heatTxt = text.match(/calefacci[oó]n[^.\n]{0,60}/i)?.[0] ?? (/geoterm/i.test(text) ? 'geotermia' : /aerotermia|bomba de calor aire[- ]agua/i.test(text) ? 'aerotermia' : /bomba de calor/i.test(text) ? 'bomba de calor' : '')
   const hType = heatTxt && heatingFrom(heatTxt); if (hType && hType !== 'ninguna') out.heating_type = hType
   const coolTxt = text.match(/aire acondicionado[^.\n]{0,40}|climatizaci[oó]n[^.\n]{0,40}|splits?\b/i)?.[0]
   const cType = coolTxt && coolingFrom(coolTxt); if (cType && cType !== 'no') out.cooling = cType
@@ -275,7 +275,7 @@ IBI: (€/año, solo el número)
 LUZ: (gasto medio de luz en €/mes, solo el número, si aparece)
 AGUA: (gasto medio de agua en €/mes, solo el número, si aparece)
 CALEFACCION: (gasto medio de calefacción en €/mes, solo el número, si aparece)
-SISTEMA: (tipo de calefacción: gas natural, gasóleo, propano, eléctrica, aerotermia, geotermia, biomasa/pellets, central de la comunidad o ninguna)
+SISTEMA: (tipo de calefacción: gas natural, gasóleo, propano, eléctrica, aerotermia (bomba de calor aire-agua), geotermia, bomba de calor aire-aire (splits o conductos que dan calor), biomasa/pellets, central de la comunidad o ninguna)
 CLIMA: (aire acondicionado: no, splits, por conductos o aerotermia)
 REFORMA: (estado para entrar a vivir, mirando el texto y TODAS las fotos: «para entrar a vivir», «lavado de cara», «reforma parcial» o «reforma integral» | qué habría que reformar, separado por comas: cocina, baños, pintura, suelos, puertas, ventanas, electricidad, fontanería, caldera, aire, tejado, aislamiento, fachada, humedades, jardín, piscina, valla | una frase con lo que se ve, p. ej. «cocina y baños de origen, ventanas de aluminio antiguo». Pon SOLO las partidas que se vean claramente en las fotos o diga el texto; si dudas, no la pongas: es mejor quedarse corto que pasarse)
 AÑO: (de construcción)
@@ -458,15 +458,19 @@ export function parseAny(raw: string): ListingData {
   const free = parseListing(text)
   const extra = { ...(photos.length ? { photo_urls: photos } : {}), ...(sources.length ? { sources } : {}),
     ...(changes && !/^[-–—]$/.test(changes) ? { changes: changes.slice(0, 1500) } : {}) }
-  if (!ai) return { ...free, ...extra }
-  return { ...free, ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v != null)), ...extra }
+  const merged = !ai ? { ...free, ...extra } : { ...free, ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v != null)), ...extra }
+  // La bomba de calor aire-aire es el mismo aparato que el aire acondicionado: si no consta el aire, se pone
+  if (merged.heating_type === 'bomba_calor' && (!merged.cooling || merged.cooling === 'no')) merged.cooling = 'si'
+  return merged
 }
 
 /** «gas natural», «caldera de gasoil», «bomba de calor»… → tipo de calefacción */
 export function heatingFrom(v: string): import('./mudanza').HeatingType | undefined {
   const t = fold(v).toLowerCase()
   if (/geoterm/.test(t)) return 'geotermia'
-  if (/aerotermia|bomba de calor/.test(t)) return 'aerotermia'
+  // Aerotermia = bomba de calor aire-agua (radiadores o suelo); «bomba de calor» a secas suele ser aire-aire (splits o conductos)
+  if (/aerotermia|bomba de calor aire[- ]?agua/.test(t)) return 'aerotermia'
+  if (/bomba de calor/.test(t)) return 'bomba_calor'
   if (/gas natural/.test(t)) return 'gas_natural'
   if (/gasoil|gasoleo|gas oil/.test(t)) return 'gasoil'
   if (/propano|butano|glp/.test(t)) return 'propano'
@@ -481,9 +485,10 @@ export function heatingFrom(v: string): import('./mudanza').HeatingType | undefi
 /** «aire por conductos», «splits», «no»… → aire acondicionado */
 export function coolingFrom(v: string): import('./mudanza').Cooling | undefined {
   const t = fold(v).toLowerCase()
-  if (/aerotermia|bomba de calor/.test(t)) return 'aerotermia'
+  if (/aerotermia|bomba de calor aire[- ]?agua/.test(t)) return 'aerotermia'
   if (/conducto/.test(t)) return 'conductos'
   if (/split/.test(t)) return 'splits'
+  if (/bomba de calor/.test(t)) return 'si'
   if (/^(no|sin|ninguno|no tiene)\b/.test(t)) return 'no'
   if (/^s[ií]\b|aire acondicionado|climatizaci/.test(t)) return 'si'
   return undefined

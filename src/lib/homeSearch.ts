@@ -13,7 +13,7 @@ export type HomeDraft = {
   reform_state: ReformState | null; reform_items: string[]; published: string | null; note: string | null
 }
 
-const HEAT: HeatingType[] = ['gas_natural', 'gasoil', 'propano', 'electrica', 'aerotermia', 'geotermia', 'biomasa', 'central', 'ninguna']
+const HEAT: HeatingType[] = ['gas_natural', 'gasoil', 'propano', 'electrica', 'aerotermia', 'geotermia', 'bomba_calor', 'biomasa', 'central', 'ninguna']
 const COOL: Cooling[] = ['no', 'splits', 'conductos', 'aerotermia']
 
 /** Lo aprendido de rechazos («No nos interesa») y descartes, en corto (la petición tiene que caber en el enlace a la IA) */
