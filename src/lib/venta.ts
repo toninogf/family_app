@@ -337,7 +337,7 @@ export function opinionPrompt(o: {
 }
 
 // ---------- Buscar pisos parecidos con una IA (y pegar su respuesta) ----------
-export type CompDraft = Omit<Competitor, 'id' | 'first_seen' | 'last_seen' | 'price_history' | 'source' | 'first_price_cents' | 'review' | 'reject_reason'>
+export type CompDraft = Omit<Competitor, 'id' | 'first_seen' | 'last_seen' | 'price_history' | 'source' | 'first_price_cents' | 'review' | 'reject_reason' | 'listed_on' | 'off_market_on' | 'off_market_after' | 'relisted' | 'old_urls'>
 export type CompParse = { items: CompDraft[]; market: { paid_m2?: number; asking_m2?: number; avg_days?: number } | null; error?: string }
 
 export function competitorsPrompt(l: Listing, existing: Competitor[]) {

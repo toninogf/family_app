@@ -8,7 +8,7 @@ import webpush from 'npm:web-push@3.6.7'
 const APP_URL = 'https://family-app.toninogf.workers.dev'
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 type Sub = { id: string; household_id: string; member_id: string; endpoint: string; p256dh: string; auth: string; mudanza: boolean }
-type Q = { id: string; household_id: string; kind: 'propuesta' | 'bajada' | 'competidor' | 'retirada'; ref_id: string | null; title: string; detail: string | null }
+type Q = { id: string; household_id: string; kind: 'propuesta' | 'bajada' | 'competidor' | 'retirada' | 'comp_vendido' | 'mercado'; ref_id: string | null; title: string; detail: string | null }
 
 const madridDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(d)
 function addDays(d: string, n: number) { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) }
@@ -18,7 +18,9 @@ const GROUPS = [
   { kind: 'propuesta', title: '🤖 Casas nuevas para revisar', url: '/mudanza' },
   { kind: 'bajada', title: '📉 Han bajado de precio', url: '/mudanza' },
   { kind: 'competidor', title: '🏘️ Pisos nuevos de la competencia', url: '/mudanza?vista=vendemos' },
-  { kind: 'retirada', title: '🏁 Parece que ya no están a la venta', url: '/mudanza' }
+  { kind: 'retirada', title: '🏁 Parece que ya no están a la venta', url: '/mudanza' },
+  { kind: 'comp_vendido', title: '🤝 Se ha vendido un piso parecido al vuestro', url: '/mudanza?vista=vendemos' },
+  { kind: 'mercado', title: '📊 Mercado parado en vuestra zona', url: '/mudanza?vista=vendemos' }
 ] as const
 
 Deno.serve(async (req: Request) => {
@@ -61,7 +63,7 @@ Deno.serve(async (req: Request) => {
         const list = mine.filter(r => r.kind === g.kind)
         if (!list.length || !to.length) continue
         const body = list.slice(0, 4).map(r => `${r.title}${r.detail ? ` · ${r.detail}` : ''}`).join('\n') + (list.length > 4 ? `\n…y ${list.length - 4} más` : '')
-        const url = list.length === 1 && g.kind !== 'competidor' && list[0].ref_id ? `/mudanza?piso=${list[0].ref_id}` : g.url
+        const url = list.length === 1 && (g.kind === 'propuesta' || g.kind === 'bajada' || g.kind === 'retirada') && list[0].ref_id ? `/mudanza?piso=${list[0].ref_id}` : g.url
         n += await send(to, { title: g.title, body, url, tag: `mudanza-${g.kind}-${today}` })
       }
       await db.from('notify_queue').update({ sent_at: new Date().toISOString() }).in('id', mine.map(r => r.id))

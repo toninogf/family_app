@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BUILDING_LABEL, FEATURES, LIGHT_LABEL, NOISE_LABEL, parsePrice, portalName, price, priceInput, priceShort, type BuildingState, type Competitor, type Light, type Mudanza, type Noise } from '../../lib/mudanza'
 import { CONDITION_ICON, CONDITION_LABEL, conditionAdj, conditionOf, OBJECTION_HELP, adjustments, adjTotal, competitorFromLinkPrompt, competitorsPrompt, opinionPrompt, parseCompetitors, sameUrl, threshold, thermometer, valuation, type CompParse, type Condition } from '../../lib/venta'
 import { today } from '../../lib/dates'
+import { compDays, compMarket, exitRange, MARKET_MIN_GONE } from '../../lib/compMarket'
 import { saleNet } from '../../lib/funds'
 import { needFromSale } from '../../lib/afford'
 import { usePurchaseLoan } from '../../lib/purchaseFunds'
@@ -177,6 +178,44 @@ function condText(c: Competitor) {
   return k ? `${CONDITION_ICON[k]} ${CONDITION_LABEL[k].replace(/ \(.*\)$/, '').toLowerCase()}` : null
 }
 
+/** «unos 45 días a la venta» (aprox. si no sabemos cuándo se publicó) */
+function daysText(c: Competitor) {
+  const d = compDays(c, today())
+  return `${d.exact ? '' : '≥ '}${d.days} día${d.days === 1 ? '' : 's'} ${d.ongoing ? 'a la venta' : 'en venta'}`
+}
+
+/** «📊 Cómo se mueve el mercado»: entradas y salidas de pisos parecidos, cuánto tardan y cuánto bajan, frente al vuestro */
+function MarketMoves({ m }: { m: Mudanza }) {
+  const s = compMarket(m.competitors, m.listing, today())
+  if (!s.active && !s.gone) return null
+  const enough = s.gone >= MARKET_MIN_GONE
+  const ref = s.medianDaysSold ?? s.medianDays
+  const k = (c: number) => `${Math.round(c / 100).toLocaleString('es-ES')} €/m²`
+  return (
+    <div className="rounded-2xl bg-card p-3 flex flex-col gap-1.5 text-[13px]">
+      <span className="font-bold text-[14px]">📊 Cómo se mueve el mercado</span>
+      <span>{s.active} parecido{s.active === 1 ? '' : 's'} a la venta · últimas 4 semanas: <b>+{s.newIn}</b> nuevo{s.newIn === 1 ? '' : 's'}, <b>{s.soldOut}</b> vendido{s.soldOut === 1 ? '' : 's'} y <b>{s.withdrawnOut}</b> retirado{s.withdrawnOut === 1 ? '' : 's'}</span>
+      {enough ? (
+        <>
+          <span>⏱️ Tardan en irse <b>unos {ref} días</b>{s.medianDaysSold != null && s.medianDays != null && s.sold < s.gone ? <span className="text-muted"> (vendidos; contando también los retirados, {s.medianDays})</span> : null}
+            {s.exact < s.gone ? <span className="text-muted"> · aproximado: de {s.gone - s.exact} no sabemos cuándo se publicaron (serán algunos días más)</span> : null}</span>
+          {s.droppedShare != null && <span>📉 {s.droppedShare} % bajaron antes de irse{s.avgDrop ? <> (de media un <b>{s.avgDrop.toLocaleString('es-ES')} %</b>)</> : ''}</span>}
+          {s.ourDays != null && ref != null && (
+            <span className={s.ourDays > ref * 1.5 ? 'text-danger font-semibold' : ''}>🏠 Vosotros lleváis <b>{s.ourDays} días</b>{s.ourDays > ref * 1.5 ? ': bastante más que los parecidos; toca revisar precio o presentación' : s.ourDays > ref ? ': ya más que la media' : ': dentro de lo normal'}</span>
+          )}
+        </>
+      ) : (
+        <span className="text-muted">Cuando se vayan {MARKET_MIN_GONE} o más ({s.gone} hasta ahora) os diré cuánto tardan en venderse y cuánto bajan antes. La búsqueda de los martes y viernes los va siguiendo.</span>
+      )}
+      {(s.soldM2 != null || s.activeM2 != null) && s.ourM2 != null && (
+        <span>💶 Corregido al vuestro: {s.soldM2 != null ? <>vendidos <b>{k(s.soldM2)}</b> · </> : null}{s.activeM2 != null ? <>a la venta {k(s.activeM2)} · </> : null}vosotros <b className={s.ourM2 > (s.soldM2 ?? s.activeM2!) * 1.05 ? 'text-danger' : ''}>{k(s.ourM2)}</b></span>
+      )}
+      {s.relisted > 0 && <span className="text-muted">🔁 {s.relisted} han vuelto a salir con otro anuncio: se cuentan como el mismo piso.</span>}
+      <span className="text-[11px] text-muted">Retirado no siempre es vendido: los vendidos pesan más en la valoración del vuestro.</span>
+    </div>
+  )
+}
+
 function CompetitorProposals({ m }: { m: Mudanza }) {
   const [rejecting, setRejecting] = useState<string | null>(null)
   const [other, setOther] = useState('')
@@ -261,6 +300,7 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[12px] text-muted">El €/m² de cada uno se corrige por lo que le falta o le sobra frente al vuestro (exterior, estado, aire, baños, planta, terraza…). La búsqueda de los martes y viernes añade y vigila pisos; también puedes añadirlos a mano.</p>
+      <MarketMoves m={m} />
       <CompetitorProposals m={m} />
       <AiCompetitorSearch m={m} householdId={householdId} />
       {list.length === 0 && <p className="text-sm text-muted">Aún no hay pisos de la competencia verificados.</p>}
@@ -280,7 +320,8 @@ export function Competitors({ m, householdId }: { m: Mudanza; householdId: strin
               <span className="text-[15px] font-bold shrink-0">{price(c.price_cents)}</span>
             </span>
             <span className="text-[12px] text-muted">
-              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, condText(c), c.year_built && `finca ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}`, c.status !== 'activo' && (c.status === 'vendido' ? 'vendido' : 'retirado'), dropped && `📉 ha bajado ${price(c.first_price_cents! - c.price_cents!)}`, hist.length > 1 && `${hist.length - 1} cambio${hist.length > 2 ? 's' : ''} de precio`].filter(Boolean).join(' · ')}
+              {[c.zone, c.size_m2 && `${Number(c.size_m2)} m²`, c.rooms != null && `${c.rooms} hab.`, c.baths != null && `${c.baths} baños`, c.floor, condText(c), c.year_built && `finca ${c.year_built}${c.building_reform_year ? ` (rehab. ${c.building_reform_year})` : ''}`, c.status !== 'activo' && `${c.status === 'vendido' ? '🤝 vendido' : '🚫 retirado'}${exitRange(c) ? ` ${exitRange(c)}` : ''}`,
+                `${c.status === 'activo' ? '⏱️ ' : ''}${daysText(c)}`, c.relisted > 0 && `🔁 reanunciado${c.relisted > 1 ? ` ${c.relisted} veces` : ''}`, dropped && `📉 ha bajado ${price(c.first_price_cents! - c.price_cents!)}`, hist.length > 1 && `${hist.length - 1} cambio${hist.length > 2 ? 's' : ''} de precio`].filter(Boolean).join(' · ')}
             </span>
             {raw != null && (
               <span className="text-[13px]">
@@ -399,7 +440,10 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
       features: [...features.filter(f => f !== 'reformado'), ...(cond === 'reformado' ? ['reformado'] : [])], status, notes: notes.trim() || null,
       community_fee_cents: fee.trim() ? parsePrice(fee) : null, heating_type: central ? 'central' : c?.heating_type === 'central' ? null : c?.heating_type ?? null,
       energy, building_state: building, derrama_cents: derrama.trim() ? parsePrice(derrama) : null, noise, light,
-      price_history: cents != null && cents !== c?.price_cents ? [...hist, { date: today(), cents }].slice(-60) : hist
+      price_history: cents != null && cents !== c?.price_cents ? [...hist, { date: today(), cents }].slice(-60) : hist,
+      // Al marcarlo vendido o retirado a mano: sale hoy (la última vez a la venta, la que teníamos); si vuelve, se borra
+      ...(status !== 'activo' && (!c || c.status === 'activo') ? { off_market_on: today(), off_market_after: c?.last_seen ?? null }
+        : status === 'activo' && c && c.status !== 'activo' ? { off_market_on: null, off_market_after: null, relisted: c.relisted + 1 } : {})
     }
     const err = await m.write('sale_competitors', data, c?.id)
     if (err) setError(err); else onClose()
