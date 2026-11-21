@@ -28,6 +28,7 @@ import { FEATURE_ICON } from '../../components/FormKit'
 import { waNumber, nameOf, Chip, CheckChip, useNearestSchool, ScoreBadge, LinkChips, kShort } from './BuscamosComun'
 import { ReasonPicker } from './Rechazadas'
 import { HomeVisitSheet, HomeOfferSheet } from './HomeVisitaOferta'
+import { OffMarketPanel, OffMarketInfo, SuspectBanner, PriceTrailLine } from './FueraMercado'
 
 // ---------- Ficha por grupos plegables ----------
 export type GroupKey = 'resumen' | 'analisis' | 'visitas' | 'casa' | 'dinero' | 'reforma' | 'docs' | 'estado' | 'zona' | 'oferta' | 'enlaces' | 'fotos' | 'notas'
@@ -184,6 +185,7 @@ export function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, o
   const [visitSheet, setVisitSheet] = useState<{ open: boolean; visit?: HomeVisit }>({ open: false })
   const [offerSheet, setOfferSheet] = useState<{ open: boolean; offer?: HomeOffer }>({ open: false })
   const [discarding, setDiscarding] = useState(false)
+  const [closing, setClosing] = useState(false)
   const [reason, setReason] = useState(h.discard_reason ?? '')
   const [cat, setCat] = useState<DiscardCategory | null>(h.discard_category)
   const [confirming, setConfirming] = useState(false)
@@ -218,10 +220,15 @@ export function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, o
         onEdit={onEdit} onRecover={() => setStatus('interesa', { discard_reason: null, discard_category: null })} onReject={onReject} />
       {/* Estado y dónde está (la dirección abre Maps) */}
       <div className="flex flex-col gap-1.5">
-        <select value={discarding ? 'descartado' : h.status} aria-label="Estado del piso"
-          onChange={e => { const st = e.target.value as HomeStatus; if (st === 'descartado') setDiscarding(true); else { setDiscarding(false); void setStatus(st, { discard_reason: null, discard_category: null }) } }}
+        <select value={discarding ? 'descartado' : closing ? 'fuera' : h.status} aria-label="Estado del piso"
+          onChange={e => {
+            const st = e.target.value as HomeStatus
+            setDiscarding(st === 'descartado'); setClosing(st === 'fuera')
+            // Si vuelve a estar a la venta, se borran las fechas de baja
+            if (st !== 'descartado' && st !== 'fuera') void setStatus(st, { discard_reason: null, discard_category: null, off_market_on: null, off_market_kind: null })
+          }}
           className="w-full min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold">
-          {(['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado'] as HomeStatus[]).map(st => (
+          {(['propuesta', 'interesa', 'llamar', 'visita_pedida', 'visitado', 'favorito', 'oferta', 'descartado', 'fuera'] as HomeStatus[]).map(st => (
           <option key={st} value={st}>{st === 'favorito' ? '★ ' : st === 'llamar' ? '📞 ' : ''}{HOME_STATUS[st]}</option>
           ))}
         </select>
@@ -233,7 +240,7 @@ export function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, o
         <div className="flex flex-col gap-2 bg-card rounded-2xl p-4">
           <span className="text-sm font-medium text-muted">¿Por qué lo descartáis?</span>
           <div className="flex gap-1.5 flex-wrap">
-            {(Object.keys(DISCARD_CATS) as DiscardCategory[]).map(k => (
+            {(Object.keys(DISCARD_CATS) as DiscardCategory[]).filter(k => k !== 'vendida' || cat === 'vendida').map(k => (
               <button key={k} type="button" onClick={() => setCat(k)} aria-pressed={cat === k}
                 className={`min-h-10 px-3 rounded-xl text-[13px] font-semibold border ${cat === k ? 'bg-ink text-bg border-ink' : 'bg-bg border-line'}`}>{DISCARD_CATS[k]}</button>
             ))}
@@ -248,6 +255,13 @@ export function HomeSheet({ h, m, members, householdId, meId, onEdit, onClose, o
         </div>
       )}
       {h.status === 'descartado' && discardLabel(h) && <p className="text-sm text-muted -mt-3">Descartado: {discardLabel(h)}</p>}
+      {!closing && h.status !== 'fuera' && h.off_market_suspect && (
+        <SuspectBanner h={h} onConfirm={() => setClosing(true)} onStillListed={() => void m.write('homes', { off_market_suspect: null }, h.id)} />
+      )}
+      {closing && <OffMarketPanel h={h} onCancel={() => setClosing(false)}
+        onSave={async v => { await setStatus('fuera', { ...v, off_market_suspect: null, discard_reason: null, discard_category: null }); setClosing(false) }} />}
+      {h.status === 'fuera' && !closing && <OffMarketInfo h={h} prices={m.homePrices} onEdit={() => setClosing(true)} />}
+      {h.status !== 'fuera' && <PriceTrailLine h={h} prices={m.homePrices} />}
 
 
       {/* 3. El dinero y la nota, seguidos y siempre a la vista (fuera de los grupos plegables) */}

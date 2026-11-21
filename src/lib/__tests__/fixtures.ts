@@ -6,7 +6,7 @@ export const home = (p: Partial<Home> = {}): Home => ({
   municipality: 'Moralzarzal', price_cents: 605_000_00, size_m2: 256, plot_m2: 440, rooms: 5, baths: 3, floor: null, features: [],
   heating_type: null, cooling: null, energy: null, links: [], health: {}, reform: {}, market: null, cadastre: null, flood: null, registry: null,
   community_fee_cents: null, ibi_cents: null, ref_value_cents: null, new_build: false, useful_m2: null, year_built: 1999,
-  advertiser: 'agencia', buyer_fee_kind: 'no', buyer_fee_pct: null, buyer_fee_cents: null, buyer_fee_vat: false, status: 'interesa', notes: null,
+  advertiser: 'agencia', buyer_fee_kind: 'no', buyer_fee_pct: null, buyer_fee_cents: null, buyer_fee_vat: false, status: 'interesa', notes: null, created_at: '2026-11-01T10:00:00Z', listed_on: null, off_market_on: null, off_market_kind: null, off_market_suspect: null,
   ...p
 } as unknown as Home)
 

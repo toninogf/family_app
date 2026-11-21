@@ -16,6 +16,7 @@ import { applyFilters, EMPTY, sortHomes, type Ctx } from '../../lib/homeFilters'
 import { AiHomeSearch } from './AiHomeSearch'
 import { AffordCard } from './Afford'
 import { DecideButton, DecideSheet } from './Decidir'
+import { MarketCard } from './FueraMercado'
 import { GROUPS, HomeSheet, type GroupKey, type EditFocus } from './HomeFicha'
 import { RejectedSheet } from './Rechazadas'
 import { HomeCard } from './HomeCard'
@@ -120,6 +121,7 @@ export default function Buscamos({ m, members, me, householdId }: { m: Mudanza; 
       })()}
 
       <DecideButton m={m} members={members} onOpen={() => setDecideOpen(true)} />
+      <MarketCard homes={m.homes} prices={m.homePrices} onShow={() => fs.setF(x => ({ ...x, statuses: ['fuera'] }))} />
 
       <div className="grid grid-cols-2 p-1 rounded-xl bg-card border border-line" role="tablist" aria-label="Vista">
         {([['lista', '☰ Lista'], ['mapa', '🗺️ Mapa']] as const).map(([k, l]) => (

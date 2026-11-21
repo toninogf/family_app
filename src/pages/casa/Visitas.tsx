@@ -69,7 +69,7 @@ export default function Visitas({ m, members, householdId, meId }: { m: Mudanza;
   const openHome = (id: string, grupo?: string) => navigate(`/mudanza?piso=${id}${grupo ? `&grupo=${grupo}` : ''}`)
   // Casas que os gustaron tras verlas y sin otra visita prevista: ¿segunda visita?
   const second = filter === 'venta' ? [] : m.homes.filter(h => {
-    if (skip.includes(h.id) || ['descartado', 'propuesta'].includes(h.status)) return false
+    if (skip.includes(h.id) || ['descartado', 'propuesta', 'fuera'].includes(h.status)) return false
     const vs = m.homeVisits.filter(v => v.home_id === h.id)
     if (!vs.some(v => v.status === 'done') || vs.some(v => v.status === 'scheduled')) return false
     const rs = m.ratings.filter(r => r.home_id === h.id)
@@ -313,7 +313,7 @@ function mapsLink(h: Home) {
 /** «+ Visita»: primero si vamos nosotros (a qué casa) o vienen a casa */
 function NewVisitSheet({ m, onClose, onCompra, onVenta }: { m: Mudanza; onClose: () => void; onCompra: (h: Home) => void; onVenta: () => void }) {
   const [q, setQ] = useState('')
-  const homes = m.homes.filter(h => !['descartado'].includes(h.status))
+  const homes = m.homes.filter(h => !['descartado', 'fuera'].includes(h.status))
     .filter(h => !q.trim() || `${h.title} ${h.municipality ?? ''} ${h.zone ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
   return (
     <Sheet title="Nueva visita" onClose={onClose}>

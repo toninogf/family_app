@@ -49,7 +49,7 @@ export function FilterBar({ s, count, statusCount, rejected, onRejected, onOpen 
         <span className="text-[13px] font-semibold text-muted shrink-0">Estado</span>
         <select value={value} onChange={e => pick(e.target.value)} aria-label="Filtrar por estado"
           className="flex-1 min-w-0 w-full min-h-11 px-3 rounded-xl border border-line bg-card text-[14px] font-semibold truncate">
-          <option value="activos">En marcha (sin descartados ni propuestas) ({statusCount([])})</option>
+          <option value="activos">En marcha (sin descartadas, propuestas ni las que ya no están) ({statusCount([])})</option>
           <option value="todos">Todos ({statusCount(ALL)})</option>
           {ALL.map(st => <option key={st} value={st}>{HOME_STATUS[st]} ({statusCount([st])})</option>)}
           {value === 'varios' && <option value="varios">Varios estados: {f.statuses.map(st => HOME_STATUS[st]).join(', ')}</option>}

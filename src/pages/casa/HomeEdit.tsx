@@ -1,4 +1,5 @@
 // Alta y edición de una casa (datos, gastos, contacto, fotos, reforma, honorarios…)
+import { today } from '../../lib/dates'
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { aiPrompt, parseAny, type ListingData } from '../../lib/listingParse'
@@ -93,6 +94,7 @@ export function HomeEditSheet({ home, initial, m, householdId, onClose, onCreate
   const [phone, setPhone] = useState(home?.contact_phone ?? '')
   const [email, setEmail] = useState(home?.contact_email ?? '')
   const [listingRef, setListingRef] = useState(home?.listing_ref ?? '')
+  const [listedOn, setListedOn] = useState(home?.listed_on ?? '')
   const [feeKind, setFeeKind] = useState<'no' | 'pct' | 'fijo' | null>(home?.buyer_fee_kind ?? null)
   const [feePct, setFeePct] = useState(home?.buyer_fee_pct != null ? String(Number(home.buyer_fee_pct)).replace('.', ',') : '')
   const [feeAmount, setFeeAmount] = useState(priceInput(home?.buyer_fee_cents))
@@ -312,7 +314,7 @@ export function HomeEditSheet({ home, initial, m, householdId, onClose, onCreate
       electricity_cents: power.trim() ? parsePrice(power) : null, water_cents: water.trim() ? parsePrice(water) : null, heating_cents: heating.trim() ? parsePrice(heating) : null,
       minutes_to_school: ints[2], contact: contact.trim() || null, notes: notes.trim() || null,
       advertiser, agency: advertiser === 'particular' ? null : agency.trim() || null, contact_phone: phone.trim() || null,
-      contact_email: email.trim() || null, listing_ref: listingRef.trim() || null,
+      contact_email: email.trim() || null, listing_ref: listingRef.trim() || null, listed_on: listedOn || null,
       buyer_fee_kind: advertiser === 'particular' ? null : feeKind, buyer_fee_vat: feeVat, buyer_fee_note: feeNote.trim() || null,
       buyer_fee_pct: feeKind === 'pct' && feePct.trim() ? Math.min(10, Math.max(0, Number(feePct.replace(',', '.')) || 0)) : null,
       buyer_fee_cents: feeKind === 'fijo' && feeAmount.trim() ? parsePrice(feeAmount) : null,
@@ -525,6 +527,7 @@ export function HomeEditSheet({ home, initial, m, householdId, onClose, onCreate
             <Field label="Referencia" value={listingRef} onChange={e => setListingRef(e.target.value)} maxLength={60} placeholder="Ref. del anuncio" flash={fl('referencia')} />
           </div>
           <Field label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={120} flash={fl('email')} />
+          <Field label="Anuncio publicado el (aprox.)" type="date" value={listedOn} max={today()} onChange={e => setListedOn(e.target.value)} />
         </EditSection>
 
         <EditSection id="enlaces" icon="🔗" title={home ? 'Enlaces y fotos' : 'Otros enlaces'} open={sections.isOpen('enlaces')} onToggle={() => sections.toggle('enlaces')}>

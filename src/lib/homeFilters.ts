@@ -85,7 +85,7 @@ export function fitScore(h: Home, ctx: Ctx) {
 
 export function applyFilters(homes: Home[], f: Filters, ctx: Ctx) {
   return homes.filter(h => {
-    if (f.statuses.length ? !f.statuses.includes(h.status) : h.status === 'descartado' || h.status === 'propuesta') return false
+    if (f.statuses.length ? !f.statuses.includes(h.status) : h.status === 'descartado' || h.status === 'propuesta' || h.status === 'fuera') return false
     for (const q of f.quick) {
       if (q === 'cumple' && fails(h, ctx, false) > 0) return false
       if (q === 'falla1' && fails(h, ctx, false) !== 1) return false

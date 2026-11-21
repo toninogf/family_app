@@ -8,7 +8,7 @@ import webpush from 'npm:web-push@3.6.7'
 const APP_URL = 'https://family-app.toninogf.workers.dev'
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 type Sub = { id: string; household_id: string; member_id: string; endpoint: string; p256dh: string; auth: string; mudanza: boolean }
-type Q = { id: string; household_id: string; kind: 'propuesta' | 'bajada' | 'competidor'; ref_id: string | null; title: string; detail: string | null }
+type Q = { id: string; household_id: string; kind: 'propuesta' | 'bajada' | 'competidor' | 'retirada'; ref_id: string | null; title: string; detail: string | null }
 
 const madridDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(d)
 function addDays(d: string, n: number) { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) }
@@ -17,7 +17,8 @@ const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '')
 const GROUPS = [
   { kind: 'propuesta', title: '🤖 Casas nuevas para revisar', url: '/mudanza' },
   { kind: 'bajada', title: '📉 Han bajado de precio', url: '/mudanza' },
-  { kind: 'competidor', title: '🏘️ Pisos nuevos de la competencia', url: '/mudanza?vista=vendemos' }
+  { kind: 'competidor', title: '🏘️ Pisos nuevos de la competencia', url: '/mudanza?vista=vendemos' },
+  { kind: 'retirada', title: '🏁 Parece que ya no están a la venta', url: '/mudanza' }
 ] as const
 
 Deno.serve(async (req: Request) => {

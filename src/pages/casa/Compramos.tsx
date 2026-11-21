@@ -158,7 +158,7 @@ function LeaveSheet({ m, c, householdId, homeId, homeTitle, onClose }: { m: Muda
 function ChooseHome({ m, c, householdId }: { m: Mudanza; c: Compra; householdId: string }) {
   const [other, setOther] = useState('')
   const top = m.homes.filter(h => h.status === 'oferta' || h.status === 'favorito')
-  const rest = m.homes.filter(h => h.status !== 'descartado' && !top.includes(h))
+  const rest = m.homes.filter(h => h.status !== 'descartado' && h.status !== 'fuera' && !top.includes(h))
   return (
     <div className="flex flex-col gap-3">
       <div className="bg-card rounded-2xl p-4 flex flex-col gap-1">

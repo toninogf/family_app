@@ -41,14 +41,14 @@ export function DecideButton({ m, members, onOpen }: { m: Mudanza; members: Memb
 export function DecideSheet({ m, members, onOpenHome, onClose }: { m: Mudanza; members: Member[]; onOpenHome: (id: string) => void; onClose: () => void }) {
   const [extra, setExtra] = useState<string[]>([])
   const [removed, setRemoved] = useState<string[]>([])
-  const base = useDecideCtx(m, members, m.homes.filter(h => !['descartado', 'propuesta'].includes(h.status)))
+  const base = useDecideCtx(m, members, m.homes.filter(h => !['descartado', 'propuesta', 'fuera'].includes(h.status)))
   const auto = pickFinalists(m.homes, base)
   const homes = [...auto, ...m.homes.filter(h => extra.includes(h.id) && !auto.includes(h))].filter(h => !removed.includes(h.id))
   const fs = finalists(homes, base)
   const lines = verdict(fs, shortName)
   const fin = (m.criteria?.finance ?? null) as Finance | null
   const b = affordBase(m, fin)
-  const others = m.homes.filter(h => !homes.includes(h) && !['descartado', 'propuesta'].includes(h.status))
+  const others = m.homes.filter(h => !homes.includes(h) && !['descartado', 'propuesta', 'fuera'].includes(h.status))
 
   async function star(h: Home) {
     if (h.status === 'oferta') return // con oferta hecha sigue siendo finalista

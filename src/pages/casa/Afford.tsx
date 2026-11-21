@@ -93,7 +93,7 @@ function Result({ m, householdId, fin: saved }: { m: Mudanza; householdId: strin
   const scen = [0, 0.05, 0.1].map(d => { const bb = affordBase(m, fin, d, saleOv); return { d, sale: bb.sale?.sale ?? null, x: maxPrice(bb, 0) } })
   const top = maxPrice(b, 0)
   const sim = buy ? affordAt(b, buy, reform) : null
-  const homes = m.homes.filter(h => h.status !== 'descartado' && h.price_cents)
+  const homes = m.homes.filter(h => h.status !== 'descartado' && h.status !== 'fuera' && h.price_cents)
   
   return (
     <div className="flex flex-col gap-3">

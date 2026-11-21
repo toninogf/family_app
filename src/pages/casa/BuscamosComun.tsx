@@ -32,7 +32,7 @@ export function Chip({ children, tone }: { children: ReactNode; tone?: 'ok' | 'b
 
 export function StatusBadge({ s }: { s: HomeStatus }) {
   // «Llamar para visita» es una tarea pendiente: se resalta para que no se olvide
-  const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' ? 'bg-bg text-muted'
+  const cls = s === 'favorito' || s === 'oferta' ? 'bg-accent text-white dark:text-bg' : s === 'descartado' || s === 'fuera' ? 'bg-bg text-muted'
     : s === 'llamar' ? 'bg-danger text-white dark:text-bg' : 'bg-accent-soft text-accent'
   return <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-lg shrink-0 ${cls}`}>{s === 'favorito' ? '★ ' : s === 'llamar' ? '📞 ' : ''}{HOME_STATUS[s]}</span>
 }

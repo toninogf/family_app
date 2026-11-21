@@ -94,7 +94,10 @@ export type BuyerOffer = {
 }
 
 export type Criteria = { household_id: string; max_price_cents: number | null; min_rooms: number | null; min_m2: number | null; min_plot_m2?: number | null; ideal_m2?: number | null; ideal_plot_m2?: number | null; access_items?: string[]; visit_questions?: import('./visitQA').VisitTemplate | null; finance?: import('./afford').Finance | null; zones: string[]; municipalities: string[]; must_haves: string[]; nice_to_haves: string[]; score_weights?: Record<string, number> | null; work_address?: string | null }
-export type HomeStatus = 'propuesta' | 'interesa' | 'llamar' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta'
+/** Un cambio de precio de una casa (el primero es el precio con el que la añadisteis) */
+export type HomePrice = { home_id: string; price_cents: number; changed_on: string }
+
+export type HomeStatus = 'propuesta' | 'interesa' | 'llamar' | 'visita_pedida' | 'visitado' | 'favorito' | 'descartado' | 'oferta' | 'fuera'
 export type Home = {
   id: string
   title: string
@@ -157,6 +160,13 @@ export type Home = {
   status: HomeStatus
   discard_reason: string | null
   discard_category: DiscardCategory | null
+  /** Alta del anuncio (aprox.) */
+  listed_on: string | null
+  /** Cuándo dejó de estar a la venta y qué pasó */
+  off_market_on: string | null
+  off_market_kind: 'vendida' | 'retirada' | null
+  /** La búsqueda automática cree que el anuncio ya no está (hasta que lo confirméis) */
+  off_market_suspect: { on: string; sold?: boolean; note?: string } | null
   notes: string | null
   created_at: string
 }
@@ -372,9 +382,9 @@ export function reformFor(h: { reform?: Reform | null }, k: string): ReformItem 
 export type Check = { label: string; ok: boolean | null; near?: boolean; reform?: { label: string; cents: number } }
 export const HOME_STATUS: Record<HomeStatus, string> = {
   propuesta: '🤖 Propuesta', interesa: 'Me interesa', llamar: 'Llamar para visita', visita_pedida: 'Visita pedida', visitado: 'Visitado',
-  favorito: 'Favorito', descartado: 'Descartado', oferta: 'Oferta hecha'
+  favorito: 'Favorito', descartado: 'Descartado', oferta: 'Oferta hecha', fuera: '🏁 Ya no está a la venta'
 }
-export const HOME_STATUS_ORDER: HomeStatus[] = ['favorito', 'oferta', 'visitado', 'visita_pedida', 'llamar', 'interesa', 'propuesta', 'descartado']
+export const HOME_STATUS_ORDER: HomeStatus[] = ['favorito', 'oferta', 'visitado', 'visita_pedida', 'llamar', 'interesa', 'propuesta', 'descartado', 'fuera']
 
 // ---------- Formatos ----------
 const eur0 = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
@@ -447,7 +457,7 @@ function withRatings(rows: Rating[], q: Pending[]): Rating[] {
   return out
 }
 
-const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers', 'home_rejections', 'sale_competitors']
+const TABLES = ['sale_listing', 'sale_photos', 'sale_documents', 'sale_steps', 'sale_price_history', 'buyer_visits', 'buyer_offers', 'search_criteria', 'homes', 'home_visits', 'home_ratings', 'home_photos', 'home_offers', 'home_rejections', 'sale_competitors', 'home_price_history']
 
 export type DiscardCategory = 'precio' | 'ubicacion' | 'parcela' | 'distribucion' | 'estado' | 'legal' | 'vendida' | 'otra' | 'otro'
 export const DISCARD_CATS: Record<DiscardCategory, string> = {
@@ -487,6 +497,7 @@ export function useMudanza() {
   const [ratings, setRatings] = useState<Rating[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
   const [homeOffers, setHomeOffers] = useState<HomeOffer[]>([])
+  const [homePrices, setHomePrices] = useState<HomePrice[]>([])
   const [salePhotos, setSalePhotos] = useState<SalePhoto[]>([])
   const [saleDocs, setSaleDocs] = useState<SaleDoc[]>([])
   const [saleSteps, setSaleSteps] = useState<SaleStep[]>([])
@@ -499,13 +510,13 @@ export function useMudanza() {
   const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
 
   const load = useCallback(async () => {
-    const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp] = await Promise.all([
+    const [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp, hp] = await Promise.all([
       supabase.from('sale_listing').select('*').maybeSingle(),
       supabase.from('sale_price_history').select('id, price_cents, changed_on, changed_at').order('changed_at'),
       supabase.from('buyer_visits').select('id, visit_date, start_time, end_time, contact_name, contact_phone, source, host_id, status, interest, liked, objections, notes, prep_done').order('visit_date').order('start_time'),
       supabase.from('buyer_offers').select('id, visit_id, buyer_name, offer_date, amount_cents, financing, proposed_signing, response_deadline, status, counter_cents, notes').order('offer_date', { ascending: false }),
       supabase.from('search_criteria').select('household_id, max_price_cents, min_rooms, min_m2, min_plot_m2, ideal_m2, ideal_plot_m2, access_items, visit_questions, finance, zones, municipalities, must_haves, nice_to_haves, score_weights, work_address').maybeSingle(),
-      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, reform, ref_value_cents, new_build, plot_m2, useful_m2, year_built, contact, advertiser, buyer_fee_kind, buyer_fee_pct, buyer_fee_cents, buyer_fee_vat, buyer_fee_note, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, deep_analysis, visit_qa, status, discard_reason, discard_category, notes, created_at').order('created_at', { ascending: false }),
+      supabase.from('homes').select('id, title, url, address, zone, province, municipality, price_cents, size_m2, rooms, baths, floor, features, community_fee_cents, ibi_cents, electricity_cents, water_cents, heating_cents, heating_type, cooling, energy, maps_url, cover_photo_id, links, cadastral_ref, cadastre, flood, health, market, registry, reform, ref_value_cents, new_build, plot_m2, useful_m2, year_built, contact, advertiser, buyer_fee_kind, buyer_fee_pct, buyer_fee_cents, buyer_fee_vat, buyer_fee_note, agency, contact_phone, contact_email, listing_ref, lat, lng, geo_precision, geo_query, minutes_to_school, deep_analysis, visit_qa, status, discard_reason, discard_category, listed_on, off_market_on, off_market_kind, off_market_suspect, notes, created_at').order('created_at', { ascending: false }),
       supabase.from('home_visits').select('id, home_id, visit_date, start_time, end_time, attendee_id, status, checklist, notes').order('visit_date').order('start_time'),
       supabase.from('home_ratings').select('home_id, member_id, score, comment'),
       supabase.from('home_photos').select('id, home_id, path, created_at, kind').order('created_at'),
@@ -514,9 +525,10 @@ export function useMudanza() {
       supabase.from('sale_documents').select('id, doc_key, title, status, expires_on, files, notes, position, updated_at').order('position').order('title'),
       supabase.from('sale_steps').select('id, kind, title, step_date, step_time, location, amount_cents, notes, checklist, done, position').order('position'),
       supabase.from('home_rejections').select('id, title, url, municipality, zone, price_cents, size_m2, plot_m2, reason, created_at, reproposed_at').order('created_at', { ascending: false }).limit(200),
-      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light, year_built, building_reform_year, review, reject_reason').order('created_at', { ascending: false })
+      supabase.from('sale_competitors').select('id, title, url, zone, price_cents, first_price_cents, size_m2, rooms, baths, floor, features, reform_year, condition, status, first_seen, last_seen, price_history, notes, source, community_fee_cents, heating_type, energy, building_state, derrama_cents, noise, light, year_built, building_reform_year, review, reject_reason').order('created_at', { ascending: false }),
+      supabase.from('home_price_history').select('home_id, price_cents, changed_on').order('changed_on').order('created_at')
     ])
-    const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp].find(x => x.error)?.error
+    const firstError = [l, p, v, o, c, h, hv, r, ph, ho, sp, sd, ss, rj, cp, hp].find(x => x.error)?.error
     // Sin red: se queda lo que ya se veía (no se vacía la pantalla)
     if (firstError && isNetworkError(firstError.message)) { setOffline(true); setLoading(false); return }
     if (firstError) setError(firstError.message)
@@ -537,6 +549,7 @@ export function useMudanza() {
     setSaleSteps((ss.data ?? []) as SaleStep[])
     setRejections((rj.data ?? []) as Rejection[])
     setAllCompetitors((cp.data ?? []) as Competitor[])
+    setHomePrices((hp.data ?? []) as HomePrice[])
     setLoading(false)
   }, [])
 
@@ -711,7 +724,7 @@ export function useMudanza() {
 
   return {
     rejections, rejectProposal, restoreRejection, competitors, competitorProposals, competitorRejected,
-    listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, loading, error,
+    listing, prices, visits, offers, criteria, homes, homeVisits, ratings, photos, homeOffers, homePrices, loading, error,
     salePhotos, saleDocs, saleSteps, addSalePhoto, removeSalePhoto, uploadSaleDoc, removeSaleDocFile, removeSaleDoc,
     pendingCount: pending.length, offline, syncNow: flush,
     clearError: () => setError(''), reload: load, write, remove, removeHome, createHome, addPhoto, removePhoto
