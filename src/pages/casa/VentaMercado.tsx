@@ -457,6 +457,12 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
     try { const t = await navigator.clipboard.readText(); setAiText(t); fillFrom(t) } catch { setAiOpen(true); setAiNote('No puedo leer el portapapeles: pega la respuesta en el recuadro.') }
   }
 
+  /** Cambio rápido desde la cabecera (retirado, vendido, vuelve, no comparable) y cerrar */
+  async function quick(data: Record<string, unknown>) {
+    if (!c) return
+    const err = await m.write('sale_competitors', data, c.id)
+    if (!err) onClose()
+  }
   async function save() {
     if (!title.trim()) { setError('Pon un título'); return }
     const cents = amount.trim() ? parsePrice(amount) : null
@@ -485,6 +491,24 @@ function CompetitorSheet({ c, m, householdId, onClose }: { c?: Competitor; m: Mu
       <div className="flex flex-col gap-3">
         <Field label="Enlace del anuncio" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.idealista.com/…" />
         {c?.url && <a href={c.url} target="_blank" rel="noopener noreferrer" className="self-start text-[13px] font-semibold text-accent">🔗 Abrir en {portalName(c.url) ?? 'el portal'} ↗</a>}
+        {/* Acciones rápidas: sin tener que bajar a «Situación» */}
+        {c && !c.review && (
+          <div className="flex gap-2 flex-wrap">
+            {c.status === 'activo' ? (
+              <>
+                <button type="button" onClick={() => void quick({ status: 'retirado', off_market_on: today(), off_market_after: c.last_seen })}
+                  className="min-h-10 px-3 rounded-xl border border-line bg-card text-[13px] font-semibold">🚫 Ya no está publicado</button>
+                <button type="button" onClick={() => void quick({ status: 'vendido', off_market_on: today(), off_market_after: c.last_seen })}
+                  className="min-h-10 px-3 rounded-xl border border-line bg-card text-[13px] font-semibold">🤝 Se ha vendido</button>
+              </>
+            ) : (
+              <button type="button" onClick={() => void quick({ status: 'activo', off_market_on: null, off_market_after: null, relisted: c.relisted + 1, last_seen: today() })}
+                className="min-h-10 px-3 rounded-xl border border-line bg-card text-[13px] font-semibold">↩️ Vuelve a estar a la venta</button>
+            )}
+            <button type="button" onClick={() => void quick({ review: 'rechazado', reject_reason: 'No es comparable con el nuestro' })}
+              className="min-h-10 px-3 rounded-xl border border-line bg-card text-[13px] font-semibold">🙅 No es comparable</button>
+          </div>
+        )}
         <div className="rounded-2xl bg-card p-3 flex flex-col gap-2">
           <span className="text-[13px] font-semibold">✨ Rellenar con la IA</span>
           {!fullUrl ? <span className="text-[12px] text-muted">Pega arriba el enlace del anuncio y la IA te saca los datos.</span> : (
