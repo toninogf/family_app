@@ -639,6 +639,9 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
   const [busy, setBusy] = useState(false)
   const [saveMarket, setSaveMarket] = useState(true)
   const l = m.listing
+  // Todos los que ya tenemos: aceptados, por revisar y rechazados
+  const known = [...m.competitors, ...m.competitorProposals, ...m.competitorRejected]
+  const findKnown = (url: string | null) => known.find(c => sameUrl(c.url, url) || c.old_urls?.some(u => sameUrl(u, url)))
   if (!l) return null
 
   async function ask(ai: 'chatgpt' | 'gemini' | 'claude') {
@@ -655,8 +658,9 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
     setParsed(r)
     if (r.error) { setNote(r.error); return }
     // Por defecto, todos menos los que ya estaban con el mismo precio
-    setPicked(new Set(r.items.map((x, i) => [x, i] as const).filter(([x]) => !m.competitors.some(c => sameUrl(c.url, x.url) && c.price_cents === x.price_cents)).map(([, i]) => i)))
-    setNote(r.items.length ? `${r.items.length} piso${r.items.length > 1 ? 's' : ''} en la respuesta. Revisa y añade.` : 'La respuesta no trae pisos.')
+    // Por defecto, todos menos los rechazados y los que ya estaban con el mismo precio
+    setPicked(new Set(r.items.map((x, i) => [x, i] as const).filter(([x]) => { const c = findKnown(x.url); return !c || (c.review !== 'rechazado' && c.price_cents !== x.price_cents) }).map(([, i]) => i)))
+    setNote(r.items.length ? `${r.items.length} piso${r.items.length > 1 ? 's' : ''} en la respuesta. Los nuevos van a «Por revisar»: allí abrís cada anuncio y lo aceptáis o rechazáis.` : 'La respuesta no trae pisos.')
   }
   async function paste() {
     try { const t = await navigator.clipboard.readText(); setText(t); load(t) } catch { setNote('No puedo leer el portapapeles: pega la respuesta en el recuadro.') }
@@ -667,7 +671,8 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
     let added = 0, updated = 0
     for (const [i, x] of parsed.items.entries()) {
       if (!picked.has(i)) continue
-      const cur = m.competitors.find(c => sameUrl(c.url, x.url))
+      const cur = findKnown(x.url)
+      if (cur?.review === 'rechazado') continue
       const base = { ...x, rooms: x.rooms != null ? Math.round(x.rooms) : null, baths: x.baths != null ? Math.round(x.baths) : null, reform_year: x.reform_year != null ? Math.round(x.reform_year) : null }
       if (cur) {
         const changed = x.price_cents != null && x.price_cents !== cur.price_cents
@@ -678,7 +683,7 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
         updated++
       } else {
         await m.write('sale_competitors', {
-          household_id: householdId, ...base, first_price_cents: x.price_cents, source: 'ia',
+          household_id: householdId, ...base, first_price_cents: x.price_cents, source: 'ia', review: 'propuesta',
           price_history: x.price_cents != null ? [{ date: today(), cents: x.price_cents }] : []
         })
         added++
@@ -689,7 +694,7 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
     }
     setBusy(false)
     setParsed(null); setText('')
-    setNote(`Hecho: ${added} añadido${added === 1 ? '' : 's'}${updated ? ` y ${updated} actualizado${updated === 1 ? '' : 's'}` : ''}.`)
+    setNote(`Hecho: ${added} nuevo${added === 1 ? '' : 's'} en «Por revisar»${updated ? ` y ${updated} actualizado${updated === 1 ? '' : 's'}` : ''}. Abrid cada anuncio y aceptadlo o rechazadlo.`)
   }
 
   return (
@@ -710,17 +715,21 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
             const fake = { ...x, id: String(i), first_seen: '', last_seen: '', price_history: [], source: 'ia', first_price_cents: x.price_cents, review: null, reject_reason: null, listed_on: null, off_market_on: null, off_market_after: null, relisted: 0, old_urls: [] } as Competitor
             const adj = adjustments(l, fake)
             const raw = x.price_cents && x.size_m2 ? x.price_cents / x.size_m2 : null
-            const cur = m.competitors.find(c => sameUrl(c.url, x.url))
+            const cur = findKnown(x.url)
             const on = picked.has(i)
             return (
               <label key={i} className={`rounded-xl bg-card p-2.5 flex gap-2 items-start ${on ? '' : 'opacity-60'}`}>
                 <input type="checkbox" checked={on} onChange={() => setPicked(p => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n })} className="w-5 h-5 mt-0.5" />
                 <span className="flex flex-col gap-0.5 min-w-0 flex-1">
                   <span className="flex justify-between gap-2"><span className="text-[13px] font-semibold truncate">{x.title}</span><b className="text-[13px] shrink-0">{price(x.price_cents)}</b></span>
-                  <span className="text-[11px] text-muted">{[x.zone, x.size_m2 && `${x.size_m2} m²`, x.rooms != null && `${x.rooms} hab.`, x.baths != null && `${x.baths} baños`, x.floor, x.status !== 'activo' && x.status, cur && (cur.price_cents !== x.price_cents ? `ya lo tenéis: precio ${priceShort(cur.price_cents ?? 0)} → ${priceShort(x.price_cents ?? 0)}` : 'ya lo tenéis')].filter(Boolean).join(' · ')}</span>
+                  <span className="text-[11px] text-muted">{[x.zone, x.size_m2 && `${x.size_m2} m²`, x.rooms != null && `${x.rooms} hab.`, x.baths != null && `${x.baths} baños`, x.floor, x.status !== 'activo' && x.status, cur && (cur.review === 'rechazado' ? '🙅 lo rechazasteis' : cur.review === 'propuesta' ? 'ya está por revisar' : cur.price_cents !== x.price_cents ? `ya lo tenéis: precio ${priceShort(cur.price_cents ?? 0)} → ${priceShort(x.price_cents ?? 0)}` : 'ya lo tenéis')].filter(Boolean).join(' · ')}</span>
                   {raw != null && <span className="text-[12px]">{price(Math.round(raw))}/m² → <b>{price(Math.round(raw * (1 + adjTotal(adj) / 100)))}/m²</b> comparado con el vuestro</span>}
                   {adj.length > 0 && <span className="flex gap-1 flex-wrap">{adj.map(a => <span key={a.label} className={`px-1.5 rounded text-[10px] ${a.pct > 0 ? 'bg-accent-soft text-accent' : 'bg-danger/10 text-danger'}`}>{a.label} {a.pct > 0 ? '+' : ''}{a.pct}%</span>)}</span>}
                   {x.notes && <span className="text-[11px] text-muted">{x.notes}</span>}
+                  {x.url && (
+                    <a href={x.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                      className="self-start min-h-9 px-3 mt-1 rounded-lg border border-line text-[12px] font-semibold text-accent flex items-center">🔗 Ver en {portalName(x.url) ?? 'el portal'} ↗</a>
+                  )}
                 </span>
               </label>
             )
@@ -732,7 +741,7 @@ function AiCompetitorSearch({ m, householdId }: { m: Mudanza; householdId: strin
             </label>
           )}
           <button onClick={() => void add()} disabled={busy || picked.size === 0} className="min-h-11 rounded-xl bg-accent text-white dark:text-bg text-sm font-bold disabled:opacity-50">
-            {busy ? 'Añadiendo…' : `Añadir ${picked.size} piso${picked.size === 1 ? '' : 's'}`}
+            {busy ? 'Añadiendo…' : `Añadir ${picked.size} piso${picked.size === 1 ? '' : 's'} para revisar`}
           </button>
         </div>
       )}
