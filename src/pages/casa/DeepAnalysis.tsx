@@ -1,5 +1,5 @@
 // «🔬 Análisis a fondo (IA)» en la ficha de Buscamos: lanza la investigación, guarda el informe y propone cambios para aceptar uno a uno
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Home, Mudanza } from '../../lib/mudanza'
 import { STATUS_ICON } from '../../lib/health'
 import { PARTIDA, REFORM_STATE, kEur } from '../../lib/reforma'
@@ -27,6 +27,12 @@ export function VerdictChip({ h }: { h: Home }) {
 
 export function DeepAnalysisPanel({ h, m }: { h: Home; m: Mudanza }) {
   const a = h.deep_analysis ?? null
+  // Análisis guardados antes de saber leer el JSON suelto (sin ```): se vuelven a leer y se arreglan solos
+  useEffect(() => {
+    if (!a || a.data || !a.report) return
+    const r = parseDeepAnalysis(a.report)
+    if (r.data) void m.write('homes', { deep_analysis: { ...a, data: r.data, report: r.report } }, h.id)
+  }, [h.id, a?.report, a?.data]) // eslint-disable-line react-hooks/exhaustive-deps
   const [launch, setLaunch] = useState(!a)
   const [note, setNote] = useState('')
   const [text, setText] = useState('')

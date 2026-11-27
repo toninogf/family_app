@@ -96,3 +96,15 @@ describe('cuestionario · qué preguntas salen', () => {
     expect(p1.pending).toBe(p0.pending - 1)
   })
 })
+
+describe('análisis a fondo sin bloque ```', () => {
+  it('lee el JSON suelto y escribe un informe legible', async () => {
+    const { parseDeepAnalysis } = await import('../deepAnalysis')
+    const json = JSON.stringify({ veredicto: 'condiciones', nota: '7.6', resumen: 'Chalet con buen encaje '.repeat(10), motivos: ['Holgura'], precio: { justo: 520000, oferta: 490000, tope: 525000 } }, null, 1)
+    const r = parseDeepAnalysis(json)
+    expect(r.data?.veredicto).toBe('condiciones')
+    expect(r.data?.nota).toBe(7.6)
+    expect(r.report).toMatch(/Comprar con condiciones/)
+    expect(r.report).toMatch(/## Por qué/)
+  })
+})

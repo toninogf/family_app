@@ -118,7 +118,39 @@ export function parseDeepAnalysis(text: string): { report: string; data: DeepDat
       report = (t.slice(0, last.index) + t.slice(last.index! + last[0].length)).trim()
     } catch { data = null }
   }
+  // Sin bloque ```: la IA a veces devuelve solo el JSON (o el JSON tras el texto) sin marcarlo
+  if (!data) {
+    const start = t.search(/\{\s*"veredicto"/), end = t.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      try {
+        data = clean(JSON.parse(t.slice(start, end + 1)))
+        report = (t.slice(0, start) + t.slice(end + 1)).trim()
+      } catch { data = null }
+    }
+  }
+  // Si solo venían los datos, el informe se escribe a partir de ellos para poder leerlo
+  if (data && !report) report = reportFromData(data)
   return { report: report.slice(0, 60000), data }
+}
+
+/** Informe legible cuando la IA solo devolvió los datos */
+export function reportFromData(d: DeepData): string {
+  const VER = { comprar: '✅ Comprar', condiciones: '🟡 Comprar con condiciones', no: '⛔ No comprar' } as const
+  const eu = (n?: number) => (n ? `${Math.round(n).toLocaleString('es-ES')} €` : '¿?')
+  const sec = (title: string, xs?: string[]) => (xs?.length ? [`## ${title}`, ...xs.map(x => `- ${x}`), ''] : [])
+  return [
+    d.veredicto ? `**${VER[d.veredicto]}**${d.nota != null ? ` · nota ${d.nota.toLocaleString('es-ES')}/10` : ''}` : '',
+    d.resumen ?? '', '',
+    ...sec('Por qué', d.motivos),
+    ...sec('Qué la descartaría', d.descartes),
+    ...(d.precio?.justo || d.precio?.oferta ? ['## Precio', `- Justo: ${eu(d.precio.justo)} · oferta inicial: ${eu(d.precio.oferta)} · tope: ${eu(d.precio.tope)}`, ''] : []),
+    ...(d.reforma?.min || d.reforma?.nota ? ['## Reforma', `- ${d.reforma.estado ?? ''} ${d.reforma.min ? `${eu(d.reforma.min)}–${eu(d.reforma.max)}` : ''}`.trim(), ...(d.reforma.nota ? [`- ${d.reforma.nota}`] : []), ''] : []),
+    ...(d.trabajo?.minutos_coche ? ['## Al trabajo', `- ${d.trabajo.minutos_coche} min en coche${d.trabajo.minutos_transporte ? ` · ${d.trabajo.minutos_transporte} min en transporte` : ''}`, ...(d.trabajo.nota ? [`- ${d.trabajo.nota}`] : []), ''] : []),
+    ...sec('Colegios', d.colegios?.map(c => `${c.nombre}${c.tipo ? ` (${c.tipo})` : ''}${c.distancia_m ? ` · ${c.distancia_m} m` : ''}${c.nota ? ` · ${c.nota}` : ''}`)),
+    ...(d.catastro?.nota ? ['## Catastro', `- ${d.catastro.nota}`, ''] : []),
+    ...sec('Comprobaciones', d.checks?.map(c => `${c.estado === 'ok' ? '✅' : c.estado === 'warn' ? '⚠️' : '⛔'} ${c.clave}${c.nota ? `: ${c.nota}` : ''}`)),
+    ...sec('Preguntas', d.preguntas), ...sec('Documentos', d.documentos), ...sec('Negociación', d.negociacion)
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 function clean(x: Record<string, unknown>): DeepData {
@@ -131,7 +163,8 @@ function clean(x: Record<string, unknown>): DeepData {
   const state = str(rf.estado) as ReformState | undefined
   return {
     veredicto: ver === 'comprar' || ver === 'condiciones' || ver === 'no' ? ver : ver?.startsWith('no') ? 'no' : ver?.includes('condic') ? 'condiciones' : undefined,
-    nota: (() => { const n = num(x.nota); return n != null && n <= 10 ? n : undefined })(),
+    // La nota es decimal («7.6» o «7,6»): aquí el punto no es de miles
+    nota: (() => { const n = typeof x.nota === 'string' ? Number(x.nota.replace(',', '.').replace(/[^\d.]/g, '')) : Number(x.nota); return Number.isFinite(n) && n > 0 && n <= 10 ? n : undefined })(),
     resumen: str(x.resumen, 800), motivos: list(x.motivos), descartes: list(x.descartes),
     precio: { justo: num(p.justo), oferta: num(p.oferta), tope: num(p.tope) },
     reforma: {
