@@ -188,7 +188,7 @@ export function DeepAnalysisPanel({ h, m }: { h: Home; m: Mudanza }) {
 
       <div className="bg-card rounded-2xl p-4 flex flex-col gap-2">
         <button onClick={() => setShowReport(s => !s)} className="text-left font-semibold text-[14px] flex justify-between">📄 Informe completo <span className="text-accent text-sm">{showReport ? 'Ocultar' : 'Ver'}</span></button>
-        {showReport && <div className="text-[13px] whitespace-pre-wrap break-words">{a.report}</div>}
+        {showReport && <ReportText text={a.report} />}
       </div>
 
       <span className="flex gap-2">
@@ -198,6 +198,24 @@ export function DeepAnalysisPanel({ h, m }: { h: Home; m: Mudanza }) {
           : <button onClick={() => setAskDel(true)} className="min-h-10 px-3 rounded-xl border border-line text-sm text-muted">Borrar</button>}
       </span>
       {note && <p role="status" className="text-[12px] text-muted">{note}</p>}
+    </div>
+  )
+}
+
+/** El informe con un formato mínimo: «## título», «- punto» y **negrita** (lo que suelen escribir las IA) */
+function ReportText({ text }: { text: string }) {
+  const bold = (t: string) => t.split(/(\*\*[^*]+\*\*)/).map((p, i) => (p.startsWith('**') && p.endsWith('**') ? <b key={i}>{p.slice(2, -2)}</b> : <span key={i}>{p}</span>))
+  return (
+    <div className="text-[13px] leading-relaxed break-words flex flex-col gap-1">
+      {text.split('\n').map((l, i) => {
+        const t = l.trim()
+        if (!t) return <span key={i} className="h-1" />
+        const h = t.match(/^#{1,4}\s+(.*)$/)
+        if (h) return <span key={i} className="font-bold text-[14px] mt-2">{bold(h[1])}</span>
+        const li = t.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/)
+        if (li) return <span key={i} className="pl-4 -indent-3">• {bold(li[1])}</span>
+        return <span key={i}>{bold(t)}</span>
+      })}
     </div>
   )
 }
